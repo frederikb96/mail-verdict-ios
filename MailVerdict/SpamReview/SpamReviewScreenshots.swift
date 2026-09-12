@@ -1,9 +1,10 @@
 #if DEBUG
 
-    /// Spam Review's own screenshot entries — empty until S6 replaces the stub with the real
-    /// triage list.
+    /// Spam Review's own screenshot entries.
     enum SpamReviewScreenshots {
-        static let entries: [MVScreenshotEntry] = []
+        static let entries: [MVScreenshotEntry] = [
+            MVScreenshotEntry(id: "spam-review-queue", destination: .route(.spamReview))
+        ]
     }
 
 #endif

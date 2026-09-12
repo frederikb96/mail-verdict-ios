@@ -167,19 +167,9 @@ final class LiveEventHubBufferingTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeHub(
-        onBuffered: @escaping @MainActor @Sendable ([MVLiveInvalidation]) -> Void,
-        onImmediate: @escaping @MainActor @Sendable (MVLiveInvalidation) -> Void = { _ in }
-    ) throws -> LiveEventHub {
+    private func makeHub() throws -> LiveEventHub {
         let factory = try MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none })
-        return LiveEventHub(
-            requestFactory: factory,
-            callbacks: .init(
-                onBufferedInvalidations: onBuffered, onInvalidation: onImmediate,
-                onConnectionStateChanged: { _ in }
-            ),
-            urlSessionConfiguration: MVStubURLProtocol.makeConfiguration()
-        )
+        return LiveEventHub(requestFactory: factory, urlSessionConfiguration: MVStubURLProtocol.makeConfiguration())
     }
 
     /// Several `mail.new` records arriving faster than the 500 ms flush interval reach the
@@ -192,19 +182,14 @@ final class LiveEventHubBufferingTests: XCTestCase {
         MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(raw.utf8))
 
         let signal = MVStreamConnectionSignal()
-        let capture = InvalidationCapture()
-        let hub = try makeHub(
-            onBuffered: { batch in
-                Task { await capture.append(batch) }
-                Task { await signal.fire() }
-            }
-        )
+        let subscriber = MockSubscriber { Task { await signal.fire() } }
+        let hub = try makeHub()
+        hub.subscribe(subscriber)
         hub.connect()
         await signal.wait()
 
-        let batches = await capture.batches
-        XCTAssertEqual(batches.count, 1)
-        XCTAssertEqual(batches.first?.count, 3)
+        XCTAssertEqual(subscriber.batches.count, 1)
+        XCTAssertEqual(subscriber.batches.first?.count, 3)
     }
 
     /// A non-mail event (here, `account.changed`) is never held for the next flush tick.
@@ -213,23 +198,96 @@ final class LiveEventHubBufferingTests: XCTestCase {
         MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(raw.utf8))
 
         let signal = MVStreamConnectionSignal()
-        let capture = InvalidationCapture()
-        let hub = try makeHub(
-            onBuffered: { _ in },
-            onImmediate: { invalidation in
-                Task { await capture.append([invalidation]) }
-                Task { await signal.fire() }
-            }
-        )
+        let subscriber = MockSubscriber { Task { await signal.fire() } }
+        let hub = try makeHub()
+        hub.subscribe(subscriber)
         hub.connect()
         await signal.wait()
 
-        let received = await capture.batches.first?.first
-        XCTAssertEqual(received, .accountsChanged)
+        XCTAssertEqual(subscriber.batches.first?.first, .accountsChanged)
+    }
+
+    /// Every subscribed store hears the same event — one SSE connection, fanned out.
+    func testEveryRegisteredSubscriberReceivesTheSameBatch() async throws {
+        let raw = "event: account.changed\r\ndata: {}\r\n\r\n"
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(raw.utf8))
+
+        let signal = MVStreamConnectionSignal()
+        let first = MockSubscriber()
+        let second = MockSubscriber { Task { await signal.fire() } }
+        let hub = try makeHub()
+        hub.subscribe(first)
+        hub.subscribe(second)
+        hub.connect()
+        await signal.wait()
+
+        XCTAssertEqual(first.batches.first, [.accountsChanged])
+        XCTAssertEqual(second.batches.first, [.accountsChanged])
+    }
+
+    /// `unsubscribe` is what it says — no further delivery, immediately.
+    func testUnsubscribingStopsFurtherDelivery() async throws {
+        let raw = "event: account.changed\r\ndata: {}\r\n\r\n"
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(raw.utf8))
+
+        let signal = MVStreamConnectionSignal()
+        let watcher = MockSubscriber { Task { await signal.fire() } }
+        let subscriber = MockSubscriber()
+        let hub = try makeHub()
+        let token = hub.subscribe(subscriber)
+        hub.subscribe(watcher)
+        hub.unsubscribe(token)
+        hub.connect()
+        await signal.wait()
+
+        XCTAssertTrue(subscriber.batches.isEmpty)
+    }
+
+    /// A subscriber joining after the hub is already connected is told so immediately, rather
+    /// than sitting as "offline" until the next state change. The stub's stream ends (and the
+    /// hub starts reconnecting) the instant it finishes delivering its empty body, so the late
+    /// subscribe has to happen inside the same synchronous broadcast that reports `.connected` —
+    /// anything that first returns to the test function risks racing the hub's own disconnect.
+    func testSubscribingAfterConnectionIsUpReportsConnectedRightAway() async throws {
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data())
+        let signal = MVStreamConnectionSignal()
+        let hub = try makeHub()
+        var lateSubscriberStates: [Bool] = []
+
+        let connector = MockSubscriber(onSetConnected: { connected in
+            guard connected else { return }
+            let lateSubscriber = MockSubscriber()
+            hub.subscribe(lateSubscriber)
+            lateSubscriberStates = lateSubscriber.connectedStates
+            Task { await signal.fire() }
+        })
+        hub.subscribe(connector)
+        hub.connect()
+        await signal.wait()
+
+        XCTAssertEqual(lateSubscriberStates, [true])
     }
 }
 
-private actor InvalidationCapture {
-    var batches: [[MVLiveInvalidation]] = []
-    func append(_ batch: [MVLiveInvalidation]) { batches.append(batch) }
+@MainActor
+private final class MockSubscriber: LiveEventSubscriber {
+    private(set) var batches: [[MVLiveInvalidation]] = []
+    private(set) var connectedStates: [Bool] = []
+    private let onApply: (() -> Void)?
+    private let onSetConnected: ((Bool) -> Void)?
+
+    init(onApply: (() -> Void)? = nil, onSetConnected: ((Bool) -> Void)? = nil) {
+        self.onApply = onApply
+        self.onSetConnected = onSetConnected
+    }
+
+    func apply(_ invalidations: [MVLiveInvalidation]) {
+        batches.append(invalidations)
+        onApply?()
+    }
+
+    func setConnected(_ connected: Bool) {
+        connectedStates.append(connected)
+        onSetConnected?(connected)
+    }
 }

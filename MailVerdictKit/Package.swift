@@ -12,23 +12,44 @@ import PackageDescription
 // already guards `Network`, rather than letting an unguarded import drag the whole suite onto a
 // metered runner.
 //
-// SwiftSoup is the one exception to "no dependencies yet": a pure-Swift HTML parser (the reader's
-// document builder needs one, and it targets Linux explicitly, which is why it was picked over
-// anything that shells out to libxml2 or a system WebKit).
+// SwiftSoup is a pure-Swift HTML parser (the reader's document builder needs one, and it targets
+// Linux explicitly, which is why it was picked over anything that shells out to libxml2 or a
+// system WebKit). swift-crypto is linked on Linux only: it is Apple's CryptoKit API rebuilt for
+// platforms that lack it, so `PushEnvelope` uses CryptoKit on iOS and the same calls here.
+//
+// `PushEnvelope` is its own product because the notification service extension links it and
+// nothing else — an extension runs under a small memory budget, and everything in
+// `MailVerdictKit` would count against it.
 
 let package = Package(
     name: "MailVerdictKit",
     platforms: [.iOS(.v26), .macOS(.v26)],
     products: [
-        .library(name: "MailVerdictKit", targets: ["MailVerdictKit"])
+        .library(name: "MailVerdictKit", targets: ["MailVerdictKit"]),
+        .library(name: "Push", targets: ["Push"]),
+        .library(name: "PushEnvelope", targets: ["PushEnvelope"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.9")
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.9"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "4.5.2"),
     ],
     targets: [
         .target(
             name: "MailVerdictKit", dependencies: ["SwiftSoup"],
             resources: [.copy("Reader/Resources/reader.js")]
+        ),
+        .target(
+            name: "PushEnvelope",
+            dependencies: [
+                .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux]))
+            ]
+        ),
+        .target(name: "Push", dependencies: ["MailVerdictKit", "PushEnvelope"]),
+        .testTarget(
+            name: "PushTests",
+            dependencies: ["Push", "PushEnvelope", "MailVerdictKit"],
+            // Read off the source tree via `#filePath`, the same as ContractTests' snapshot.
+            exclude: ["Fixtures"]
         ),
         .testTarget(
             name: "MailVerdictKitTests",

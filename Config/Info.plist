@@ -13,5 +13,11 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <!-- The server's silent read-sync push wakes the app to withdraw notifications read
+         elsewhere and correct the badge. Without this key it is never delivered at all. -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>remote-notification</string>
+    </array>
 </dict>
 </plist>

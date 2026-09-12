@@ -35,6 +35,11 @@ public struct MVActionUndoPayload: Sendable, Equatable {
 /// reader's own "mark read on settle" rule, and only until something else marks it read or marks
 /// a different message unread (there is only ever one such id at a time, the same as the web).
 public actor MVExplicitUnreadTracker {
+    /// The one instance for the whole app — the list's Mark as Unread and the reader's paging
+    /// store both reach it here rather than through `AppEnvironment`, which package code cannot
+    /// see.
+    public static let shared = MVExplicitUnreadTracker()
+
     private var messageId: UUID?
 
     public init() {}

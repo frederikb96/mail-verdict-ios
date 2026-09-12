@@ -14,7 +14,7 @@ struct MailRowView: View {
         HStack(alignment: .top, spacing: 0) {
             unreadDotColumn
             AvatarView(
-                identity: data.avatarIdentity, displayName: data.senderName, photoURL: data.avatarPhotoURL,
+                identity: data.avatarIdentity, displayName: data.senderName, photo: data.avatarPhoto,
                 unifiedAccountEmoji: data.unifiedAccountEmoji
             )
             .padding(.trailing, 12)

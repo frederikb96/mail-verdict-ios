@@ -4,6 +4,9 @@ import SwiftUI
 @main
 struct MailVerdictApp: App {
 
+    /// The APNs token and silent pushes reach an app delegate or nothing; see `PushAppDelegate`.
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
+
     #if DEBUG
         /// Held for the app's lifetime; a listener that goes out of scope stops listening.
         private static let debugBridge = DebugBridge(router: DebugRoutes.make())
@@ -38,7 +41,9 @@ struct MailVerdictApp: App {
         /// itself inline in this shared file. This is the one line a feature block adds to
         /// `MailVerdictApp.swift`; `make()` below needs no other change to pick it up.
         private static let featureRegistrars: [@Sendable (inout DebugRouter) -> Void] = [
-            ReaderDebugRoutes.register
+            MailboxesDebugRoutes.register, SearchDebugRoutes.register, SpamReviewDebugRoutes.register,
+            NotificationsDebugRoutes.register, PushDebugRoutes.register, MailListDebugRoutes.register,
+            ComposerDebugRoutes.register, ReaderDebugRoutes.register,
         ]
 
         static func make() -> DebugRouter {
