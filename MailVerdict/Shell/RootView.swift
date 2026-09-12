@@ -58,6 +58,7 @@ private struct ConnectedShell: View {
             UndoSendCapsule(environment: environment, connection: connection)
         }
         .environment(\.mvImageLoader, connection.imageLoader)
+        .environment(\.mvApiClient, connection.apiClient)
         .sheet(item: Bindable(environment).presentedCompose) { intent in
             ComposerScreen(intent: intent, environment: environment, connection: connection)
         }

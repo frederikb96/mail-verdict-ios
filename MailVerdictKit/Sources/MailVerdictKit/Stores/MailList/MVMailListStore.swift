@@ -32,11 +32,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     /// to it, only counted.
     public private(set) var pendingArrivalCount = 0
     public private(set) var pendingLanding: MVListLanding?
-    /// The row the reader last settled on — set on open and on every page settle, so Back can
-    /// bring the row the reader ended on into view.
-    public private(set) var lastViewedMessageId: UUID?
-    /// The row last opened from this list. Back only scrolls to reveal `lastViewedMessageId`
-    /// when the reader paged away from it — returning from the row that was opened leaves the
+    /// The row last opened from this list. Back scrolls to reveal the row the reader settled on
+    /// only when it differs from this one — returning from the row that was opened leaves the
     /// position exactly as it was.
     public private(set) var openedMessageId: UUID?
     public private(set) var filterText = ""
@@ -122,15 +119,9 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         return count.map { "\($0) \($0 == 1 ? "Message" : "Messages")" }
     }
 
-    /// The reader settled on `messageId` as its current page.
-    public func readerDidSettle(on messageId: UUID) {
-        lastViewedMessageId = messageId
-    }
-
     /// A row was opened from this list.
     public func didOpen(_ messageId: UUID) {
         openedMessageId = messageId
-        lastViewedMessageId = messageId
     }
 
     // MARK: - Loading
