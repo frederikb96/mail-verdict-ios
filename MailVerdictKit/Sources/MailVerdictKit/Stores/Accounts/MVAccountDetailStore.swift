@@ -7,9 +7,11 @@ import Observation
 @Observable
 @MainActor
 public final class MVAccountDetailStore {
+    /// `.loaded` carries the account it loaded — there is no state in which the screen is
+    /// "loaded" and has nothing to show.
     public enum LoadState {
         case loading
-        case loaded
+        case loaded(AccountResponse)
         case failed(Error)
 
         public var isLoading: Bool {
@@ -19,15 +21,24 @@ public final class MVAccountDetailStore {
     }
 
     public let accountId: UUID
-    public private(set) var account: AccountResponse?
     public private(set) var syncStatus: SyncStatusResponse?
     public private(set) var state: LoadState = .loading
+    /// Set when a live `accountsChanged` refresh finds this account gone — the account was
+    /// deleted from elsewhere while this screen stayed open. The screen shows a message and
+    /// pops rather than re-rendering a 404 as a retry loop.
+    public private(set) var wasDeletedElsewhere = false
 
     private let apiClient: MVApiClient
+    private var liveSubscriptionToken: MVSubscriptionToken?
 
     public init(accountId: UUID, apiClient: MVApiClient) {
         self.accountId = accountId
         self.apiClient = apiClient
+    }
+
+    public var account: AccountResponse? {
+        if case .loaded(let account) = state { return account }
+        return nil
     }
 
     public var connectionState: MVAccountConnectionState {
@@ -35,33 +46,62 @@ public final class MVAccountDetailStore {
         return .classify(state: account.state, lastFullSync: syncStatus?.lastFullSync != nil)
     }
 
+    // MARK: - Live updates
+
+    public func subscribeToLive(_ hub: LiveEventHub) {
+        guard liveSubscriptionToken == nil else { return }
+        liveSubscriptionToken = hub.subscribe(self)
+    }
+
+    public func unsubscribeFromLive(_ hub: LiveEventHub) {
+        guard let token = liveSubscriptionToken else { return }
+        hub.unsubscribe(token)
+        liveSubscriptionToken = nil
+    }
+
     public func load() async {
         state = .loading
         do {
-            account = try await apiClient.getAccount(id: accountId)
+            let fetched = try await apiClient.getAccount(id: accountId)
             syncStatus = try? await apiClient.getSyncStatus(accountId: accountId)
-            state = .loaded
+            state = .loaded(fetched)
         } catch {
             state = .failed(error)
         }
     }
 
+    /// A background refresh triggered by `accountsChanged`, not the screen's own load — a
+    /// transient failure here leaves the last good state on screen rather than replacing it
+    /// with an error view; only a 404 (the account is actually gone) is acted on.
+    private func refreshAfterLiveChange() async {
+        do {
+            let fetched = try await apiClient.getAccount(id: accountId)
+            syncStatus = try? await apiClient.getSyncStatus(accountId: accountId)
+            state = .loaded(fetched)
+        } catch {
+            if Self.isNotFound(error) {
+                wasDeletedElsewhere = true
+            }
+        }
+    }
+
     public func setActive(_ isActive: Bool) async throws {
         guard let previous = account else { return }
-        account = AccountResponse(
-            id: previous.id, name: previous.name, imapHost: previous.imapHost,
-            imapPort: previous.imapPort, imapUser: previous.imapUser, smtpHost: previous.smtpHost,
-            smtpPort: previous.smtpPort, smtpUser: previous.smtpUser, isActive: isActive,
-            state: previous.state, stateError: previous.stateError,
-            capabilities: previous.capabilities, createdAt: previous.createdAt,
-            updatedAt: previous.updatedAt, emoji: previous.emoji, spamEnabled: previous.spamEnabled,
-            folderOrder: previous.folderOrder, trashRetentionDays: previous.trashRetentionDays,
-            junkRetentionDays: previous.junkRetentionDays
-        )
+        state = .loaded(
+            AccountResponse(
+                id: previous.id, name: previous.name, imapHost: previous.imapHost,
+                imapPort: previous.imapPort, imapUser: previous.imapUser, smtpHost: previous.smtpHost,
+                smtpPort: previous.smtpPort, smtpUser: previous.smtpUser, isActive: isActive,
+                state: previous.state, stateError: previous.stateError,
+                capabilities: previous.capabilities, createdAt: previous.createdAt,
+                updatedAt: previous.updatedAt, emoji: previous.emoji, spamEnabled: previous.spamEnabled,
+                folderOrder: previous.folderOrder, trashRetentionDays: previous.trashRetentionDays,
+                junkRetentionDays: previous.junkRetentionDays
+            ))
         do {
             _ = try await apiClient.updateAccount(id: accountId, AccountUpdateRequest(isActive: isActive))
         } catch {
-            account = previous
+            state = .loaded(previous)
             throw error
         }
     }
@@ -77,11 +117,18 @@ public final class MVAccountDetailStore {
 
     public func update(_ input: MVAccountFormInput) async throws {
         let request = try MVAccountFormModel.buildUpdateRequest(input)
-        account = try await apiClient.updateAccount(id: accountId, request)
+        state = .loaded(try await apiClient.updateAccount(id: accountId, request))
     }
 
     public func delete() async throws {
         try await apiClient.deleteAccount(id: accountId)
+    }
+
+    private static func isNotFound(_ error: Error) -> Bool {
+        switch error as? MVError {
+        case .detail(_, let status)?, .http(let status, _)?: return status == 404
+        default: return false
+        }
     }
 
     /// Human explanation for the IMAP extension PostIMAP is using to detect changes on this
@@ -98,5 +145,23 @@ public final class MVAccountDetailStore {
         default:
             return "Not yet determined."
         }
+    }
+
+    /// The short label `syncTierDescription`'s sentence expands on — words, not the raw
+    /// protocol-extension name the server sends ("qresync").
+    public static func syncTierLabel(_ tier: String?) -> String {
+        switch tier {
+        case "qresync": return "QRESYNC"
+        case "condstore": return "CONDSTORE"
+        case "full": return "Full rescan"
+        default: return "Pending"
+        }
+    }
+}
+
+extension MVAccountDetailStore: LiveEventSubscriber {
+    public func apply(_ invalidations: [MVLiveInvalidation]) {
+        guard invalidations.contains(.accountsChanged) else { return }
+        Task { await self.refreshAfterLiveChange() }
     }
 }

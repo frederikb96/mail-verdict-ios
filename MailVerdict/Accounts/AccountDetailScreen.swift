@@ -67,6 +67,13 @@ struct AccountDetailScreen: View {
                         .info, "screenshot", "account-detail: load() returned, state=\(store.state)")
                 #endif
             }
+            .onAppear { store.subscribeToLive(connection.liveEventHub) }
+            .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
+            .onChange(of: store.wasDeletedElsewhere) { _, deletedElsewhere in
+                guard deletedElsewhere else { return }
+                environment.toasts.show(.init(variant: .info, message: "This account was removed."))
+                dismiss()
+            }
     }
 
     @ViewBuilder
@@ -76,25 +83,23 @@ struct AccountDetailScreen: View {
             ProgressView()
         case .failed(let error):
             ErrorStateView(error: error) { Task { await store.load() } }
-        case .loaded:
-            if let account = store.account {
-                Form {
-                    StatusSection(store: store, account: account)
-                    SyncToggleSection(store: store, environment: environment)
-                    DetailsSection(account: account)
-                    IconSection(store: store, environment: environment)
+        case .loaded(let account):
+            Form {
+                StatusSection(store: store, account: account)
+                SyncToggleSection(store: store, environment: environment)
+                DetailsSection(account: account)
+                IconSection(store: store, environment: environment)
 
-                    Section {
-                        NavigationLink("Folder Order & Visibility", value: Route.folderOrder(accountId))
-                        NavigationLink("Image Exceptions", value: Route.imageExceptions(accountId))
-                        NavigationLink("Sending Identities", value: Route.identities(accountId))
-                    }
+                Section {
+                    NavigationLink("Folder Order & Visibility", value: Route.folderOrder(accountId))
+                    NavigationLink("Image Exceptions", value: Route.imageExceptions(accountId))
+                    NavigationLink("Sending Identities", value: Route.identities(accountId))
+                }
 
-                    Section {
-                        Button("Sync Now") { Task { try? await store.triggerSync() } }
-                        Button("Edit…") { showingEditSheet = true }
-                        Button("Delete Account…", role: .destructive) { confirmDelete = true }
-                    }
+                Section {
+                    Button("Sync Now") { Task { try? await store.triggerSync() } }
+                    Button("Edit…") { showingEditSheet = true }
+                    Button("Delete Account…", role: .destructive) { confirmDelete = true }
                 }
             }
         }
@@ -125,7 +130,7 @@ private struct StatusSection: View {
                 }
             }
             if let syncStatus = store.syncStatus {
-                LabeledContent("Sync tier", value: syncStatus.syncTier ?? "pending")
+                LabeledContent("Sync tier", value: MVAccountDetailStore.syncTierLabel(syncStatus.syncTier))
                 if syncStatus.errorCount > 0 {
                     Text("\(syncStatus.errorCount) errors — \(syncStatus.lastError ?? "")").foregroundStyle(.red)
                 }
