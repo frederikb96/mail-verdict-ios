@@ -158,7 +158,10 @@ private struct IntFieldControl: View {
                 .frame(width: 80)
                 .onSubmit { submitIfValid() }
             Stepper(
-                "", value: Binding(get: { value }, set: { onCommit($0) }), in: Int.min...Int.max
+                // `Int.min...Int.max` traps: `Stepper` computes the range's distance, and
+                // `Int.max - Int.min` overflows `Int`. A billion in either direction is still far
+                // past anything a server-settings integer (`max_tokens`, a retry count, …) holds.
+                "", value: Binding(get: { value }, set: { onCommit($0) }), in: -1_000_000_000...1_000_000_000
             )
             .labelsHidden()
         }
