@@ -125,6 +125,20 @@ public final class SearchStore {
         }
         isLoading = false
         hasSearched = true
+        reportDebugState()
+    }
+
+    /// `/search/state`'s own data — reported here, on the main actor, rather than read directly
+    /// from that route's synchronous, non-isolated handler.
+    private func reportDebugState() {
+        #if DEBUG
+            SearchDebugReporter.shared.report(
+                MVSearchDebugSnapshot(
+                    mode: context.mode.rawValue, query: context.query, resultCount: results.count, total: total,
+                    hasMore: hasMore, resultsState: "\(resultsState)"
+                )
+            )
+        #endif
     }
 
     public func loadMore() async {

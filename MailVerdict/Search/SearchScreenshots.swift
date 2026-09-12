@@ -1,9 +1,10 @@
 #if DEBUG
 
-    /// Search's own screenshot entries — empty until S5 replaces the stub with the real screen
-    /// and adds one entry per state worth capturing (with chips, results).
+    /// Search's own screenshot entries.
     enum SearchScreenshots {
-        static let entries: [MVScreenshotEntry] = []
+        static let entries: [MVScreenshotEntry] = [
+            MVScreenshotEntry(id: "search-with-results", destination: .route(.search(initialQuery: "invoice")))
+        ]
     }
 
 #endif
