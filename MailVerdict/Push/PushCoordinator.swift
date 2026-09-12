@@ -26,6 +26,11 @@ final class PushCoordinator {
     private var pendingTap: PushTapTarget?
     private var isRefreshing = false
     private var settings: (origin: String, store: NotificationSettingsStore)?
+    /// Stands in for the shell while none is attached. Its live-event stream is closed at once:
+    /// background work needs only the API client, and a stream nobody reads would stay open.
+    private var backgroundEnvironment: AppEnvironment?
+    private weak var subscribedHub: LiveEventHub?
+    private var hubToken: MVSubscriptionToken?
 
     #if DEBUG
         /// Fixture mode's stand-in for the system permission, which a simulator run cannot grant.
@@ -38,9 +43,17 @@ final class PushCoordinator {
     }
 
     private func context() -> Context? {
-        let environment = attachedEnvironment ?? AppEnvironment()
+        let environment = attachedEnvironment ?? makeBackgroundEnvironment()
         guard let connection = environment.connection else { return nil }
         return Context(origin: Self.serverOrigin(environment), backend: connection.apiClient)
+    }
+
+    private func makeBackgroundEnvironment() -> AppEnvironment {
+        if let backgroundEnvironment { return backgroundEnvironment }
+        let environment = AppEnvironment()
+        environment.connection?.liveEventHub.disconnect()
+        backgroundEnvironment = environment
+        return environment
     }
 
     static func serverOrigin(_ environment: AppEnvironment) -> String {
@@ -61,8 +74,17 @@ final class PushCoordinator {
         UIApplication.shared.registerForRemoteNotifications()
     }
 
+    /// Called again whenever the shell's connection changes, since a new connection brings a new
+    /// live-event hub to listen to.
     func attach(_ environment: AppEnvironment) {
         attachedEnvironment = environment
+        backgroundEnvironment = nil
+        let hub = environment.connection?.liveEventHub
+        if hub !== subscribedHub {
+            if let subscribedHub, let hubToken { subscribedHub.unsubscribe(hubToken) }
+            subscribedHub = hub
+            hubToken = hub?.subscribe(self)
+        }
         consumePendingTap()
         publishDebugState()
     }
