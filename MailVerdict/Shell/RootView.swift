@@ -13,6 +13,7 @@ struct RootView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 environment.handleScenePhaseChange(to: newPhase)
             }
+            .pushCoordination(environment)
     }
 
     @ViewBuilder
