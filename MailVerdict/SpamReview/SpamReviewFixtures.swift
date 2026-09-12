@@ -5,12 +5,18 @@ import MailVerdictKit
 
     /// Fixture data for the Spam Review screen's own screenshot sweep.
     enum SpamReviewFixtures {
+        /// The screen's own store, set from its `.task` — `MVScreenshotEntry.prepare` has no
+        /// reach into a screen's `@State`, so this is how it finds the instance to reload once
+        /// fixture routes exist. Weak: a screen that goes away must not keep its store alive.
+        @MainActor static weak var activeStore: SpamReviewStore?
+
         static func registerIfNeeded() {
             guard MVFixtureLaunch.isEnabled() else { return }
             MailboxesFixtures.registerIfNeeded()
-            MVFixtureURLProtocol.register(method: "GET", path: "/api/verdicts/spam-review") {
-                (try? JSONEncoder.mvDefault.encode(response)) ?? Data("{}".utf8)
-            }
+            // Encoded eagerly, outside the closure: `SpamReviewListResponse` is not `Sendable`,
+            // and the fixture body closure is `@Sendable` — caught only on a Mac compile.
+            let data = (try? JSONEncoder.mvDefault.encode(response)) ?? Data("{}".utf8)
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/verdicts/spam-review") { data }
         }
 
         private static var response: SpamReviewListResponse {

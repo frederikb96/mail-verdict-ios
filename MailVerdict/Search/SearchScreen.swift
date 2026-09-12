@@ -41,9 +41,9 @@ struct SearchScreen: View {
         .sheet(isPresented: $isDatesSheetPresented) { datesSheet }
         .task {
             #if DEBUG
-                MailboxesFixtures.registerIfNeeded()
-                SearchFixtures.registerIfNeeded()
+                SearchFixtures.activeStore = store
             #endif
+            store.subscribeToLive(connection.liveEventHub)
             isSearchFieldFocused = true
             scrollTarget = store.topVisibleRowId
             async let accountList = try? connection.apiClient.listAccounts()
@@ -54,6 +54,7 @@ struct SearchScreen: View {
             dateBounds = await bounds
             if store.context.query.count >= 2 { await store.runSearch() }
         }
+        .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
         .onChange(of: scrollTarget) { _, newValue in store.topVisibleRowId = newValue }
         #if DEBUG
             .screenshotReady(
@@ -201,7 +202,12 @@ struct SearchScreen: View {
                                 toggleFolder(folder.id)
                             } label: {
                                 HStack {
-                                    Text(folder.displayName ?? folder.imapName)
+                                    Text(
+                                        folderDisplayName(
+                                            imapName: folder.imapName, displayName: folder.displayName,
+                                            specialUse: folder.specialUse
+                                        )
+                                    )
                                     Spacer()
                                     if isFolderSelected(folder.id) {
                                         Image(systemName: "checkmark")

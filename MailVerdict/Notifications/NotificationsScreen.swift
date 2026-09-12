@@ -41,7 +41,7 @@ struct NotificationsScreen: View {
         }
         .task {
             #if DEBUG
-                NotificationsFixtures.registerIfNeeded()
+                NotificationsFixtures.activeStore = store
             #endif
             store.subscribeToLive(connection.liveEventHub)
             accounts = (try? await connection.apiClient.listAccounts()) ?? []
