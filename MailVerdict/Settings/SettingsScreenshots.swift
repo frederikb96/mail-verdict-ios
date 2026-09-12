@@ -26,6 +26,7 @@ import MailVerdictKit
                 id: "unified-views", destination: .route(.unifiedViews), prepare: prepareUnifiedViews),
         ]
 
+        @MainActor
         private static func prepareSettingsMain(_: AppEnvironment, _: AppEnvironment.Connection) async {
             registerAccountsFixture()
             registerAccountOrderFixture()
@@ -34,6 +35,7 @@ import MailVerdictKit
             if case .failed = store.state { await store.load() }
         }
 
+        @MainActor
         private static func prepareSettingsCategoryAI(_: AppEnvironment, _: AppEnvironment.Connection) async {
             MVFixtureURLProtocol.register(method: "GET", path: "/api/settings/ai") {
                 Data(
@@ -49,6 +51,7 @@ import MailVerdictKit
             if case .failed = store.state { await store.load() }
         }
 
+        @MainActor
         private static func prepareUnifiedViews(_: AppEnvironment, _: AppEnvironment.Connection) async {
             registerAccountsFixture()
             MVFixtureURLProtocol.register(method: "GET", path: "/api/unified/folders") {
