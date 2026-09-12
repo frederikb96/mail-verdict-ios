@@ -26,7 +26,9 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
     public let line4: [MVTextSegment]
     /// The identity (an email address, almost always) `avatarColorHex`/`getInitials` key off.
     public let avatarIdentity: String
-    public let avatarPhotoURL: URL?
+    /// A store derives this from `ContactPhotoIndexEntry.avatarSource`, read from a photo index
+    /// fetched once and cached rather than looked up per row.
+    public let avatarPhoto: MVAvatarPhotoSource?
     /// Set on a unified-view row — the contributing account's emoji, shown as a badge at the
     /// avatar's bottom-trailing corner.
     public let unifiedAccountEmoji: String?
@@ -38,8 +40,9 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
         id: UUID, isUnread: Bool, senderName: String, dateText: String, pendingSync: Bool = false,
         subject: String?, threadCount: Int? = nil, isAnswered: Bool = false,
         hasAttachments: Bool = false, verdictIsSpam: Bool = false, isStarred: Bool = false,
-        line3: String?, line4: [MVTextSegment], avatarIdentity: String, avatarPhotoURL: URL? = nil,
-        unifiedAccountEmoji: String? = nil, accountChip: String? = nil
+        line3: String?, line4: [MVTextSegment], avatarIdentity: String,
+        avatarPhoto: MVAvatarPhotoSource? = nil, unifiedAccountEmoji: String? = nil,
+        accountChip: String? = nil
     ) {
         self.id = id
         self.isUnread = isUnread
@@ -55,7 +58,7 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
         self.line3 = line3
         self.line4 = line4
         self.avatarIdentity = avatarIdentity
-        self.avatarPhotoURL = avatarPhotoURL
+        self.avatarPhoto = avatarPhoto
         self.unifiedAccountEmoji = unifiedAccountEmoji
         self.accountChip = accountChip
     }
@@ -65,7 +68,7 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
         id: UUID, isUnread: Bool, senderName: String, dateText: String, pendingSync: Bool = false,
         subject: String?, threadCount: Int? = nil, isAnswered: Bool = false,
         hasAttachments: Bool = false, verdictIsSpam: Bool = false, isStarred: Bool = false,
-        snippet: String?, avatarIdentity: String, avatarPhotoURL: URL? = nil,
+        snippet: String?, avatarIdentity: String, avatarPhoto: MVAvatarPhotoSource? = nil,
         unifiedAccountEmoji: String? = nil
     ) -> MVMailRowData {
         MVMailRowData(
@@ -74,7 +77,7 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
             isAnswered: isAnswered, hasAttachments: hasAttachments, verdictIsSpam: verdictIsSpam,
             isStarred: isStarred, line3: nil,
             line4: snippet.map { [MVTextSegment(text: $0, isBold: false)] } ?? [],
-            avatarIdentity: avatarIdentity, avatarPhotoURL: avatarPhotoURL,
+            avatarIdentity: avatarIdentity, avatarPhoto: avatarPhoto,
             unifiedAccountEmoji: unifiedAccountEmoji
         )
     }

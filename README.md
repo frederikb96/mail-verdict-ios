@@ -51,8 +51,9 @@ The app target needs Xcode. CI builds it on a macOS runner.
 | `Mac` | does it actually run — boots it, screenshots it, queries the debug bridge | macOS |
 | `Release` | signs and ships to TestFlight | macOS |
 
-`Mac` publishes the screenshot and the device log as artifacts, because every automated assertion
-in that job can pass while the screen renders nothing.
+`Mac` publishes a screenshot per registered screen (fixture mode, no backend needed) plus the
+device log as artifacts, because every automated assertion in that job can pass while the screen
+renders nothing.
 
 ## Releasing
 

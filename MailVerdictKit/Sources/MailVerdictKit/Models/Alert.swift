@@ -102,21 +102,52 @@ public struct PushSubscriptionCreate: ContractModel, Codable, Sendable, Equatabl
     }
 }
 
+/// A PATCH of one device's preferences. The server tells a field the body omits (left alone) from
+/// one sent as `null` (cleared — for `alert_folder_ids`, back to the arrival-folder default), so
+/// the two fields where that matters are double optionals: outer `nil` omits the key, `.some(nil)`
+/// sends `null`.
 public struct PushSubscriptionUpdate: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "PushSubscriptionUpdate"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case alertFolderIds = "alert_folder_ids", remindersEnabled = "reminders_enabled", label
+        case alertFolderIds = "alert_folder_ids", remindersEnabled = "reminders_enabled", label,
+            mutedChannels = "muted_channels"
     }
     public typealias CodingKeys = ContractKeys
 
-    public let alertFolderIds: [UUID]?
+    public let alertFolderIds: [UUID]??
     public let remindersEnabled: Bool?
-    public let label: String?
+    public let label: String??
+    /// `nil` leaves the muted set alone; `[]` unmutes every channel.
+    public let mutedChannels: [String]?
 
-    public init(alertFolderIds: [UUID]? = nil, remindersEnabled: Bool? = nil, label: String? = nil) {
+    public init(
+        alertFolderIds: [UUID]?? = nil, remindersEnabled: Bool? = nil, label: String?? = nil,
+        mutedChannels: [String]? = nil
+    ) {
         self.alertFolderIds = alertFolderIds
         self.remindersEnabled = remindersEnabled
         self.label = label
+        self.mutedChannels = mutedChannels
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let alertFolderIds {
+            if let alertFolderIds {
+                try container.encode(alertFolderIds, forKey: .alertFolderIds)
+            } else {
+                try container.encodeNil(forKey: .alertFolderIds)
+            }
+        }
+        try container.encodeIfPresent(remindersEnabled, forKey: .remindersEnabled)
+        if let label {
+            if let label {
+                try container.encode(label, forKey: .label)
+            } else {
+                try container.encodeNil(forKey: .label)
+            }
+        }
+        try container.encodeIfPresent(mutedChannels, forKey: .mutedChannels)
     }
 }
 

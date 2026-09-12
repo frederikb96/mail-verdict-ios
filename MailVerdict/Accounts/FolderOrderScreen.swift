@@ -12,5 +12,8 @@ struct FolderOrderScreen: View {
         Text("Folder Order & Visibility")
             .navigationTitle("Folders")
             .accessibilityIdentifier("folderorder-stub")
+            #if DEBUG
+                .screenshotReady(route: .folderOrder(accountId), environment: environment, connection: connection)
+            #endif
     }
 }

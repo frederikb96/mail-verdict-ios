@@ -68,6 +68,9 @@ struct ComposerScreen: View {
             if phase == .background { store.saveRecoverySnapshot() }
         }
         .onDisappear { closeDown() }
+        #if DEBUG
+            .screenshotReady(compose: intent, environment: environment, connection: connection)
+        #endif
     }
 
     // MARK: - Content
