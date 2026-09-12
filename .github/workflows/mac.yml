@@ -179,7 +179,25 @@ jobs:
           bundle=com.frederikberg.mailverdict
           fail=0
 
-          xcrun simctl terminate "$udid" "$bundle" || true
+          # `simctl terminate` returns once the request is issued, not once the process and its
+          # debug-bridge listener are actually gone — relaunching before that finishes risks the
+          # new launch racing the old process, which is what let one screen's `/fixtures/misses`
+          # carry the previous screen's own still-in-flight requests. Both signals have to clear:
+          # the process itself (`launchctl list`) and the port it was listening on (refused, not
+          # merely timed out, is what "nothing is there" looks like).
+          terminate_and_wait() {
+            xcrun simctl terminate "$udid" "$bundle" || true
+            for attempt in $(seq 1 10); do
+              if ! xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "$bundle" \
+                && ! curl -sS --max-time 1 "http://127.0.0.1:8765/health" >/dev/null 2>&1; then
+                return 0
+              fi
+              sleep 1
+            done
+            echo "::warning::old process or its debug bridge had not gone away after 10s"
+          }
+
+          terminate_and_wait
           xcrun simctl launch "$udid" "$bundle" -MVFixtureMode YES > /dev/null
 
           ok=0
@@ -192,14 +210,14 @@ jobs:
           done
           if [ "$ok" -ne 1 ]; then
             echo "::error::debug bridge never answered /screens in fixture mode"
-            xcrun simctl terminate "$udid" "$bundle" || true
+            terminate_and_wait
             exit 1
           fi
 
           # A plain `while read` rather than `mapfile` — the macOS runner's default `/bin/bash`
           # is the ancient Apple-shipped 3.2, which does not have `mapfile` (bash 4+ only).
           ids_list=$(python3 -c "import json; print('\n'.join(json.load(open('artifacts/screens.json'))['screens']))")
-          xcrun simctl terminate "$udid" "$bundle" || true
+          terminate_and_wait
 
           if [ -z "$ids_list" ]; then
             echo "no registered screenshot ids yet — nothing to sweep"
@@ -249,7 +267,7 @@ jobs:
                 fail=1
               fi
             fi
-            xcrun simctl terminate "$udid" "$bundle" || true
+            terminate_and_wait
           done <<< "$ids_list"
 
           [ "$fail" -eq 0 ] || { echo 'one or more fixture screenshots failed — see above'; exit 1; }
