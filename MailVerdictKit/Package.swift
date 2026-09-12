@@ -26,7 +26,10 @@ let package = Package(
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.9")
     ],
     targets: [
-        .target(name: "MailVerdictKit", dependencies: ["SwiftSoup"]),
+        .target(
+            name: "MailVerdictKit", dependencies: ["SwiftSoup"],
+            resources: [.copy("Reader/Resources/reader.js")]
+        ),
         .testTarget(
             name: "MailVerdictKitTests",
             dependencies: ["MailVerdictKit"],
