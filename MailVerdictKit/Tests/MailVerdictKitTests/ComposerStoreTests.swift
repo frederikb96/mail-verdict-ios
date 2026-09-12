@@ -144,4 +144,14 @@ final class ComposerStoreTests: XCTestCase {
         second.discard()
         XCTAssertFalse(recovery.hasSnapshot(key: "new"))
     }
+
+    /// The composer's own failure reaches the screen as its sentence, not a generic "the
+    /// operation couldn't be completed".
+    func testMissingUndoRestorationFailsWithAReadableMessage() async {
+        let store = ComposerStore(
+            intent: ComposeIntent(kind: .undoRestore(pendingSendId: UUID())),
+            dependencies: dependencies(recorder: Recorder()))
+        await store.load()
+        XCTAssertEqual(store.phase, .loadFailed("The cancelled message could not be found."))
+    }
 }

@@ -236,7 +236,7 @@ public final class ReaderSession {
                 _ = paging.remove(rowId)
             }
         } else {
-            pages[rowId] = .failed(Self.message(for: error))
+            pages[rowId] = .failed(error.mvUserMessage)
         }
         emit(rowId, .document(html: document(for: rowId).html, revealsOpened: false))
     }
@@ -369,7 +369,7 @@ public final class ReaderSession {
                 self.paging.restore(rowId)
                 self.onToast?(
                     MVToast(
-                        variant: .error, message: MailActionLabels.failure(action, reason: Self.message(for: error)),
+                        variant: .error, message: MailActionLabels.failure(action, reason: error.mvUserMessage),
                         duration: 0))
             }
         }
@@ -386,7 +386,7 @@ public final class ReaderSession {
         } catch {
             onToast?(
                 MVToast(
-                    variant: .error, message: MailActionLabels.failure(.move, reason: Self.message(for: error)),
+                    variant: .error, message: MailActionLabels.failure(.move, reason: error.mvUserMessage),
                     duration: 0))
         }
     }
@@ -419,7 +419,7 @@ public final class ReaderSession {
         } catch {
             onToast?(
                 MVToast(
-                    variant: .error, message: MailActionLabels.failure(.move, reason: Self.message(for: error)),
+                    variant: .error, message: MailActionLabels.failure(.move, reason: error.mvUserMessage),
                     duration: 0))
         }
     }
@@ -435,7 +435,7 @@ public final class ReaderSession {
             refresh(currentRowId)
         } catch {
             onToast?(
-                MVToast(variant: .error, message: "Could not send feedback: \(Self.message(for: error))", duration: 0))
+                MVToast(variant: .error, message: "Could not send feedback: \(error.mvUserMessage)", duration: 0))
         }
     }
 
@@ -458,7 +458,7 @@ public final class ReaderSession {
             replaceMessage(detail, in: rowId)
         } catch {
             onToast?(
-                MVToast(variant: .error, message: "Could not load images: \(Self.message(for: error))", duration: 0))
+                MVToast(variant: .error, message: "Could not load images: \(error.mvUserMessage)", duration: 0))
         }
     }
 
@@ -476,7 +476,7 @@ public final class ReaderSession {
             for rowId in pages.keys { refresh(rowId) }
         } catch {
             onToast?(
-                MVToast(variant: .error, message: "Could not allow images: \(Self.message(for: error))", duration: 0))
+                MVToast(variant: .error, message: "Could not allow images: \(error.mvUserMessage)", duration: 0))
         }
     }
 
@@ -704,7 +704,7 @@ public final class ReaderSession {
             updateMessage(messageId, revert)
             onToast?(
                 MVToast(
-                    variant: .error, message: MailActionLabels.failure(action, reason: Self.message(for: error)),
+                    variant: .error, message: MailActionLabels.failure(action, reason: error.mvUserMessage),
                     duration: 0))
         }
     }
@@ -730,10 +730,6 @@ public final class ReaderSession {
         case .detail(_, let status)?, .http(let status, _)?: return status == 404
         default: return false
         }
-    }
-
-    static func message(for error: Error) -> String {
-        (error as? MVError)?.userMessage ?? error.localizedDescription
     }
 }
 

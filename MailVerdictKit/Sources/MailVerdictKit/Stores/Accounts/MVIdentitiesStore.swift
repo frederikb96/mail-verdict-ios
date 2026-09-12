@@ -6,10 +6,15 @@ import Observation
 @Observable
 @MainActor
 public final class MVIdentitiesStore {
-    public enum LoadState: Equatable {
+    public enum LoadState {
         case loading
         case loaded
-        case failed(String)
+        case failed(Error)
+
+        public var isLoading: Bool {
+            if case .loading = self { return true }
+            return false
+        }
     }
 
     public let accountId: UUID
@@ -29,7 +34,7 @@ public final class MVIdentitiesStore {
             identities = try await apiClient.listIdentities(accountId: accountId)
             state = .loaded
         } catch {
-            state = .failed((error as? MVError)?.userMessage ?? "\(error)")
+            state = .failed(error)
         }
     }
 

@@ -54,8 +54,8 @@ private struct CategoryForm: View {
                 switch store.state {
                 case .loading:
                     ProgressView()
-                case .failed(let message):
-                    ErrorStateView(message: message) { Task { await store.load() } }
+                case .failed(let error):
+                    ErrorStateView(error: error) { Task { await store.load() } }
                 case .loaded:
                     if category == .ai {
                         Section {
@@ -126,8 +126,7 @@ private struct SettingsFieldRow: View {
             do {
                 try await store.updateField(key: field.key, kind: kind)
             } catch {
-                let message = (error as? MVError)?.userMessage ?? "\(error)"
-                environment.toasts.show(.init(variant: .error, message: "Could not save: \(message)"))
+                environment.toasts.show(.init(variant: .error, message: "Could not save: \(error.mvUserMessage)"))
             }
         }
     }
@@ -328,9 +327,10 @@ private struct ProviderKeyRow: View {
             try await store.setProviderKey(provider, value: value)
             text = ""
         } catch {
-            let message = (error as? MVError)?.userMessage ?? "\(error)"
             environment.toasts.show(
-                .init(variant: .error, message: "Could not save the \(provider.label) key: \(message)"))
+                .init(
+                    variant: .error,
+                    message: "Could not save the \(provider.label) key: \(error.mvUserMessage)"))
         }
     }
 }

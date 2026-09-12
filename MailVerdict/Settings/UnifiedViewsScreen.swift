@@ -34,8 +34,8 @@ struct UnifiedViewsScreen: View {
             switch store.state {
             case .loading:
                 ProgressView()
-            case .failed(let message):
-                ErrorStateView(message: message) { Task { await store.load() } }
+            case .failed(let error):
+                ErrorStateView(error: error) { Task { await store.load() } }
             case .loaded:
                 List {
                     Section {
@@ -86,10 +86,10 @@ struct UnifiedViewsScreen: View {
             if case .detail(_, 409) = error {
                 createError = "A view named \"\(name)\" already exists"
             } else {
-                createError = error.userMessage
+                createError = error.mvUserMessage
             }
         } catch {
-            createError = "\(error)"
+            createError = error.mvUserMessage
         }
     }
 }
@@ -147,8 +147,8 @@ private struct UnifiedViewRow: View {
                 try await store.renameView(id: view.id, name: trimmed)
             } catch {
                 name = view.unifiedName
-                let message = (error as? MVError)?.userMessage ?? "\(error)"
-                environment.toasts.show(.init(variant: .error, message: "Could not rename the view: \(message)"))
+                environment.toasts.show(
+                    .init(variant: .error, message: "Could not rename the view: \(error.mvUserMessage)"))
             }
         }
     }

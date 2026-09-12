@@ -18,8 +18,10 @@
         public static let accessGroup = "CSHG4AV9YH.com.frederikberg.mailverdict"
         static let service = "mailverdict.push"
 
-        public struct KeychainError: Error, Sendable {
+        public struct KeychainError: LocalizedError, Sendable {
             public let status: OSStatus
+
+            public var errorDescription: String? { "Keychain error \(status)" }
         }
 
         public static func load(serverOrigin: String) throws -> PushInstallation? {

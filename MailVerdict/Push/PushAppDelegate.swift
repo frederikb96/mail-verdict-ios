@@ -1,4 +1,5 @@
 import Foundation
+import MailVerdictKit
 import Push
 import PushEnvelope
 import UIKit
@@ -29,7 +30,7 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
     func application(
         _ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        PushCoordinator.shared.registrationFailed(error.localizedDescription)
+        PushCoordinator.shared.registrationFailed(error.mvUserMessage)
     }
 
     /// The silent read-sync push. Delivered only because `Config/Info.plist` declares the

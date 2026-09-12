@@ -36,72 +36,77 @@ struct MailListScreen: View {
         )
     }
 
+    // The screen is built in stages, each its own property, so no single modifier chain grows
+    // past what the type checker resolves in reasonable time.
     var body: some View {
+        withLifecycle
+    }
+
+    private var table: some View {
         MailListTable(store: store, proxy: proxy, actions: tableActions)
             .ignoresSafeArea()
             .overlay { stateOverlay }
             .overlay(alignment: .top) { newMessagesCapsule }
             .animation(.default, value: store.newMessagesCapsuleCount)
-            .navigationTitle(store.isSelecting ? store.selectionTitle : store.title)
-            .navigationSubtitle(
-                store.isSelecting
-                    ? (store.selectionScopeNote ?? "") : store.subtitle(now: now, connection: liveConnectionState)
-            )
+    }
+
+    private var withChrome: some View {
+        table
+            .navigationTitle(navigationTitle)
+            .navigationSubtitle(navigationSubtitle)
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(store.isSelecting)
             .toolbar { toolbarContent }
             .searchable(text: $searchText, prompt: "Search")
             .searchSuggestions { searchSuggestions }
             .onChange(of: searchText) { _, text in store.setFilterText(text) }
-            .sheet(item: $optionsRow, onDismiss: runPendingOptionsAction) { row in
-                optionsSheet(for: row)
-                    #if DEBUG
-                        .onAppear { MailListScreenshotStage.shared.isOptionsSheetVisible = true }
-                    #endif
-            }
-            .sheet(item: $movePicker, onDismiss: runPendingMove) { request in
-                MovePickerSheet(source: request.source, backend: connection.apiClient) { target in
-                    pendingMove = PendingMove(request: request, target: target)
-                }
-            }
+    }
+
+    private var withSheets: some View {
+        withChrome
+            .sheet(item: $optionsRow, onDismiss: runPendingOptionsAction) { row in optionsSheetContent(for: row) }
+            .sheet(item: $movePicker, onDismiss: runPendingMove) { request in movePickerContent(for: request) }
+    }
+
+    private var withRowConfirmations: some View {
+        withSheets
             .alert(
                 "Delete this message forever?", isPresented: isPresented($deleteForeverRow),
                 presenting: deleteForeverRow
-            ) { row in
+            ) { (row: MessageSummary) in
                 Button("Delete Forever", role: .destructive) { store.perform(.deleteForever, on: row.id) }
                 Button("Cancel", role: .cancel) {}
-            } message: { _ in
-                Text("This removes it from the mail server. It cannot be undone.")
+            } message: { (_: MessageSummary) in
+                Text(Self.deleteForeverMessage)
             }
-            .alert(
-                bulkConfirmation?.title ?? "", isPresented: isPresented($bulkConfirmation),
-                presenting: bulkConfirmation
-            ) { confirmation in
-                Button(confirmation.label, role: .destructive) {
-                    Task { await store.performBulk(confirmation.action, target: confirmation.target) }
-                }
+    }
+
+    private var withBulkConfirmations: some View {
+        withRowConfirmations
+            .alert(bulkConfirmationTitle, isPresented: isPresented($bulkConfirmation), presenting: bulkConfirmation) {
+                (confirmation: BulkConfirmation) in
+                Button(confirmation.label, role: .destructive) { confirmBulk(confirmation) }
                 Button("Cancel", role: .cancel) {}
-            } message: { _ in
-                Text(
-                    "This acts on the whole selection as it stood when you selected it, resolved again at the "
-                        + "moment you confirm. It cannot be undone."
-                )
+            } message: { (_: BulkConfirmation) in
+                Text(Self.bulkConfirmationMessage)
             }
-            .alert(
-                "Empty \(folderName)?", isPresented: isPresented($emptyFolderSnapshot), presenting: emptyFolderSnapshot
-            ) { snapshot in
-                Button("Empty Folder", role: .destructive) { Task { await store.emptyFolder(confirmed: snapshot) } }
+    }
+
+    private var withFolderConfirmations: some View {
+        withBulkConfirmations
+            .alert(emptyFolderTitle, isPresented: isPresented($emptyFolderSnapshot), presenting: emptyFolderSnapshot) {
+                (snapshot: SelectionSnapshotResponse) in
+                Button("Empty Folder", role: .destructive) { confirmEmptyFolder(snapshot) }
                 Button("Cancel", role: .cancel) {}
-            } message: { snapshot in
-                Text("This permanently deletes \(snapshot.count) messages from the mail server. It cannot be undone.")
+            } message: { (snapshot: SelectionSnapshotResponse) in
+                Text(emptyFolderMessage(snapshot))
             }
+    }
+
+    private var withLifecycle: some View {
+        withFolderConfirmations
             .task { await start() }
-            .task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(30))
-                    now = Date()
-                }
-            }
+            .task { await tickClock() }
             .onDisappear { stopLiveUpdatesIfPopped() }
             #if DEBUG
                 .onChange(of: MailListScreenshotStage.shared.optionsRowId) { _, rowId in
@@ -112,6 +117,63 @@ struct MailListScreen: View {
                     connection: connection
                 )
             #endif
+    }
+
+    // MARK: - Stage pieces
+
+    private var navigationTitle: String {
+        store.isSelecting ? store.selectionTitle : store.title
+    }
+
+    private var navigationSubtitle: String {
+        if store.isSelecting { return store.selectionScopeNote ?? "" }
+        return store.subtitle(now: now, connection: liveConnectionState)
+    }
+
+    private func optionsSheetContent(for row: MessageSummary) -> some View {
+        optionsSheet(for: row)
+            #if DEBUG
+                .onAppear { MailListScreenshotStage.shared.isOptionsSheetVisible = true }
+            #endif
+    }
+
+    private func movePickerContent(for request: MovePickerRequest) -> some View {
+        MovePickerSheet(source: request.source, backend: connection.apiClient) { target in
+            pendingMove = PendingMove(request: request, target: target)
+        }
+    }
+
+    private static let deleteForeverMessage = "This removes it from the mail server. It cannot be undone."
+    private static let bulkConfirmationMessage =
+        "This acts on the whole selection as it stood when you selected it, resolved again at the moment you "
+        + "confirm. It cannot be undone."
+
+    private var bulkConfirmationTitle: String {
+        bulkConfirmation?.title ?? ""
+    }
+
+    private func confirmBulk(_ confirmation: BulkConfirmation) {
+        Task { await store.performBulk(confirmation.action, target: confirmation.target) }
+    }
+
+    private var emptyFolderTitle: String {
+        "Empty \(folderName)?"
+    }
+
+    private func emptyFolderMessage(_ snapshot: SelectionSnapshotResponse) -> String {
+        "This permanently deletes \(snapshot.count) messages from the mail server. It cannot be undone."
+    }
+
+    private func confirmEmptyFolder(_ snapshot: SelectionSnapshotResponse) {
+        Task { await store.emptyFolder(confirmed: snapshot) }
+    }
+
+    /// Keeps "Updated … ago" current while the list stays on screen.
+    private func tickClock() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(30))
+            now = Date()
+        }
     }
 
     // MARK: - Bars
@@ -281,8 +343,8 @@ struct MailListScreen: View {
             switch store.phase {
             case .loading:
                 if store.rows.isEmpty { skeleton }
-            case .failed(let message):
-                ErrorStateView(message: message) { Task { await store.retry() } }
+            case .failed(let message, let detail):
+                errorState(message: message, detail: detail)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(uiColor: .systemBackground))
             case .loaded:
@@ -485,6 +547,12 @@ struct MailListScreen: View {
         }
         return folderDisplayName(
             imapName: folder.imapName, displayName: folder.displayName, specialUse: folder.specialUse)
+    }
+
+    private func errorState(message: String, detail: String) -> some View {
+        var view = ErrorStateView(message: message) { Task { await store.retry() } }
+        view.technicalDetail = detail
+        return view
     }
 
     private func isPresented<T>(_ item: Binding<T?>) -> Binding<Bool> {

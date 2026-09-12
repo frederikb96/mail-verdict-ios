@@ -95,7 +95,7 @@ public final class InvitationStore {
             let result = try await api.importInvitation(messageId: messageId, request)
             model?.invitation = result
         } catch {
-            failure = Self.message(for: error)
+            failure = error.mvUserMessage
         }
         finish()
         await load()
@@ -118,7 +118,7 @@ public final class InvitationStore {
             model?.event = try await api.respondToEvent(objectId: event.objectId, request)
             model?.comment = ""
         } catch {
-            failure = Self.message(for: error)
+            failure = error.mvUserMessage
         }
         model?.optimisticPartstat = nil
         finish()
@@ -143,9 +143,5 @@ public final class InvitationStore {
         guard next != model else { return }
         model = next
         onChange?()
-    }
-
-    static func message(for error: Error) -> String {
-        (error as? MVError)?.userMessage ?? error.localizedDescription
     }
 }

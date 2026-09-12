@@ -55,8 +55,8 @@ struct AccountDetailScreen: View {
             switch store.state {
             case .loading:
                 ProgressView()
-            case .failed(let message):
-                ErrorStateView(message: message) { Task { await store.load() } }
+            case .failed(let error):
+                ErrorStateView(error: error) { Task { await store.load() } }
             case .loaded:
                 if let account = store.account {
                     Form {
@@ -87,8 +87,8 @@ struct AccountDetailScreen: View {
             try await store?.delete()
             dismiss()
         } catch {
-            let message = (error as? MVError)?.userMessage ?? "\(error)"
-            environment.toasts.show(.init(variant: .error, message: "Could not delete the account: \(message)"))
+            environment.toasts.show(
+                .init(variant: .error, message: "Could not delete the account: \(error.mvUserMessage)"))
         }
     }
 }
@@ -138,9 +138,9 @@ private struct SyncToggleSection: View {
                             do {
                                 try await store.setActive(newValue)
                             } catch {
-                                let message = (error as? MVError)?.userMessage ?? "\(error)"
                                 environment.toasts.show(
-                                    .init(variant: .error, message: "Could not change sync: \(message)"))
+                                    .init(
+                                        variant: .error, message: "Could not change sync: \(error.mvUserMessage)"))
                             }
                         }
                     }
@@ -185,9 +185,8 @@ private struct IconSection: View {
                         do {
                             try await store.setEmoji(emoji)
                         } catch {
-                            let message = (error as? MVError)?.userMessage ?? "\(error)"
                             environment.toasts.show(
-                                .init(variant: .error, message: "Could not set the icon: \(message)"))
+                                .init(variant: .error, message: "Could not set the icon: \(error.mvUserMessage)"))
                         }
                     }
                 }

@@ -7,10 +7,15 @@ import Observation
 @Observable
 @MainActor
 public final class MVAccountOrderStore {
-    public enum LoadState: Equatable {
+    public enum LoadState {
         case loading
         case loaded
-        case failed(String)
+        case failed(Error)
+
+        public var isLoading: Bool {
+            if case .loading = self { return true }
+            return false
+        }
     }
 
     public private(set) var accounts: [AccountResponse] = []
@@ -30,7 +35,7 @@ public final class MVAccountOrderStore {
             accounts = Self.applying(order: order, to: all)
             state = .loaded
         } catch {
-            state = .failed((error as? MVError)?.userMessage ?? "\(error)")
+            state = .failed(error)
         }
     }
 

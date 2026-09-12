@@ -145,7 +145,7 @@ public final class NotificationSettingsStore {
         } catch let failure as PushRegistrationFailure {
             availability = failure
         } catch {
-            availability = .server("\(error)")
+            availability = .server(error.mvUserMessage)
         }
         let authorization = await dependencies.authorization()
         let subscriptions = (try? await backend.subscriptions()) ?? []
@@ -329,6 +329,6 @@ public final class NotificationSettingsStore {
     }
 
     private static func describe(_ error: Error) -> String {
-        (error as? MVError)?.userMessage ?? (error as? PushRegistrationFailure)?.userMessage ?? "\(error)"
+        (error as? PushRegistrationFailure)?.userMessage ?? error.mvUserMessage
     }
 }

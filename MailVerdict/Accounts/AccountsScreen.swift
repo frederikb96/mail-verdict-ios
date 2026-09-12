@@ -44,8 +44,8 @@ struct AccountsScreen: View {
             switch store.state {
             case .loading:
                 ProgressView()
-            case .failed(let message):
-                ErrorStateView(message: message) { Task { await store.load() } }
+            case .failed(let error):
+                ErrorStateView(error: error) { Task { await store.load() } }
             case .loaded:
                 if store.accounts.isEmpty {
                     EmptyStateView(

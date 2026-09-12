@@ -19,7 +19,7 @@ struct MovePickerSheet: View {
     @State private var targets: [MVMoveTarget] = []
     @State private var query = ""
     @State private var isLoading = true
-    @State private var loadError: String?
+    @State private var loadError: (any Error)?
     @State private var recentIds: [String] = []
 
     private let recents = MVRecentMoveTargets()
@@ -56,7 +56,7 @@ struct MovePickerSheet: View {
         if isLoading && targets.isEmpty {
             ProgressView()
         } else if let loadError {
-            ErrorStateView(message: loadError) { Task { await load() } }
+            ErrorStateView(error: loadError) { Task { await load() } }
         } else if ordered.isEmpty {
             ContentUnavailableView.search(text: query)
         }
@@ -91,7 +91,7 @@ struct MovePickerSheet: View {
                 targets = try await backend.fetchUnifiedViews().map(MVMoveTarget.init(unifiedView:))
             }
         } catch {
-            loadError = (error as? MVError)?.userMessage ?? error.localizedDescription
+            loadError = error
         }
         isLoading = false
     }

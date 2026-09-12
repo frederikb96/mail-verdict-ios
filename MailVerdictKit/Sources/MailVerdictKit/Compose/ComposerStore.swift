@@ -196,7 +196,7 @@ public final class ComposerStore {
             documentRevision += 1
             phase = .editing
         } catch {
-            phase = .loadFailed(Self.message(for: error))
+            phase = .loadFailed(error.mvUserMessage)
         }
     }
 
@@ -467,7 +467,7 @@ public final class ComposerStore {
         } catch {
             submitting = false
             phase = .editing
-            let message = "\(kind == .send ? "Not sent" : "Not saved"): \(Self.message(for: error))"
+            let message = "\(kind == .send ? "Not sent" : "Not saved"): \(error.mvUserMessage)"
             submitError = message
             return .failed(message)
         }
@@ -540,16 +540,12 @@ public final class ComposerStore {
             inlineImageCount: document.referencedContentIds.count, hasQuote: quote != nil,
             documentBlockCount: document.blocks.count)
     }
-
-    static func message(for error: Error) -> String {
-        (error as? MVError)?.userMessage ?? "\(error)"
-    }
 }
 
-enum ComposerError: Error, CustomStringConvertible {
+enum ComposerError: LocalizedError {
     case nothingToRestore
 
-    var description: String {
+    var errorDescription: String? {
         switch self {
         case .nothingToRestore: return "The cancelled message could not be found."
         }

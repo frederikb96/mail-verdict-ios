@@ -30,7 +30,7 @@ import MailVerdictKit
             registerAccountsFixture()
             registerAccountOrderFixture()
             guard let store = await poll({ SettingsDebugServices.shared.activeAccountOrderStore }) else { return }
-            _ = await poll { store.state == .loading ? nil : true }
+            _ = await poll { store.state.isLoading ? nil : true }
             if case .failed = store.state { await store.load() }
         }
 
@@ -45,7 +45,7 @@ import MailVerdictKit
                     """#.utf8)
             }
             guard let store = await poll({ SettingsDebugServices.shared.activeSettingsCategoryStore }) else { return }
-            _ = await poll { store.state == .loading ? nil : true }
+            _ = await poll { store.state.isLoading ? nil : true }
             if case .failed = store.state { await store.load() }
         }
 
@@ -82,7 +82,7 @@ import MailVerdictKit
                 Data("[]".utf8)
             }
             guard let store = await poll({ SettingsDebugServices.shared.activeUnifiedSetupStore }) else { return }
-            _ = await poll { store.state == .loading ? nil : true }
+            _ = await poll { store.state.isLoading ? nil : true }
             if case .failed = store.state { await store.load() }
         }
 
