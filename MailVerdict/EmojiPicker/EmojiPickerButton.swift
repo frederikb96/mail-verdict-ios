@@ -2,8 +2,8 @@ import MailVerdictKit
 import SwiftUI
 
 /// A small button showing the current emoji (or a placeholder) that presents the shared emoji
-/// grid in a popover — used by a unified view row and an account's icon alike, per the UX
-/// design's "EmojiPicker is shared with the account cards".
+/// grid in a popover — used by a unified view row and an account's icon alike, so both pick from
+/// the same 35-emoji set.
 struct EmojiPickerButton: View {
     let currentEmoji: String?
     let accessibilityLabel: String

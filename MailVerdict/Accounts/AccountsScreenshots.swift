@@ -9,9 +9,9 @@ import MailVerdictKit
     ///
     /// `prepare` registers only what Account Detail itself calls (the single-account GET and its
     /// sync status), and only for this entry — see `SettingsScreenshots`' own doc comment for why
-    /// that has to happen in `prepare` rather than at `entries`' evaluation, and why the trailing
-    /// sleep is what gives the screen's own loading `.task` room to finish before the sweep
-    /// captures it.
+    /// that has to happen in `prepare` rather than at `entries`' evaluation. It then waits for
+    /// `AccountsDebugServices`' store to settle, with one reload if the first attempt failed,
+    /// rather than guessing how long that takes.
     enum AccountsScreenshots {
         static let entries: [MVScreenshotEntry] = [
             MVScreenshotEntry(
@@ -47,7 +47,19 @@ import MailVerdictKit
                      "error_count":0,"last_error":null,"updated_at":"2026-01-15T10:29:00+00:00"}
                     """#.utf8)
             }
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard let store = await poll({ AccountsDebugServices.shared.activeAccountDetailStore }) else { return }
+            _ = await poll { store.state == .loading ? nil : true }
+            if case .failed = store.state { await store.load() }
+        }
+
+        /// Up to five seconds, checked every 50 ms.
+        @MainActor
+        private static func poll<Value>(_ probe: @MainActor () -> Value?) async -> Value? {
+            for _ in 0..<100 {
+                if let value = probe() { return value }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            return nil
         }
     }
 

@@ -35,9 +35,8 @@ public final class MVAccountsListStore {
         }
     }
 
-    /// Called on a 30 s timer while this screen is visible (UX design §2.1's own polling rule,
-    /// applied here too) — a failed fetch for one account leaves its last-known status in place
-    /// rather than clearing the whole dict.
+    /// Called on a 30 s timer while this screen is visible — a failed fetch for one account
+    /// leaves its last-known status in place rather than clearing the whole dict.
     public func refreshSyncStatuses() async {
         for account in accounts {
             if let status = try? await apiClient.getSyncStatus(accountId: account.id) {
@@ -50,8 +49,8 @@ public final class MVAccountsListStore {
         .classify(state: account.state, lastFullSync: syncStatuses[account.id]?.lastFullSync != nil)
     }
 
-    /// Editing and deleting an account are Account Detail's own actions (UX design §2.10) — this
-    /// list screen only ever adds one.
+    /// Editing and deleting an account are Account Detail's own actions — this list screen only
+    /// ever adds one.
     public func createAccount(_ input: MVAccountFormInput) async throws {
         let request = try MVAccountFormModel.buildCreateRequest(input)
         _ = try await apiClient.createAccount(request)

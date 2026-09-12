@@ -42,6 +42,9 @@ struct AccountDetailScreen: View {
             }
             .task {
                 if store == nil { store = MVAccountDetailStore(accountId: accountId, apiClient: connection.apiClient) }
+                #if DEBUG
+                    AccountsDebugServices.shared.activeAccountDetailStore = store
+                #endif
                 await store?.load()
             }
     }

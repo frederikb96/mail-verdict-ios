@@ -2,8 +2,7 @@ import Foundation
 import Observation
 
 /// One account's sending identities — list, add, delete, and pick a default. Renaming an
-/// existing identity is not a screen this app offers (UX design §2.10 names only these four
-/// operations).
+/// existing identity is not a screen this app offers.
 @Observable
 @MainActor
 public final class MVIdentitiesStore {

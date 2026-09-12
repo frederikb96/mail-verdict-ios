@@ -23,6 +23,9 @@ struct SettingsCategoryScreen: View {
                         let freshStore = MVSettingsCategoryStore(
                             category: resolvedCategory, apiClient: connection.apiClient)
                         store = freshStore
+                        #if DEBUG
+                            SettingsDebugServices.shared.activeSettingsCategoryStore = freshStore
+                        #endif
                         await freshStore.load()
                     }
             } else {
