@@ -97,6 +97,13 @@ jobs:
           xcrun simctl bootstatus "$udid" -b
           xcrun simctl ui "$udid" appearance dark
 
+          # The keyboard's one-time "slide to type" introduction covers the bottom third of the
+          # screen the first time a text field is focused — exactly where search-with-results'
+          # own results sit. Suppressing it here, once, at boot, is what keeps every later
+          # screenshot from depending on whether this is the simulator's first keyboard focus.
+          xcrun simctl spawn "$udid" defaults write com.apple.keyboard.preferences \
+            DidShowContinuousPathIntroduction -bool true
+
       - name: Install the app
         if: inputs.run_app != false
         run: |
