@@ -21,6 +21,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # contract-drift only — mail-verdict's own API contract moving is never something a push or PR
+  # here caused, so there is nothing for those two triggers to react to.
+  schedule:
+    - cron: '17 4 * * *'
 
 permissions:
   contents: read
@@ -31,6 +35,7 @@ concurrency:
 
 jobs:
   checks:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -68,6 +73,11 @@ jobs:
           swift build --package-path MailVerdictKit --build-tests 2>&1 | tee /tmp/build.log
           swift test --package-path MailVerdictKit --skip-build
 
+      # A hand-written "covers every ContractModel" list drifts the moment a model is added
+      # without being registered — this derives the real list from the source and diffs it.
+      - name: Check the contract model registry is complete
+        run: ./Tooling/check-contract-registry.sh
+
       # The only check that reaches the app target and the Linux-excluded package files, which
       # nothing else here compiles. See the script's header for what it can and cannot catch.
       - name: Syntax-check what Linux cannot compile
@@ -103,3 +113,36 @@ jobs:
           name: format-patch
           path: format.patch
           retention-days: 5
+
+  # Red here means mail-verdict's own API moved since the vendored snapshot was last synced —
+  # never on a push or PR to this repo, which cannot itself cause that. Re-run with
+  # `Tooling/sync-contract.sh <new-sha>` and update the model(s) ContractTests names.
+  contract-drift:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Swift toolchain dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            binutils ca-certificates curl file gnupg2 libc6-dev libcurl4-openssl-dev libedit2 \
+            libgcc-13-dev libncurses-dev libpython3-dev libsqlite3-0 libstdc++-13-dev \
+            libxml2-dev libz3-dev pkg-config tzdata unzip zlib1g-dev
+
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.2'
+
+      - name: Fetch mail-verdict main's own contract snapshot over the vendored one
+        run: |
+          dest=MailVerdictKit/Tests/MailVerdictKitTests/Fixtures/api-contract
+          base=https://raw.githubusercontent.com/frederikb96/mail-verdict/main/docs/api-contract
+          curl -fsSL "$base/openapi.json" -o "$dest/openapi.json"
+          curl -fsSL "$base/sse-events.json" -o "$dest/sse-events.json"
+
+      - name: Run ContractTests against mail-verdict main
+        run: swift test --package-path MailVerdictKit --filter ContractTests
