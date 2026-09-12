@@ -3,21 +3,24 @@ import MailVerdictKit
 
 #if DEBUG
 
-    /// Accounts' own screenshot entries — Account Detail, for the one account the Settings
-    /// screenshots' own fixture also registers (`/api/accounts` is shared across both routes, so
-    /// this file re-registers only what Account Detail additionally calls: the single-account GET
-    /// and its sync status).
+    /// Accounts' own screenshot entries — Account Detail, for the one account also named in
+    /// `SettingsScreenshots`' own fixtures (same id, because the two files never run in the same
+    /// process launch — each `-MVFixtureScreen <id>` is its own relaunch).
+    ///
+    /// `prepare` registers only what Account Detail itself calls (the single-account GET and its
+    /// sync status), and only for this entry — see `SettingsScreenshots`' own doc comment for why
+    /// that has to happen in `prepare` rather than at `entries`' evaluation, and why the trailing
+    /// sleep is what gives the screen's own loading `.task` room to finish before the sweep
+    /// captures it.
     enum AccountsScreenshots {
-        static let entries: [MVScreenshotEntry] = {
-            registerFixtures()
-            return [
-                MVScreenshotEntry(
-                    id: "account-detail",
-                    destination: .route(.account(UUID(uuidString: "11111111-1111-1111-1111-111111111111")!)))
-            ]
-        }()
+        static let entries: [MVScreenshotEntry] = [
+            MVScreenshotEntry(
+                id: "account-detail",
+                destination: .route(.account(UUID(uuidString: "11111111-1111-1111-1111-111111111111")!)),
+                prepare: prepareAccountDetail)
+        ]
 
-        private static func registerFixtures() {
+        private static func prepareAccountDetail(_: AppEnvironment, _: AppEnvironment.Connection) async {
             MVFixtureURLProtocol.register(
                 method: "GET", path: "/api/accounts/11111111-1111-1111-1111-111111111111"
             ) {
@@ -44,6 +47,7 @@ import MailVerdictKit
                      "error_count":0,"last_error":null,"updated_at":"2026-01-15T10:29:00+00:00"}
                     """#.utf8)
             }
+            try? await Task.sleep(nanoseconds: 300_000_000)
         }
     }
 
