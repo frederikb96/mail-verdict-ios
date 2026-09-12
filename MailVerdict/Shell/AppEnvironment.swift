@@ -63,6 +63,17 @@ final class AppEnvironment {
         /// Shared so every `AvatarView` reads from the same in-memory cache rather than each
         /// re-fetching the same sender's photo.
         let imageLoader: MVAuthenticatedImageLoader
+
+        /// Which unified views contain a given folder — one instance for the whole app, updated
+        /// by `MailboxesStore` on every load, so `placeResolver` below always resolves "was the
+        /// last view unified" against the same membership data Mailboxes itself is showing,
+        /// whichever screen asks.
+        let membership: MailboxesUnifiedMembership
+
+        /// The one place a message id becomes a path — a notification tap, a push tap and
+        /// "Show in Folder" all resolve through this instance rather than each building its own,
+        /// so the three can never land a message in different places for the same input.
+        let placeResolver: MVMessagePlaceResolver
     }
 
     /// Internal, not private — `FixtureBootstrap` seeds this default too, so a fixture-mode
@@ -152,9 +163,11 @@ final class AppEnvironment {
         let liveEventHub = LiveEventHub(requestFactory: factory)
         liveEventHub.connect()
 
+        let membership = MailboxesUnifiedMembership()
         connection = Connection(
             requestFactory: factory, apiClient: client, liveEventHub: liveEventHub,
-            imageLoader: MVAuthenticatedImageLoader(apiClient: client))
+            imageLoader: MVAuthenticatedImageLoader(apiClient: client), membership: membership,
+            placeResolver: MVMessagePlaceResolver(apiClient: client, membershipLookup: membership))
         lastAuthFailure = nil
         router.gate = .ready
         return true

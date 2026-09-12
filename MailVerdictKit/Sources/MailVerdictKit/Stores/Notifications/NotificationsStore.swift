@@ -2,10 +2,10 @@ import Foundation
 import Observation
 
 /// Mail and System tabs — the Mail tab over `GET /api/alerts`, the System tab merging the
-/// non-mail alert kinds with the cross-account `GET /api/notifications` (row 38 note 3: this
-/// replaces the per-account fan-out the base UX report describes). The badge itself is never
-/// computed here, or anywhere on the phone — `GET /api/alerts/badge` is the one source, read by
-/// whichever screen shows it (Mailboxes' bell).
+/// non-mail alert kinds with the cross-account `GET /api/notifications`, one call rather than a
+/// fan-out across every account. The badge itself is never computed here, or anywhere on the
+/// phone — `GET /api/alerts/badge` is the one source, read by whichever screen shows it
+/// (Mailboxes' bell).
 @Observable
 @MainActor
 public final class NotificationsStore {
@@ -47,13 +47,13 @@ public final class NotificationsStore {
             mailAlerts = alertList.filter { NotificationsSupport.isMailAlertKind($0.kind) }
             systemAlerts = alertList.filter { !NotificationsSupport.isMailAlertKind($0.kind) }
         } catch {
-            errorMessage = (error as? MVError)?.userMessage ?? "\(error)"
+            errorMessage = error.mvUserMessage
         }
 
         do {
             notifications = try await apiClient.listAllNotifications(unacknowledgedOnly: true)
         } catch {
-            errorMessage = errorMessage ?? ((error as? MVError)?.userMessage ?? "\(error)")
+            errorMessage = errorMessage ?? error.mvUserMessage
         }
 
         isLoading = false
@@ -138,8 +138,8 @@ public final class NotificationsStore {
 }
 
 extension NotificationsStore: LiveEventSubscriber {
-    /// UX design §2.0's own rule: `alert.new`/`alert.dismissed` and `notification.new` refetch
-    /// this store — `resync` too, the same as every other store's live-update row.
+    /// `alert.new`/`alert.dismissed` and `notification.new` refetch this store — `resync` too,
+    /// the same as every other store's live-update handling.
     public func apply(_ invalidations: [MVLiveInvalidation]) {
         let shouldReload = invalidations.contains {
             switch $0 {

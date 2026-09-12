@@ -67,10 +67,10 @@ public enum MailboxesSupport {
         return "\(messageCount) message\(plural) could not be sent — check SMTP settings on \(target)."
     }
 
-    /// Whether a batch of live invalidations means this screen's data is stale — UX design §2.1's
-    /// own "Live" rule: `folder.changed`, `account.changed` and a resync. `mail.*` counts are
-    /// folded into `folderSynced`/`mailNew` etc, all of which leave folder and unread counts
-    /// stale the same way `foldersChanged` does.
+    /// Whether a batch of live invalidations means this screen's data is stale: `folder.changed`,
+    /// `account.changed` and a resync, plus every `mail.*` event (folded into
+    /// `folderSynced`/`mailNew` etc), all of which leave folder and unread counts stale the same
+    /// way `foldersChanged` does.
     public static func shouldReload(for invalidations: [MVLiveInvalidation]) -> Bool {
         invalidations.contains {
             switch $0 {

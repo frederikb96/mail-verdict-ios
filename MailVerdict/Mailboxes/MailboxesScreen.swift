@@ -1,9 +1,9 @@
 import MailVerdictKit
 import SwiftUI
 
-/// The app's root screen — one tap away from everything (UX design §1's own rule). Unified views
-/// plus one collapsible section per account, the dead-outbox banner, and entry rows to Spam
-/// Review, Accounts and Settings.
+/// The app's root screen, one tap away from everything else. Unified views plus one collapsible
+/// section per account, the dead-outbox banner, and entry rows to Spam Review, Accounts and
+/// Settings.
 struct MailboxesScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
@@ -17,7 +17,8 @@ struct MailboxesScreen: View {
     init(environment: AppEnvironment, connection: AppEnvironment.Connection) {
         self.environment = environment
         self.connection = connection
-        self._store = State(initialValue: MailboxesStore(apiClient: connection.apiClient))
+        self._store = State(
+            initialValue: MailboxesStore(apiClient: connection.apiClient, membership: connection.membership))
     }
 
     var body: some View {
@@ -418,7 +419,7 @@ private struct FolderCreateSheet: View {
                 _ = try await store.createFolder(accountId: accountId, name: trimmed, parentId: parentId)
                 dismiss()
             } catch {
-                errorText = (error as? MVError)?.userMessage ?? "\(error)"
+                errorText = error.mvUserMessage
             }
             isCreating = false
         }

@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// The result of a bulk Accept All / Reject All run — the UX design's own toast text depends on
-/// whether everything succeeded.
+/// The result of a bulk Accept All / Reject All run — the toast text depends on whether
+/// everything succeeded.
 public struct MVSpamReviewBulkResult: Sendable, Equatable {
     public let succeeded: Int
     public let failed: Int
@@ -45,7 +45,7 @@ public final class SpamReviewStore {
             hasMore = response.hasMore
             nextCursor = response.nextCursor
         } catch {
-            errorMessage = (error as? MVError)?.userMessage ?? "\(error)"
+            errorMessage = error.mvUserMessage
         }
         isLoading = false
         reportDebugState()
@@ -120,8 +120,8 @@ extension SpamReviewStore: ReaderListSource {
     public func loadOlder() async { await loadMore() }
     public func loadNewer() async {}
 
-    /// UX design §2.7's own subtitle shape: the loaded count, with a trailing "+" once more is
-    /// known to exist than what is currently loaded.
+    /// The loaded count, with a trailing "+" once more is known to exist than what is currently
+    /// loaded.
     public var readerTitle: String? { "\(items.count)\(hasMore ? "+" : "") to Review" }
 }
 

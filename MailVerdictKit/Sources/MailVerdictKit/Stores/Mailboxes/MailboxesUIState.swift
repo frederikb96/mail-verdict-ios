@@ -1,9 +1,9 @@
 import Foundation
 
-/// Collapse state and the top-visible-row anchor, both surviving a relaunch — the UX design's own
-/// requirement that coming back from a folder or unified view restores exactly this. Kept as a
-/// plain `UserDefaults`-backed type rather than folded into `MailboxesStore` itself, so both halves
-/// have their own direct test without constructing the whole store's networking.
+/// Collapse state and the top-visible-row anchor, both surviving a relaunch, so coming back from
+/// a folder or unified view restores exactly this. Kept as a plain `UserDefaults`-backed type
+/// rather than folded into `MailboxesStore` itself, so both halves have their own direct test
+/// without constructing the whole store's networking.
 // `@unchecked Sendable`: `UserDefaults` is thread-safe by Apple's own documentation, but
 // swift-corelibs-foundation does not mark it `Sendable` — asserted by hand, the same shape
 // `MVRecentViewRecord` already uses. Every member reads or writes `defaults` directly rather than
@@ -19,8 +19,7 @@ public struct MailboxesUIState: @unchecked Sendable {
         self.defaults = defaults
     }
 
-    /// Keys are `"unified"` for the Unified section, `"account:<id>"` for an account section — the
-    /// UX design's own naming.
+    /// Keys are `"unified"` for the Unified section, `"account:<id>"` for an account section.
     public static func unifiedKey() -> String { "unified" }
     public static func accountKey(_ accountId: UUID) -> String { "account:\(accountId)" }
 
