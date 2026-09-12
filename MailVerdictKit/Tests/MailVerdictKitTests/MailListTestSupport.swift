@@ -192,4 +192,7 @@ final class FakeMailListBackend: MVMailListBackend, @unchecked Sendable {
     }
     func fetchUnifiedViews() async throws -> [UnifiedFolderResponse] { [] }
     func fetchDeadOutbox() async throws -> [OutboxResponse] { [] }
+    func fetchContactPhotoIndex(accountId: UUID) async throws -> ContactPhotoIndexResponse {
+        ContactPhotoIndexResponse(byEmail: [:])
+    }
 }

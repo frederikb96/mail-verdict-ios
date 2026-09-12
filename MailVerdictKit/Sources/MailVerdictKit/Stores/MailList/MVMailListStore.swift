@@ -10,7 +10,7 @@ import Observation
 /// tells it when `rows` became a different list rather than the same list changed.
 @Observable
 @MainActor
-public final class MVMailListStore: ReaderListSource {
+public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
 
     public let scope: ListScope
     /// The toggle as the person set it. `identity.threaded` is what the loaded rows were
@@ -26,19 +26,14 @@ public final class MVMailListStore: ReaderListSource {
     public private(set) var isLoadingOlder = false
     public private(set) var isLoadingNewer = false
     public private(set) var context = MVListContext()
-    /// `nil` until the live stream has reported either way.
-    public private(set) var isLiveConnected: Bool?
     /// New rows compensated in above the reader in a window at the newest edge.
     public private(set) var newRowsAboveCount = 0
     /// Arrivals recorded while the window does not start at the newest message — never added
     /// to it, only counted.
     public private(set) var pendingArrivalCount = 0
     public private(set) var pendingLanding: MVListLanding?
-    /// The row the reader last settled on — set on open and on every page settle, so Back can
-    /// bring the row the reader ended on into view.
-    public private(set) var lastViewedMessageId: UUID?
-    /// The row last opened from this list. Back only scrolls to reveal `lastViewedMessageId`
-    /// when the reader paged away from it — returning from the row that was opened leaves the
+    /// The row last opened from this list. Back scrolls to reveal the row the reader settled on
+    /// only when it differs from this one — returning from the row that was opened leaves the
     /// position exactly as it was.
     public private(set) var openedMessageId: UUID?
     public private(set) var filterText = ""
@@ -66,6 +61,7 @@ public final class MVMailListStore: ReaderListSource {
     @ObservationIgnored private var unfiltered:
         (rows: [MessageSummary], hasOlder: Bool, hasNewer: Bool, identity: MVListIdentity)?
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var wasConnected: Bool?
 
     public static let filterMinimumLength = 2
     static let filterDebounceNanos: UInt64 = 150_000_000
@@ -110,15 +106,22 @@ public final class MVMailListStore: ReaderListSource {
         await page(.newer)
     }
 
-    /// The reader settled on `messageId` as its current page.
-    public func readerDidSettle(on messageId: UUID) {
-        lastViewedMessageId = messageId
+    /// "{N} Messages": the folder's or unified view's total, or its unread count while only
+    /// unread mail is listed. `nil` until that count has loaded.
+    public var readerTitle: String? {
+        let count: Int?
+        switch scope {
+        case .folder(_, let folderId):
+            count = context.folders[folderId].map { unreadOnly ? $0.unreadCount : $0.totalCount }
+        case .unified:
+            count = context.unifiedView.map { unreadOnly ? $0.unreadCount : $0.totalCount }
+        }
+        return count.map { "\($0) \($0 == 1 ? "Message" : "Messages")" }
     }
 
     /// A row was opened from this list.
     public func didOpen(_ messageId: UUID) {
         openedMessageId = messageId
-        lastViewedMessageId = messageId
     }
 
     // MARK: - Loading
@@ -128,7 +131,6 @@ public final class MVMailListStore: ReaderListSource {
     public func start() async {
         guard !hasStarted else { return }
         hasStarted = true
-        MVMailListRegistry.shared.register(self)
         let restoring = initialAroundId == nil ? positions.load(scope: scope, threaded: threaded) : nil
         async let contextLoad: Void = loadContext()
         await loadFirstPage(aroundId: initialAroundId, restoring: restoring, generation: generation)
@@ -403,14 +405,20 @@ public final class MVMailListStore: ReaderListSource {
             next.deadOutboxCount = scoped.count
             next.deadOutboxAccountNames = Set(scoped.map(\.accountId)).compactMap { next.accounts[$0]?.name }.sorted()
         }
+        var photos: [String: MVAvatarPhotoSource] = [:]
+        for accountId in accountIdsIn(next) {
+            guard let index = try? await backend.fetchContactPhotoIndex(accountId: accountId) else { continue }
+            for (email, entry) in index.byEmail { photos[email.lowercased()] = entry.avatarSource }
+        }
+        next.avatarPhotos = photos
         context = next
     }
 
     // MARK: - Live updates
 
-    public func setLiveConnected(_ connected: Bool) {
-        let wasDisconnected = isLiveConnected == false
-        isLiveConnected = connected
+    public func setConnected(_ connected: Bool) {
+        let wasDisconnected = wasConnected == false
+        wasConnected = connected
         // A reconnect may have missed events; the window is re-read rather than trusted.
         if connected && wasDisconnected { requestRefresh() }
     }
@@ -619,8 +627,13 @@ public final class MVMailListStore: ReaderListSource {
         }
     }
 
-    public func subtitle(now: Date = Date()) -> String {
-        if isLiveConnected == false { return "Connecting…" }
+    /// `connection` is the live stream's own state (`LiveEventHub.connectionState`).
+    public func subtitle(now: Date = Date(), connection: MVConnectionState = .connected) -> String {
+        switch connection {
+        case .reconnecting: return "Connecting…"
+        case .disconnected: return "Offline"
+        case .connected: break
+        }
         if unreadOnly { return "Filtered by: Unread" }
         let synced = scopeFolderIds.compactMap { context.folders[$0]?.lastSyncedAt }.max()
         guard let synced else { return "" }
@@ -675,6 +688,7 @@ public final class MVMailListStore: ReaderListSource {
             isAnswered: row.isAnswered, hasAttachments: row.hasAttachments, verdictIsSpam: row.verdictIsSpam == true,
             isStarred: row.isFlagged, snippet: row.snippet,
             avatarIdentity: row.fromAddr.map(extractEmail) ?? extractSenderName(row.fromAddr),
+            avatarPhoto: context.avatarPhotos[extractEmail(row.fromAddr).lowercased()],
             unifiedAccountEmoji: isUnified ? context.accounts[row.accountId]?.emoji : nil
         )
     }
@@ -739,6 +753,7 @@ public final class MVMailListStore: ReaderListSource {
             rows = rows.map { $0.id == rowId ? Self.applying(bulk, to: $0, threaded: identity.threaded) : $0 }
         }
         if bulk == .markRead { keptWhileUnread.insert(rowId) }
+        if bulk == .markUnread { Task { await MVExplicitUnreadTracker.shared.markExplicit(rowId) } }
 
         Task { [weak self] in
             guard let self else { return }
@@ -940,6 +955,9 @@ public final class MVMailListStore: ReaderListSource {
                 }
             }
             if action == .markRead { keptWhileUnread.formUnion(ids) }
+            if action == .markUnread {
+                Task { for id in ids { await MVExplicitUnreadTracker.shared.markExplicit(id) } }
+            }
         }
         selection = .empty
         isSelecting = false

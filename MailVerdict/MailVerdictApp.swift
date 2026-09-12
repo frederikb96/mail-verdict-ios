@@ -41,8 +41,9 @@ struct MailVerdictApp: App {
         /// itself inline in this shared file. This is the one line a feature block adds to
         /// `MailVerdictApp.swift`; `make()` below needs no other change to pick it up.
         private static let featureRegistrars: [@Sendable (inout DebugRouter) -> Void] = [
-            PushDebugRoutes.register,
-            MailListDebugRoutes.register,
+            MailboxesDebugRoutes.register, SearchDebugRoutes.register, SpamReviewDebugRoutes.register,
+            NotificationsDebugRoutes.register, PushDebugRoutes.register, MailListDebugRoutes.register,
+            ComposerDebugRoutes.register,
         ]
 
         static func make() -> DebugRouter {
