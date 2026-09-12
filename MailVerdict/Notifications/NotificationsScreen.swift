@@ -43,9 +43,11 @@ struct NotificationsScreen: View {
             #if DEBUG
                 NotificationsFixtures.registerIfNeeded()
             #endif
+            store.subscribeToLive(connection.liveEventHub)
             accounts = (try? await connection.apiClient.listAccounts()) ?? []
             await store.load()
         }
+        .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
         #if DEBUG
             .screenshotReady(route: .notifications, environment: environment, connection: connection)
         #endif
