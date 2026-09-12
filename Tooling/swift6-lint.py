@@ -50,6 +50,16 @@ STATIC_FORMATTER_INIT = re.compile(r"\b(?:ISO8601DateFormatter|DateFormatter|Num
 STATIC_CLOSURE_TYPE = re.compile(r":\s*[^={}\n]*\([^()]*\)\s*->")
 SHADOWED_WRAPPER = re.compile(r"^\s*(?:public |internal |private |fileprivate )?(?:enum|struct|class|actor) (State|Binding|Environment|Namespace|Observable)\s*[:{]")
 AMBIGUOUS_PAIR = re.compile(r"(?:width|x|dx): \.[A-Za-z]\w*, (?:height|y|dy): \.[A-Za-z]\w*")
+#: `||`, `&&` and `??` all take their right-hand operand as a plain, synchronous `@autoclosure`
+#: — never `async` — so an `await` reaching into it is always rejected, whether written directly
+#: after the operator (the direct form) or, as in the one real instance of this, a single
+#: leading `await` whose scope was meant to cover the whole expression (the indirect form: a
+#: call with no `await` of its own sits right after the operator). `(?:await\s+)?` covers both
+#: in one pattern; the call immediately after the operator with no preceding `await` anywhere on
+#: the line is deliberately not matched on its own — a bare `x || someSyncCall()` is completely
+#: ordinary, so the caller below only applies this pattern to a line that already has an `await`
+#: somewhere on it.
+AWAIT_ACROSS_AUTOCLOSURE_OPERATOR = re.compile(r"(?:\|\||&&|\?\?)\s*(?:await\s+)?[\w.?!]*\(")
 ISOLATED_STATIC = re.compile(r"^\s*(?:public |internal |private |fileprivate )?static (?:let|var) ([A-Za-z_]\w*)\b")
 DETACHED_TASK = re.compile(r"\bTask\.detached\b")
 #: A one-line `guard ... else { return ... }` — the shape that disqualifies a following `switch`
@@ -451,6 +461,13 @@ def check(path: Path) -> list[tuple[int, str, str]]:
                 index + 1, line.strip(),
                 "both members inferred leaves the literal's type ambiguous — name it "
                 "(CGFloat.greatestFiniteMagnitude)",
+            ))
+        if "await" in line and AWAIT_ACROSS_AUTOCLOSURE_OPERATOR.search(line):
+            findings.append((
+                index + 1, line.strip(),
+                "the right side of '||'/'&&'/'??' is a synchronous autoclosure, which cannot "
+                "suspend — await the call in its own statement before combining it, rather than "
+                "a single leading 'await' or one written directly after the operator",
             ))
         if (
             STATIC_LET_OR_VAR.match(line)
