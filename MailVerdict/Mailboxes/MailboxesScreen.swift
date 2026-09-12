@@ -243,6 +243,9 @@ struct MailboxesScreen: View {
                 )
             }
         }
+        #if DEBUG
+            .screenshotReadyRoot(environment: environment, connection: connection)
+        #endif
     }
 
     // MARK: - MailVerdict section

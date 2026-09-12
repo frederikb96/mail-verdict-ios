@@ -10,5 +10,8 @@ struct AccountOrderScreen: View {
         Text("Account Order")
             .navigationTitle("Account Order")
             .accessibilityIdentifier("accountorder-stub")
+            #if DEBUG
+                .screenshotReady(route: .accountOrder, environment: environment, connection: connection)
+            #endif
     }
 }

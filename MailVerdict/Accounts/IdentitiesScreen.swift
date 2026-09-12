@@ -11,5 +11,8 @@ struct IdentitiesScreen: View {
         Text("Sending Identities")
             .navigationTitle("Identities")
             .accessibilityIdentifier("identities-stub")
+            #if DEBUG
+                .screenshotReady(route: .identities(accountId), environment: environment, connection: connection)
+            #endif
     }
 }

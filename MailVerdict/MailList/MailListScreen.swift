@@ -16,6 +16,12 @@ struct MailListScreen: View {
         }
         .navigationTitle(title)
         .accessibilityIdentifier("maillist-stub")
+        #if DEBUG
+            .screenshotReady(
+                route: .list(scope, aroundMessageId: aroundMessageId), environment: environment,
+                connection: connection
+            )
+        #endif
     }
 
     private var title: String {

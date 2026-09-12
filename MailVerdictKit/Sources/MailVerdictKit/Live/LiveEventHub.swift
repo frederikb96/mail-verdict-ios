@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 // URLSession and friends live in FoundationNetworking on Linux, where the free CI runner builds
 // this package. On Apple platforms the module does not exist and Foundation already has them.
@@ -6,9 +7,47 @@ import Foundation
     import FoundationNetworking
 #endif
 
-/// Consumes `GET /api/events` over `MVSseClient` and publishes typed invalidations — the UX
-/// design's event table (§2.0, amended by the calendar-invitation addendum) as its test matrix,
-/// `LiveEventHubMappingTests` as the proof every row is covered.
+/// A store that wants to hear about live updates — the mail list, search, spam review, the
+/// Mailboxes/accounts overview, and so on. One subscriber, one conformance; `LiveEventHub` holds
+/// it weakly, so a store that is deallocated without explicitly unsubscribing is simply dropped
+/// rather than leaked or crashing.
+@MainActor
+public protocol LiveEventSubscriber: AnyObject {
+    /// Every invalidation since the last delivery to this subscriber — an immediate one
+    /// (`alert.new`, `outbox.updated`, …) arrives alone; a mail burst (`mail.new`/`.updated`/
+    /// `.deleted`, `folder.synced`) arrives as however many coalesced within the same 500 ms
+    /// window. One method for both, so a subscriber has exactly one place to react from.
+    func apply(_ invalidations: [MVLiveInvalidation])
+
+    /// Whether the live connection is currently up. A subscriber that does not act on connection
+    /// state can ignore this — the default below is a no-op.
+    func setConnected(_ connected: Bool)
+}
+
+extension LiveEventSubscriber {
+    public func setConnected(_ connected: Bool) {}
+}
+
+public typealias MVSubscriptionToken = UUID
+
+/// What `LiveEventHub.connectionState` reports — the UX design's list-subtitle rule ("Connecting…"
+/// for reconnecting, "Offline" for disconnected) reads this directly. `MVSseClient` retries with
+/// capped backoff forever once told to connect, so losing the stream always becomes
+/// `.reconnecting`, never `.disconnected` — that state is reserved for an explicit `disconnect()`
+/// (signed out, or never connected yet).
+public enum MVConnectionState: Sendable, Equatable {
+    case disconnected
+    case reconnecting
+    case connected
+}
+
+/// Consumes `GET /api/events` over `MVSseClient` and publishes typed invalidations to every
+/// subscribed store — the UX design's event table (§2.0, amended by the calendar-invitation
+/// addendum) as its test matrix, `LiveEventHubMappingTests` as the proof every row is covered.
+///
+/// One instance for the whole app, owned by `AppEnvironment` — never one per screen, since the
+/// backend's own event ring has no notion of "this SSE connection is for screen X" and opening a
+/// second one buys nothing but a second reconnect/backoff cycle to manage.
 ///
 /// Mail-burst events (`mail.new`/`.updated`/`.deleted`, `folder.synced`) are coalesced and
 /// delivered at most once every 500 ms — an initial sync inserting hundreds of rows in a few
@@ -16,30 +55,27 @@ import Foundation
 /// delivered the moment it arrives: a toast, a badge or a settings refetch should never wait on a
 /// timer for no reason.
 @MainActor
+@Observable
 public final class LiveEventHub {
 
-    public struct Callbacks: Sendable {
-        public var onBufferedInvalidations: @MainActor @Sendable ([MVLiveInvalidation]) -> Void
-        public var onInvalidation: @MainActor @Sendable (MVLiveInvalidation) -> Void
-        public var onConnectionStateChanged: @MainActor @Sendable (Bool) -> Void
-
-        public init(
-            onBufferedInvalidations: @escaping @MainActor @Sendable ([MVLiveInvalidation]) -> Void,
-            onInvalidation: @escaping @MainActor @Sendable (MVLiveInvalidation) -> Void,
-            onConnectionStateChanged: @escaping @MainActor @Sendable (Bool) -> Void
-        ) {
-            self.onBufferedInvalidations = onBufferedInvalidations
-            self.onInvalidation = onInvalidation
-            self.onConnectionStateChanged = onConnectionStateChanged
-        }
-    }
+    public private(set) var connectionState: MVConnectionState = .disconnected
 
     private static let flushIntervalNanos: UInt64 = 500_000_000
 
     private let sseClient: MVSseClient
-    private let callbacks: Callbacks
     private var pending: [MVLiveInvalidation] = []
     private var flushTask: Task<Void, Never>?
+
+    /// Weak so a subscriber that forgets to `unsubscribe` before going away is dropped, not
+    /// leaked — `ObservationIgnored` because neither the box nor what it wraps is itself part of
+    /// this hub's own observable state.
+    @ObservationIgnored
+    private var subscribers: [MVSubscriptionToken: WeakSubscriberBox] = [:]
+
+    private final class WeakSubscriberBox {
+        weak var subscriber: (any LiveEventSubscriber)?
+        init(_ subscriber: any LiveEventSubscriber) { self.subscriber = subscriber }
+    }
 
     /// `MVSseClient.Callbacks` needs every closure at construction time, before `self` exists to
     /// capture — a weak box built first and pointed at `self` afterwards stands in, rather than
@@ -54,10 +90,8 @@ public final class LiveEventHub {
     public init(
         accountId: String? = nil,
         requestFactory: MVRequestFactory,
-        callbacks: Callbacks,
         urlSessionConfiguration: URLSessionConfiguration = .default
     ) {
-        self.callbacks = callbacks
         let box = HubBox()
         self.sseClient = MVSseClient(
             accountId: accountId,
@@ -65,8 +99,8 @@ public final class LiveEventHub {
             callbacks: .init(
                 onRecord: { record in box.hub?.handle(record) },
                 onActivity: {},
-                onConnected: { box.hub?.callbacks.onConnectionStateChanged(true) },
-                onDisconnected: { box.hub?.callbacks.onConnectionStateChanged(false) }
+                onConnected: { box.hub?.setConnectionState(.connected) },
+                onDisconnected: { box.hub?.handleStreamDisconnected() }
             ),
             urlSessionConfiguration: urlSessionConfiguration
         )
@@ -74,6 +108,7 @@ public final class LiveEventHub {
     }
 
     public func connect() {
+        connectionState = .reconnecting
         sseClient.connect()
         scheduleFlush()
     }
@@ -82,6 +117,39 @@ public final class LiveEventHub {
         sseClient.disconnect()
         flushTask?.cancel()
         flushTask = nil
+        setConnectionState(.disconnected)
+    }
+
+    /// Registers `subscriber` (held weakly) and immediately tells it the current connection
+    /// state, so a store that subscribes after the hub is already connected does not sit showing
+    /// "offline" until the next state change.
+    @discardableResult
+    public func subscribe(_ subscriber: any LiveEventSubscriber) -> MVSubscriptionToken {
+        let token = MVSubscriptionToken()
+        subscribers[token] = WeakSubscriberBox(subscriber)
+        subscriber.setConnected(connectionState == .connected)
+        return token
+    }
+
+    public func unsubscribe(_ token: MVSubscriptionToken) {
+        subscribers[token] = nil
+    }
+
+    private func setConnectionState(_ state: MVConnectionState) {
+        connectionState = state
+        broadcastConnected(state == .connected)
+    }
+
+    private func handleStreamDisconnected() {
+        connectionState = .reconnecting
+        broadcastConnected(false)
+    }
+
+    private func broadcastConnected(_ connected: Bool) {
+        pruneDeadSubscribers()
+        for box in subscribers.values {
+            box.subscriber?.setConnected(connected)
+        }
     }
 
     private func handle(_ record: MVSseRecord) {
@@ -90,7 +158,7 @@ public final class LiveEventHub {
         case .mailNew, .mailUpdated, .mailDeleted, .folderSynced:
             pending.append(invalidation)
         default:
-            callbacks.onInvalidation(invalidation)
+            deliver([invalidation])
         }
     }
 
@@ -109,7 +177,18 @@ public final class LiveEventHub {
         guard !pending.isEmpty else { return }
         let batch = pending
         pending = []
-        callbacks.onBufferedInvalidations(batch)
+        deliver(batch)
+    }
+
+    private func deliver(_ batch: [MVLiveInvalidation]) {
+        pruneDeadSubscribers()
+        for box in subscribers.values {
+            box.subscriber?.apply(batch)
+        }
+    }
+
+    private func pruneDeadSubscribers() {
+        subscribers = subscribers.filter { $0.value.subscriber != nil }
     }
 
     // MARK: - Mapping (pure, tested directly — see LiveEventHubMappingTests)

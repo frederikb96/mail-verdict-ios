@@ -14,5 +14,8 @@ struct SettingsScreen: View {
         }
         .navigationTitle("Settings")
         .accessibilityIdentifier("settings-stub")
+        #if DEBUG
+            .screenshotReady(route: .settings, environment: environment, connection: connection)
+        #endif
     }
 }
