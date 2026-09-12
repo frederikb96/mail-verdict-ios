@@ -5,9 +5,13 @@ import MailVerdictKit
 
     /// Turns fixture mode on for this launch, if `-MVFixtureMode` asked for it.
     ///
-    /// Four things have to happen before `RootView` is ever built, and all four happen here
+    /// Five things have to happen before `RootView` is ever built, and all five happen here
     /// rather than in `AppEnvironment` or `RootView` themselves, so neither needs to know fixture
     /// mode exists:
+    /// - clear this app's own `UserDefaults` domain, so nothing a previous fixture launch in the
+    ///   same sweep persisted (most concretely `MVPersistedPath`'s navigation path, restored
+    ///   before this launch's own target ever takes over — a store mounted only in that brief
+    ///   window still makes its own requests) survives into this one
     /// - register the URL protocol that answers every request from the fixture table
     /// - plant a base URL in `UserDefaults`, so `AppEnvironment.init()`'s own `connect()` has
     ///   something to build `MVRequestFactory` from — without one it fails `emptyBaseURL` and
@@ -20,7 +24,9 @@ import MailVerdictKit
     /// Reuses `MVKeychainCredentialStore` rather than writing to the Keychain independently: it is
     /// `internal` and this file compiles into the same app target, so the query attributes
     /// (service, account, `kSecAttrSynchronizable`) stay defined in exactly the one place that
-    /// already owns them.
+    /// already owns them. The Keychain itself is untouched by the `UserDefaults` wipe below — a
+    /// separate store, and the credential this same function plants right after has to survive
+    /// it regardless.
     enum FixtureBootstrap {
         /// Never dialed — `MVFixtureURLProtocol` answers every request before it reaches the
         /// network — so only its shape (a scheme `MVRequestFactory` accepts) matters.
@@ -34,6 +40,9 @@ import MailVerdictKit
 
         static func installIfRequested() {
             guard MVFixtureLaunch.isEnabled() else { return }
+            if let bundleId = Bundle.main.bundleIdentifier {
+                UserDefaults.standard.removePersistentDomain(forName: bundleId)
+            }
             URLProtocol.registerClass(MVFixtureURLProtocol.self)
             UserDefaults.standard.set(placeholderBackendURL, forKey: AppEnvironment.backendURLKey)
             MVKeychainCredentialStore().write(placeholderCredential)

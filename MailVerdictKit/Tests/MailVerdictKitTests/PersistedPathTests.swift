@@ -52,4 +52,23 @@ final class PersistedPathTests: XCTestCase {
         MVPersistedPath.save(routes, to: defaults)
         XCTAssertEqual(MVPersistedPath.load(from: defaults), [.list(scope, aroundMessageId: nil)])
     }
+
+    /// `FixtureBootstrap` clears the app's own persistent domain at launch, in `MailVerdict/`
+    /// where `Bundle.main` actually means something — this is the one piece of that fix a
+    /// package test can still prove: a previously-saved path is gone once the domain backing
+    /// `UserDefaults` is removed, the exact mechanism that keeps one fixture screenshot's
+    /// navigation state (and a store's own search/collapse/scroll state alongside it) from
+    /// surviving into the next screenshot's launch.
+    func testLoadReturnsEmptyAfterThePersistentDomainIsCleared() {
+        let suite = "PersistedPathTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+
+        MVPersistedPath.save([.settings], to: defaults)
+        XCTAssertFalse(MVPersistedPath.load(from: defaults).isEmpty)
+
+        defaults.removePersistentDomain(forName: suite)
+
+        XCTAssertTrue(MVPersistedPath.load(from: defaults).isEmpty)
+    }
 }
