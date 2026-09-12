@@ -10,9 +10,13 @@ struct EmojiPickerButton: View {
     let onSelect: (String?) -> Void
 
     @State private var isPresented = false
+    // A `.popover` attached before its source view is actually in a window is a known SwiftUI
+    // trap — tapping is impossible that early anyway, so there's nothing to lose by waiting for
+    // `onAppear` before the modifier exists at all.
+    @State private var hasAppeared = false
 
     var body: some View {
-        Button {
+        let label = Button {
             isPresented = true
         } label: {
             Text(currentEmoji ?? "➕")
@@ -21,13 +25,21 @@ struct EmojiPickerButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(accessibilityLabel))
-        .popover(isPresented: $isPresented) {
-            EmojiPickerGrid(currentEmoji: currentEmoji) { emoji in
-                onSelect(emoji)
-                isPresented = false
+
+        Group {
+            if hasAppeared {
+                label.popover(isPresented: $isPresented) {
+                    EmojiPickerGrid(currentEmoji: currentEmoji) { emoji in
+                        onSelect(emoji)
+                        isPresented = false
+                    }
+                    .frame(minWidth: 280, minHeight: 220)
+                }
+            } else {
+                label
             }
-            .frame(minWidth: 280, minHeight: 220)
         }
+        .onAppear { hasAppeared = true }
     }
 }
 
