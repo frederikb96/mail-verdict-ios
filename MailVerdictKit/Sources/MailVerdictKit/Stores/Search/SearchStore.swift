@@ -29,6 +29,7 @@ public final class SearchStore {
     private var searchTask: Task<Outcome, Never>?
     private var debounceTask: Task<Void, Never>?
     private var generation = 0
+    private var liveSubscriptionToken: MVSubscriptionToken?
 
     public init(
         apiClient: MVApiClient, persistence: SearchPersistence = SearchPersistence(), initialQuery: String? = nil
@@ -229,5 +230,36 @@ extension SearchStore: ReaderListSource {
     public var readerTitle: String? {
         guard let total else { return nil }
         return "\(total) Results"
+    }
+}
+
+extension SearchStore {
+    public func subscribeToLive(_ hub: LiveEventHub) {
+        guard liveSubscriptionToken == nil else { return }
+        liveSubscriptionToken = hub.subscribe(self)
+    }
+
+    public func unsubscribeFromLive(_ hub: LiveEventHub) {
+        guard let token = liveSubscriptionToken else { return }
+        hub.unsubscribe(token)
+        liveSubscriptionToken = nil
+    }
+}
+
+extension SearchStore: LiveEventSubscriber {
+    /// A mail change anywhere could move a result in or out of the current query's matches —
+    /// re-running the same search (rather than trying to patch individual rows) is what the web
+    /// itself does for any list on a mail event, and search has no cheaper option since results
+    /// are server-ranked, not a simple filter over loaded rows.
+    public func apply(_ invalidations: [MVLiveInvalidation]) {
+        guard hasSearched else { return }
+        let shouldReload = invalidations.contains {
+            switch $0 {
+            case .resync, .mailNew, .mailUpdated, .mailDeleted, .verdictIssued: return true
+            default: return false
+            }
+        }
+        guard shouldReload else { return }
+        Task { await self.runSearch() }
     }
 }

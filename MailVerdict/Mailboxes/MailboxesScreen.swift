@@ -100,7 +100,7 @@ struct MailboxesScreen: View {
         }
         .task {
             #if DEBUG
-                MailboxesFixtures.registerIfNeeded()
+                MailboxesFixtures.activeStore = store
             #endif
             scrollTarget = store.topVisibleRowId
             store.subscribeToLive(connection.liveEventHub)

@@ -6,6 +6,11 @@ import MailVerdictKit
     /// Fixture data for the Notifications screen's own screenshot sweep — one mail alert, one
     /// write-failure notification.
     enum NotificationsFixtures {
+        /// The screen's own store, set from its `.task` — `MVScreenshotEntry.prepare` has no
+        /// reach into a screen's `@State`, so this is how it finds the instance to reload once
+        /// fixture routes exist. Weak: a screen that goes away must not keep its store alive.
+        @MainActor static weak var activeStore: NotificationsStore?
+
         static func registerIfNeeded() {
             guard MVFixtureLaunch.isEnabled() else { return }
             MailboxesFixtures.registerIfNeeded()
@@ -37,10 +42,12 @@ import MailVerdictKit
 
         private enum Method: String { case get = "GET" }
 
+        /// Encodes eagerly and captures the resulting `Data`, not `value` itself — `T: Encodable`
+        /// says nothing about `Sendable`, and the fixture body closure is `@Sendable`. Caught only
+        /// on a Mac compile; `Tooling/swift6-lint.py` has no rule for it yet.
         private static func register<T: Encodable>(_ method: Method, _ path: String, _ value: T) {
-            MVFixtureURLProtocol.register(method: method.rawValue, path: path) {
-                (try? JSONEncoder.mvDefault.encode(value)) ?? Data("[]".utf8)
-            }
+            let data = (try? JSONEncoder.mvDefault.encode(value)) ?? Data("[]".utf8)
+            MVFixtureURLProtocol.register(method: method.rawValue, path: path) { data }
         }
     }
 

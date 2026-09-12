@@ -195,8 +195,10 @@ public final class MailboxesStore {
             let ordered = MailboxesSupport.orderFolders(order?.folders ?? [])
             folders = ordered.map { item in
                 MailboxesFolderRow(
-                    id: item.folderId, accountId: account.id, displayName: item.displayName ?? item.imapName,
-                    specialUse: item.specialUse,
+                    id: item.folderId, accountId: account.id,
+                    displayName: folderDisplayName(
+                        imapName: item.imapName, displayName: item.displayName, specialUse: item.specialUse
+                    ), specialUse: item.specialUse,
                     badgeCount: MailboxesSupport.folderBadgeCount(
                         specialUse: item.specialUse, unreadCount: item.unreadCount, totalCount: item.totalCount
                     ), totalCount: item.totalCount

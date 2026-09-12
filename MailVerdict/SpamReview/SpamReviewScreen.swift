@@ -63,11 +63,13 @@ struct SpamReviewScreen: View {
             }
             .task {
                 #if DEBUG
-                    SpamReviewFixtures.registerIfNeeded()
+                    SpamReviewFixtures.activeStore = store
                 #endif
+                store.subscribeToLive(connection.liveEventHub)
                 accounts = (try? await connection.apiClient.listAccounts()) ?? []
                 await store.load()
             }
+            .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
             #if DEBUG
                 .screenshotReady(route: .spamReview, environment: environment, connection: connection)
             #endif
