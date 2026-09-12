@@ -14,8 +14,13 @@
     public enum PushKeychain {
 
         /// The resolved group — the entitlements file's `$(AppIdentifierPrefix)` becomes the team
-        /// id at build time, but a query needs the literal string.
-        public static let accessGroup = "CSHG4AV9YH.com.frederikberg.mailverdict"
+        /// id at build time, but a query needs the literal string. Its own group, not shared with
+        /// the backend credential: the extension needs this and nothing else.
+        public static let accessGroup = "CSHG4AV9YH.com.frederikberg.mailverdict.push"
+        /// Where every installation lived before the credential and the push content keys were
+        /// split into their own groups. The app's entitlements still list this group (the
+        /// credential's own), so only the app — never the extension — can reach it to migrate.
+        static let legacyAccessGroup = "CSHG4AV9YH.com.frederikberg.mailverdict"
         static let service = "mailverdict.push"
 
         public struct KeychainError: LocalizedError, Sendable {
@@ -65,6 +70,62 @@
         public static func delete(serverOrigin: String) throws {
             var query = baseQuery()
             query[kSecAttrAccount as String] = serverOrigin
+            let status = SecItemDelete(query as CFDictionary)
+            guard status == errSecSuccess || status == errSecItemNotFound else {
+                throw KeychainError(status: status)
+            }
+        }
+
+        /// Moves every installation left behind in the pre-split group into this one's own —
+        /// so an existing install keeps its push registration and never has to re-register.
+        /// Safe on every launch: once the legacy group is empty, later calls find nothing and do
+        /// nothing. Harmless if the caller has no access to the legacy group at all (the
+        /// extension, after its entitlements dropped it) — `SecItemCopyMatching` then simply
+        /// returns no items rather than throwing.
+        public static func migrateFromLegacyGroupIfNeeded() {
+            guard let legacy = try? allOrigins(group: legacyAccessGroup), !legacy.isEmpty else { return }
+            let current = (try? allOrigins(group: accessGroup).map(\.0)) ?? []
+            let steps = MVKeychainMigrationPlan.steps(
+                legacyOrigins: legacy.map(\.0), currentOrigins: current)
+            for step in steps {
+                guard let installation = legacy.first(where: { $0.0 == step.serverOrigin })?.1 else { continue }
+                guard (try? save(installation, serverOrigin: step.serverOrigin)) != nil else { continue }
+                try? deleteFromGroup(legacyAccessGroup, serverOrigin: step.serverOrigin)
+            }
+        }
+
+        private static func allOrigins(group: String) throws -> [(String, PushInstallation)] {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccessGroup as String: group,
+                kSecAttrSynchronizable as String: false,
+                kSecReturnData as String: true,
+                kSecReturnAttributes as String: true,
+                kSecMatchLimit as String: kSecMatchLimitAll,
+            ]
+            var result: AnyObject?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            if status == errSecItemNotFound { return [] }
+            guard status == errSecSuccess else { throw KeychainError(status: status) }
+            let items = (result as? [[String: Any]]) ?? []
+            return items.compactMap { item in
+                guard let origin = item[kSecAttrAccount as String] as? String,
+                    let data = item[kSecValueData as String] as? Data,
+                    let installation = try? JSONDecoder().decode(PushInstallation.self, from: data)
+                else { return nil }
+                return (origin, installation)
+            }
+        }
+
+        private static func deleteFromGroup(_ group: String, serverOrigin: String) throws {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccessGroup as String: group,
+                kSecAttrAccount as String: serverOrigin,
+                kSecAttrSynchronizable as String: false,
+            ]
             let status = SecItemDelete(query as CFDictionary)
             guard status == errSecSuccess || status == errSecItemNotFound else {
                 throw KeychainError(status: status)
