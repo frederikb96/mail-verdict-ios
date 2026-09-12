@@ -79,11 +79,27 @@ public struct UnifiedViewUpdate: ContractModel, Codable, Sendable, Equatable {
     public typealias CodingKeys = ContractKeys
 
     public let name: String?
-    public let emoji: String?
+    /// `nil` leaves the emoji alone; `.some(nil)` clears it (the backend's own doc comment:
+    /// "Rename a view, or set or clear its emoji (an explicit null)"); `.some(.some(value))` sets
+    /// it. `PATCH /unified/views/{id}` reads its body with `exclude_unset`, so only the explicit
+    /// `null` — never an omitted key — actually clears it; `encode(to:)` is what tells them apart.
+    public let emoji: String??
 
-    public init(name: String? = nil, emoji: String? = nil) {
+    public init(name: String? = nil, emoji: String?? = nil) {
         self.name = name
         self.emoji = emoji
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(name, forKey: .name)
+        if let emoji {
+            if let emoji {
+                try container.encode(emoji, forKey: .emoji)
+            } else {
+                try container.encodeNil(forKey: .emoji)
+            }
+        }
     }
 }
 
