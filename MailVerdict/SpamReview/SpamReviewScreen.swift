@@ -66,6 +66,7 @@ struct SpamReviewScreen: View {
                     SpamReviewFixtures.activeStore = store
                 #endif
                 store.subscribeToLive(connection.liveEventHub)
+                ReaderSourceRegistry.shared.register(store, for: .spamReview)
                 accounts = (try? await connection.apiClient.listAccounts()) ?? []
                 await store.load()
             }
