@@ -319,7 +319,9 @@ public final class MailboxesStore {
                 stateError: syncStatus.stateError ?? section.stateError, folders: section.folders
             )
         }
-        accountSections = updated
+        // An unchanged poll must not reassign: every assignment re-renders the whole list, and a
+        // re-render landing mid-touch can swallow a row tap.
+        if updated != accountSections { accountSections = updated }
     }
 
     // MARK: - Disk cache

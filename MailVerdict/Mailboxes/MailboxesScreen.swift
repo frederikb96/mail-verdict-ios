@@ -113,6 +113,11 @@ struct MailboxesScreen: View {
             store.unsubscribeFromLive(connection.liveEventHub)
         }
         .onChange(of: scrollTarget) { _, newValue in store.topVisibleRowId = newValue }
+        // Recorded from the push rather than a tap gesture on the row: a simultaneous gesture on a
+        // List's NavigationLink claims taps on the label's text and icon, so the push never fires.
+        .onChange(of: environment.navigationPath) { oldPath, newPath in
+            if let kind = MailboxesSupport.viewedRowKind(from: oldPath, to: newPath) { store.recordViewed(kind) }
+        }
         #if DEBUG
             .screenshotReadyRoot(environment: environment, connection: connection)
         #endif
@@ -135,10 +140,6 @@ struct MailboxesScreen: View {
                         UnifiedRowLabel(row: row)
                     }
                     .id(row.anchorId)
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            store.recordViewed(.unified(viewId: row.id, name: row.name))
-                        })
                 }
             }
         } header: {
@@ -179,11 +180,6 @@ struct MailboxesScreen: View {
                         FolderRowLabel(folder: folder)
                     }
                     .id(folder.anchorId)
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            store.recordViewed(.folder(accountId: section.id, folderId: folder.id))
-                        }
-                    )
                     .contextMenu { folderContextMenu(accountId: section.id, folder: folder) }
                 }
             }

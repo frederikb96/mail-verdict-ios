@@ -17,6 +17,19 @@ extension FolderResponse: MVFolderLeadSortable {}
 
 public enum MailboxesSupport {
 
+    /// The row a Mailboxes tap opened, read off the navigation change it caused: a row's
+    /// `NavigationLink` is the only push that lands a bare list, anchored on no message, directly
+    /// on the root. `MVMessagePlaceResolver` always anchors its list on a message and pushes the
+    /// reader with it, so a deep link or notification tap never counts as picking a view.
+    public static func viewedRowKind(from oldPath: [Route], to newPath: [Route]) -> MailboxesRowKind? {
+        guard oldPath.isEmpty, newPath.count == 1, case .list(let scope, aroundMessageId: .none) = newPath[0]
+        else { return nil }
+        switch scope {
+        case .folder(let accountId, let folderId): return .folder(accountId: accountId, folderId: folderId)
+        case .unified(let viewId, let name): return .unified(viewId: viewId, name: name)
+        }
+    }
+
     /// Visible folders in the order `GET /folder-order` resolved, with INBOX forced to lead
     /// regardless of a saved order — the web's own `orderedFolders` does this unconditionally
     /// because a saved order rarely moves INBOX far from the top, and it buries INBOX when there

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-12
+
+### Fixed
+
+- Mailboxes: tapping a folder or Unified View row anywhere opens it — a tap on its name or icon
+  did nothing, and only the empty space beside them worked.
+
 ## [0.1.1] - 2026-09-12
 
 ### Fixed

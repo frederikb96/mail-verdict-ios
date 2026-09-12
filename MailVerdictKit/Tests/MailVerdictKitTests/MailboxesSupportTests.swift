@@ -374,3 +374,48 @@ final class MailboxesUnifiedMembershipTests: XCTestCase {
         XCTAssertNil(membership.mostRecentUnifiedView(containingFolderId: UUID()))
     }
 }
+
+final class MailboxesSupportViewedRowKindTests: XCTestCase {
+
+    private let accountId = UUID()
+    private let folderId = UUID()
+    private let viewId = UUID()
+
+    func testFolderRowPushFromTheRootRecordsAFolderView() {
+        let kind = MailboxesSupport.viewedRowKind(
+            from: [], to: [.list(.folder(accountId: accountId, folderId: folderId), aroundMessageId: nil)])
+        XCTAssertEqual(kind, .folder(accountId: accountId, folderId: folderId))
+    }
+
+    func testUnifiedRowPushFromTheRootRecordsAUnifiedView() {
+        let kind = MailboxesSupport.viewedRowKind(
+            from: [], to: [.list(.unified(viewId: viewId, name: "All"), aroundMessageId: nil)])
+        XCTAssertEqual(kind, .unified(viewId: viewId, name: "All"))
+    }
+
+    func testResolverShapedDeepLinkRecordsNothing() {
+        let scope = ListScope.folder(accountId: accountId, folderId: folderId)
+        let messageId = UUID()
+        let path: [Route] = [
+            .list(scope, aroundMessageId: messageId),
+            .reader(ReaderContext(source: .list(scope), messageId: messageId)),
+        ]
+        XCTAssertNil(MailboxesSupport.viewedRowKind(from: [], to: path))
+    }
+
+    func testAnchoredListAloneRecordsNothing() {
+        let path: [Route] = [.list(.folder(accountId: accountId, folderId: folderId), aroundMessageId: UUID())]
+        XCTAssertNil(MailboxesSupport.viewedRowKind(from: [], to: path))
+    }
+
+    func testPoppingBackToAListRecordsNothing() {
+        let scope = ListScope.unified(viewId: viewId, name: "All")
+        let list = Route.list(scope, aroundMessageId: nil)
+        let reader = Route.reader(ReaderContext(source: .list(scope), messageId: UUID()))
+        XCTAssertNil(MailboxesSupport.viewedRowKind(from: [list, reader], to: [list]))
+    }
+
+    func testNonListPushRecordsNothing() {
+        XCTAssertNil(MailboxesSupport.viewedRowKind(from: [], to: [.settings]))
+    }
+}
