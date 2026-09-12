@@ -11,32 +11,40 @@ struct SettingsCategoryScreen: View {
     let connection: AppEnvironment.Connection
 
     @State private var store: MVSettingsCategoryStore?
+    /// Shared by every field on the screen, keyed by `MVSettingsField.key` — the one signal each
+    /// field's own blur-commit watches, and what `.onDisappear` clears to flush whichever field
+    /// was still focused when the screen is left.
+    @FocusState private var focusedFieldKey: String?
 
     private var resolvedCategory: MVSettingsCategory? { MVSettingsCategory(rawValue: category) }
 
     var body: some View {
         Group {
             if let resolvedCategory {
-                CategoryForm(category: resolvedCategory, store: store, environment: environment)
-                    .task {
-                        #if DEBUG
-                            DebugLogBuffer.shared.append(.info, "screenshot", "settings-category-ai: screen task start")
-                        #endif
-                        guard store == nil else { return }
-                        let freshStore = MVSettingsCategoryStore(
-                            category: resolvedCategory, apiClient: connection.apiClient)
-                        store = freshStore
-                        #if DEBUG
-                            SettingsDebugServices.shared.activeSettingsCategoryStore = freshStore
-                            DebugLogBuffer.shared.append(
-                                .info, "screenshot", "settings-category-ai: store created, loading")
-                        #endif
-                        await freshStore.load()
-                        #if DEBUG
-                            DebugLogBuffer.shared.append(
-                                .info, "screenshot", "settings-category-ai: load() returned, state=\(freshStore.state)")
-                        #endif
-                    }
+                CategoryForm(
+                    category: resolvedCategory, store: store, environment: environment,
+                    focusedFieldKey: $focusedFieldKey
+                )
+                .onDisappear { focusedFieldKey = nil }
+                .task {
+                    #if DEBUG
+                        DebugLogBuffer.shared.append(.info, "screenshot", "settings-category-ai: screen task start")
+                    #endif
+                    guard store == nil else { return }
+                    let freshStore = MVSettingsCategoryStore(
+                        category: resolvedCategory, apiClient: connection.apiClient)
+                    store = freshStore
+                    #if DEBUG
+                        SettingsDebugServices.shared.activeSettingsCategoryStore = freshStore
+                        DebugLogBuffer.shared.append(
+                            .info, "screenshot", "settings-category-ai: store created, loading")
+                    #endif
+                    await freshStore.load()
+                    #if DEBUG
+                        DebugLogBuffer.shared.append(
+                            .info, "screenshot", "settings-category-ai: load() returned, state=\(freshStore.state)")
+                    #endif
+                }
             } else {
                 EmptyStateView(
                     systemImage: "exclamationmark.triangle",
@@ -56,6 +64,7 @@ private struct CategoryForm: View {
     let category: MVSettingsCategory
     let store: MVSettingsCategoryStore?
     let environment: AppEnvironment
+    var focusedFieldKey: FocusState<String?>.Binding
 
     var body: some View {
         Form {
@@ -84,7 +93,9 @@ private struct CategoryForm: View {
                     } else {
                         Section {
                             ForEach(store.fields) { field in
-                                SettingsFieldRow(store: store, field: field, environment: environment)
+                                SettingsFieldRow(
+                                    store: store, field: field, environment: environment,
+                                    focusedFieldKey: focusedFieldKey)
                             }
                         }
                     }
@@ -100,15 +111,22 @@ private struct SettingsFieldRow: View {
     let store: MVSettingsCategoryStore
     let field: MVSettingsField
     let environment: AppEnvironment
+    var focusedFieldKey: FocusState<String?>.Binding
 
     var body: some View {
         switch field.kind {
         case .bool(let value):
             Toggle(MVSettingsLabels.label(for: field.key), isOn: Binding(get: { value }, set: { commit(.bool($0)) }))
         case .int(let value):
-            IntFieldControl(label: MVSettingsLabels.label(for: field.key), value: value) { commit(.int($0)) }
+            IntFieldControl(
+                label: MVSettingsLabels.label(for: field.key), key: field.key, value: value,
+                focusedFieldKey: focusedFieldKey
+            ) { commit(.int($0)) }
         case .float(let value):
-            FloatFieldControl(label: MVSettingsLabels.label(for: field.key), value: value) { commit(.float($0)) }
+            FloatFieldControl(
+                label: MVSettingsLabels.label(for: field.key), key: field.key, value: value,
+                focusedFieldKey: focusedFieldKey
+            ) { commit(.float($0)) }
         case .string(let value):
             if field.key == "default_strictness" {
                 StrictnessPicker(label: MVSettingsLabels.label(for: field.key), value: value) {
@@ -116,7 +134,8 @@ private struct SettingsFieldRow: View {
                 }
             } else {
                 StringFieldControl(
-                    label: MVSettingsLabels.label(for: field.key), key: field.key, value: value
+                    label: MVSettingsLabels.label(for: field.key), key: field.key, value: value,
+                    focusedFieldKey: focusedFieldKey
                 ) { commit(.string($0)) }
             }
         case .json(let text):
@@ -143,7 +162,9 @@ private struct SettingsFieldRow: View {
 
 private struct IntFieldControl: View {
     let label: String
+    let key: String
     let value: Int
+    var focusedFieldKey: FocusState<String?>.Binding
     let onCommit: (Int) -> Void
 
     @State private var text: String = ""
@@ -156,6 +177,8 @@ private struct IntFieldControl: View {
                 .keyboardType(.numberPad)
                 .multilineTextAlignment(.trailing)
                 .frame(width: 80)
+                .focused(focusedFieldKey, equals: key)
+                .toolbar { keyboardDoneToolbar }
                 .onSubmit { submitIfValid() }
             Stepper(
                 // `Int.min...Int.max` traps: `Stepper` computes the range's distance, and
@@ -167,6 +190,17 @@ private struct IntFieldControl: View {
         }
         .onAppear { text = String(value) }
         .onChange(of: value) { _, newValue in text = String(newValue) }
+        .onChange(of: focusedFieldKey.wrappedValue) { old, new in
+            if old == key, new != key { submitIfValid() }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var keyboardDoneToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Done") { focusedFieldKey.wrappedValue = nil }
+        }
     }
 
     private func submitIfValid() {
@@ -180,7 +214,9 @@ private struct IntFieldControl: View {
 
 private struct FloatFieldControl: View {
     let label: String
+    let key: String
     let value: Double
+    var focusedFieldKey: FocusState<String?>.Binding
     let onCommit: (Double) -> Void
 
     @State private var text: String = ""
@@ -193,10 +229,23 @@ private struct FloatFieldControl: View {
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
                 .frame(width: 100)
+                .focused(focusedFieldKey, equals: key)
+                .toolbar { keyboardDoneToolbar }
                 .onSubmit { submitIfValid() }
         }
         .onAppear { text = String(value) }
         .onChange(of: value) { _, newValue in text = String(newValue) }
+        .onChange(of: focusedFieldKey.wrappedValue) { old, new in
+            if old == key, new != key { submitIfValid() }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var keyboardDoneToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Done") { focusedFieldKey.wrappedValue = nil }
+        }
     }
 
     private func submitIfValid() {
@@ -212,6 +261,7 @@ private struct StringFieldControl: View {
     let label: String
     let key: String
     let value: String
+    var focusedFieldKey: FocusState<String?>.Binding
     let onCommit: (String) -> Void
 
     @State private var text: String = ""
@@ -226,13 +276,22 @@ private struct StringFieldControl: View {
             Text(label)
             Spacer()
             if isSecure {
-                SecureField("", text: $text).multilineTextAlignment(.trailing).onSubmit { onCommit(text) }
+                SecureField("", text: $text)
+                    .multilineTextAlignment(.trailing)
+                    .focused(focusedFieldKey, equals: key)
+                    .onSubmit { onCommit(text) }
             } else {
-                TextField("", text: $text).multilineTextAlignment(.trailing).onSubmit { onCommit(text) }
+                TextField("", text: $text)
+                    .multilineTextAlignment(.trailing)
+                    .focused(focusedFieldKey, equals: key)
+                    .onSubmit { onCommit(text) }
             }
         }
         .onAppear { text = value }
         .onChange(of: value) { _, newValue in text = newValue }
+        .onChange(of: focusedFieldKey.wrappedValue) { old, new in
+            if old == key, new != key { onCommit(text) }
+        }
     }
 }
 
