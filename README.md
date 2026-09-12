@@ -34,7 +34,8 @@ runs — so views stay thin, and anything a unit test could catch lives in the p
 
 ## Building
 
-The package needs only a Swift 6.2 toolchain, on any platform:
+The package needs only a Swift toolchain, 6.2.4 or later, on any platform (6.2.1 fails to link the
+tests on Linux):
 
 ```
 swift build --package-path MailVerdictKit --build-tests
