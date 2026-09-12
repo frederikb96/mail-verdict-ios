@@ -17,7 +17,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ $# -gt 0 ]; then
     dirs=("$@")
 else
-    dirs=("$root/MailVerdict" "$root/MailVerdictKit/Sources")
+    dirs=("$root/MailVerdict" "$root/MailVerdictKit/Sources" "$root/MailVerdictNotify")
 fi
 
 mapfile -t files < <(find "${dirs[@]}" -name '*.swift' -type f | sort)

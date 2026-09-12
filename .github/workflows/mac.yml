@@ -76,6 +76,63 @@ jobs:
                  cat /tmp/built-info.txt; exit 1; }
           echo 'app icon and encryption declaration both present'
 
+      # The extension is a separate target, embedded by its own copy phase — a dropped embed, a
+      # mismatched version or an empty CFBundleDisplayName all install as an opaque "Unable to
+      # Install" on the phone, with no build-time error otherwise.
+      - name: The notification extension is embedded and declares what it needs
+        run: |
+          set -o pipefail
+          app=$(find build/dd/Build/Products -name '*.app' -maxdepth 3 | head -1)
+          [ -n "$app" ] || { echo 'build produced no .app'; exit 1; }
+          appex="$app/PlugIns/MailVerdictNotify.appex"
+          [ -d "$appex" ] \
+            || { echo '::error::MailVerdictNotify.appex is not embedded in PlugIns/ — check the copy phase and the target dependency'; exit 1; }
+
+          grep -q 'UIBackgroundModes' /tmp/built-info.txt \
+            || { echo '::error::app Info.plist has no UIBackgroundModes — silent pushes never reach the app'; cat /tmp/built-info.txt; exit 1; }
+          grep -q 'remote-notification' /tmp/built-info.txt \
+            || { echo '::error::UIBackgroundModes does not contain remote-notification'; cat /tmp/built-info.txt; exit 1; }
+
+          plutil -p "$appex/Info.plist" > /tmp/appex-info.txt
+          fail=0
+
+          display_name=$(plutil -extract CFBundleDisplayName raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ -n "$display_name" ] \
+            || { echo '::error::MailVerdictNotify CFBundleDisplayName is empty — fails at install as an opaque "Unable to Install"'; fail=1; }
+
+          point_id=$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ "$point_id" = "com.apple.usernotifications.service" ] \
+            || { echo "::error::NSExtensionPointIdentifier is '$point_id', not com.apple.usernotifications.service"; fail=1; }
+
+          principal=$(plutil -extract NSExtension.NSExtensionPrincipalClass raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ "$principal" = "MailVerdictNotify.NotificationService" ] \
+            || { echo "::error::NSExtensionPrincipalClass is '$principal', not MailVerdictNotify.NotificationService"; fail=1; }
+
+          appex_id=$(plutil -extract CFBundleIdentifier raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ "$appex_id" = "com.frederikberg.mailverdict.notify" ] \
+            || { echo "::error::appex CFBundleIdentifier is '$appex_id', not com.frederikberg.mailverdict.notify"; fail=1; }
+
+          app_short=$(plutil -extract CFBundleShortVersionString raw "$app/Info.plist" 2>/dev/null || echo "")
+          app_build=$(plutil -extract CFBundleVersion raw "$app/Info.plist" 2>/dev/null || echo "")
+          appex_short=$(plutil -extract CFBundleShortVersionString raw "$appex/Info.plist" 2>/dev/null || echo "")
+          appex_build=$(plutil -extract CFBundleVersion raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ "$app_short" = "$appex_short" ] && [ "$app_build" = "$appex_build" ] \
+            || { echo "::error::version mismatch: app ${app_short}/${app_build} vs appex ${appex_short}/${appex_build} — App Store Connect rejects this"; fail=1; }
+
+          if [ "$fail" -ne 0 ]; then
+            cat /tmp/appex-info.txt
+            exit 1
+          fi
+          echo 'appex Info.plist checks out'
+
+          # The memory-budget guard: the extension links PushEnvelope only, never the much larger
+          # SwiftSoup (the reader's own dependency) — an extension process has a tight memory cap.
+          binary="$appex/MailVerdictNotify"
+          if [ -f "$binary" ] && nm "$binary" 2>/dev/null | grep -q SwiftSoup; then
+            echo '::error::MailVerdictNotify links SwiftSoup — it should depend on PushEnvelope only'
+            exit 1
+          fi
+
       - name: Boot a simulator
         id: sim
         if: inputs.run_app != false
