@@ -201,9 +201,10 @@ final class PushCoordinator {
     private static func mailCategory() -> UNNotificationCategory {
         // No `.foreground`: marking read runs in the background with the stored credential, and
         // the server's read-sync then clears the same banner on every other device.
-        let markRead = UNNotificationAction(identifier: PushNotificationKeys.markReadAction, title: "Mark as Read")
+        let markRead = UNNotificationAction(
+            identifier: PushNotificationKeys.markReadAction, title: "Mark as Read", options: [])
         return UNNotificationCategory(
-            identifier: PushNotificationKeys.mailCategory, actions: [markRead], intentIdentifiers: [])
+            identifier: PushNotificationKeys.mailCategory, actions: [markRead], intentIdentifiers: [], options: [])
     }
 
     /// Withdraws banners whose alert is gone and sets the badge from the server.
