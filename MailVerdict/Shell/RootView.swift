@@ -78,16 +78,23 @@ private struct ConnectedShell: View {
         /// navigation that silently fails to land still times out `/screen/current` instead of
         /// lying about it.
         private func navigateToFixtureScreenshotTargetIfNeeded() {
-            guard MVFixtureLaunch.isEnabled(), let targetId = MVFixtureLaunch.targetScreenId(),
-                let entry = ScreenshotRegistry.entry(id: targetId)
-            else {
+            guard MVFixtureLaunch.isEnabled(), let targetId = MVFixtureLaunch.targetScreenId() else { return }
+            DebugLogBuffer.shared.append(.info, "navigation", "fixture target resolved: \(targetId)")
+            guard let entry = ScreenshotRegistry.entry(id: targetId) else {
+                DebugLogBuffer.shared.append(
+                    .info, "navigation", "fixture target '\(targetId)': no matching registry entry")
                 return
             }
+            DebugLogBuffer.shared.append(
+                .info, "navigation", "fixture target '\(targetId)': entry found, destination=\(entry.destination)")
             switch entry.destination {
             case .root:
                 break
             case .route(let route):
                 environment.navigationPath = [route]
+                DebugLogBuffer.shared.append(
+                    .info, "navigation",
+                    "fixture target '\(targetId)': navigationPath set to \(environment.navigationPath)")
             case .compose(let intent):
                 environment.presentedCompose = intent
             }
@@ -113,6 +120,9 @@ private struct ConnectedShell: View {
         case .settingsCategory(let category):
             SettingsCategoryScreen(category: category, environment: environment, connection: connection)
         case .unifiedViews:
+            #if DEBUG
+                let _ = DebugLogBuffer.shared.append(.info, "navigation", "destination(for:) building .unifiedViews")
+            #endif
             UnifiedViewsScreen(environment: environment, connection: connection)
         case .accountOrder:
             AccountOrderScreen(environment: environment, connection: connection)
@@ -121,6 +131,10 @@ private struct ConnectedShell: View {
         case .accounts:
             AccountsScreen(environment: environment, connection: connection)
         case .account(let accountId):
+            #if DEBUG
+                let _ = DebugLogBuffer.shared.append(
+                    .info, "navigation", "destination(for:) building .account(\(accountId))")
+            #endif
             AccountDetailScreen(accountId: accountId, environment: environment, connection: connection)
         case .folderOrder(let accountId):
             FolderOrderScreen(accountId: accountId, environment: environment, connection: connection)
