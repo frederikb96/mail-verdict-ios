@@ -241,7 +241,7 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
             _ = try? await call(.scrollToAnchor, ["name": name])
         case .ignore:
             break
-        case .control, .web, .mailto:
+        case .control, .web, .mailto, .phone:
             delegate?.page(self, didRequest: decision)
         }
         return .cancel

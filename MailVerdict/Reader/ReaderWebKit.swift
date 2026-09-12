@@ -26,7 +26,9 @@ enum ReaderWebKit {
             WKUserScript(
                 source: ReaderScript.source, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
         configuration.userContentController = controller
-        configuration.dataDetectorTypes = []
+        // Phone numbers only — the web hands `tel:`/`sms:` to the OS, and everything else a
+        // detector could find (addresses, dates) has no equivalent handoff here.
+        configuration.dataDetectorTypes = [.phoneNumber]
         return configuration
     }
 

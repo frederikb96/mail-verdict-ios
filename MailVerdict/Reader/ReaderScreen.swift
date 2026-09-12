@@ -84,6 +84,15 @@ private struct ReaderContent: View {
             } message: {
                 Text("This removes it from the mail server. It cannot be undone.")
             }
+            .alert(
+                model.phoneHandoffIsMessage ? "Send a Message?" : "Make a Call?",
+                isPresented: isPresented($model.confirmingPhoneHandoff)
+            ) {
+                Button(model.phoneHandoffIsMessage ? "Send Message" : "Call") { model.confirmPhoneHandoff() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(model.confirmingPhoneHandoff?.absoluteString.split(separator: ":").last.map(String.init) ?? "")
+            }
             .alert("Note to the Organizer", isPresented: isPresented($model.noteMessageId)) {
                 TextField("Note", text: $model.noteText, axis: .vertical)
                 Button("Save") { model.saveNote() }
