@@ -18,6 +18,12 @@ final class PushSubscriptionUpdateTests: XCTestCase {
         XCTAssertTrue(body["alert_folder_ids"] is NSNull)
     }
 
+    func testAChosenFolderScopeIsSentAsItsIds() throws {
+        let folderId = UUID(uuidString: "6f1c2a3b-0000-4000-8000-000000000001")!
+        let body = try encoded(PushSubscriptionUpdate(alertFolderIds: .some([folderId])))
+        XCTAssertEqual(body["alert_folder_ids"] as? [String], [folderId.uuidString])
+    }
+
     func testAnUntouchedFieldIsLeftOutOfTheBody() throws {
         let body = try encoded(PushSubscriptionUpdate(mutedChannels: ["mail"]))
         XCTAssertEqual(Array(body.keys), ["muted_channels"])
