@@ -280,7 +280,7 @@ final class ReaderScreenModel {
     }
 
     private func showError(_ lead: String, _ error: Error) {
-        let detail = (error as? MVError)?.userMessage ?? error.localizedDescription
+        let detail = error.mvUserMessage
         environment.toasts.show(MVToast(variant: .error, message: "\(lead): \(detail)", duration: 0))
     }
 }
