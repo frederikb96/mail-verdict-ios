@@ -1,8 +1,8 @@
 import Foundation
 
 /// Everything the shared `MailRowView` (`MailVerdict/Common/MailRowView.swift`) needs to render
-/// one row — UX design §2.2's anatomy, built once here so the list (S1) and search (S5) blocks
-/// never diverge on it. A store builds one of these per row; the view itself holds no logic.
+/// one row — built once here so the list and search screens never diverge on it. A store builds
+/// one of these per row; the view itself holds no logic.
 public struct MVMailRowData: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let isUnread: Bool

@@ -1,12 +1,11 @@
 import MailVerdictKit
 import SwiftUI
 
-/// The mail list's one row shape — UX design §2.2's anatomy, shared by the list (S1) and search
-/// (S5) so the two can never drift into different-looking rows for the same data. Every row
-/// reserves the same four text lines regardless of content, which is what makes scroll-anchor
-/// arithmetic exact (the scrolling skill's own rule); this view renders `MVMailRowData` exactly
-/// as given and computes nothing about layout height itself — that is the list controller's job,
-/// from `UIFontMetrics` against the current Dynamic Type size.
+/// The mail list's one row shape, shared by the list and search screens so the two can never
+/// drift into different-looking rows for the same data. Every row reserves the same four text
+/// lines regardless of content, which is what makes scroll-anchor arithmetic exact; this view
+/// renders `MVMailRowData` exactly as given and computes nothing about layout height itself —
+/// that is the list controller's job, from `UIFontMetrics` against the current Dynamic Type size.
 struct MailRowView: View {
     let data: MVMailRowData
 

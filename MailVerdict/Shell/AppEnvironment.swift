@@ -39,8 +39,8 @@ final class AppEnvironment {
 
     let toasts = MVToastStore()
 
-    /// Device-local, applied to the whole window (UX design's Settings > Appearance) — `nil`
-    /// means "follow the system", which is also the default before anyone has ever changed it.
+    /// Device-local, applied to the whole window (Settings > Appearance) — `nil` means "follow
+    /// the system", which is also the default before anyone has ever changed it.
     var colorScheme: ColorScheme? {
         get { Self.colorScheme(from: defaults.string(forKey: Self.colorSchemeKey)) }
         set { defaults.set(Self.string(from: newValue), forKey: Self.colorSchemeKey) }
@@ -123,10 +123,10 @@ final class AppEnvironment {
         MVPersistedPath.save(navigationPath, to: defaults)
     }
 
-    /// `scenePhase` going `.active` is where a later block's own stores do their bounded re-read
-    /// of every open list plus a counts refetch (UX design §2.0's "Foreground return" rule) —
-    /// nothing to bind that to yet, since no store exists, but the call site belongs here rather
-    /// than in `RootView` so a store added later has one place to subscribe from.
+    /// `scenePhase` going `.active` is where a store would do its own bounded re-read of every
+    /// open list plus a counts refetch on returning to the foreground — nothing binds to this
+    /// yet, but the call site belongs here rather than in `RootView` so a store that needs it
+    /// has one place to subscribe from.
     func handleScenePhaseChange(to phase: ScenePhase) {}
 
     @discardableResult

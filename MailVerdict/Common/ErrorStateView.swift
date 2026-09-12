@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// A centred icon, the server's own `detail` text, and a Try Again button — every screen's error
-/// state, replacing the web's error boundaries (UX design §2.0).
+/// state, replacing the web's error boundaries.
 struct ErrorStateView: View {
     let message: String
     let retry: () -> Void

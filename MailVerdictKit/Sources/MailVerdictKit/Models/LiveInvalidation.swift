@@ -1,12 +1,11 @@
 import Foundation
 
 /// What one SSE record means for the app's stores — never what a store should *do* about it; the
-/// UX design's event table drives this mapping, and every effect described in that table's "iOS
-/// effect" column (a bounded window refresh, a badge recompute, a toast) is a store's own job
-/// against the rows below, not this type's.
+/// effect (a bounded window refresh, a badge recompute, a toast) for each case below is a store's
+/// own job, not this type's.
 public enum MVLiveInvalidation: Sendable, Equatable {
     /// Every store refetches; a list store does a bounded window refresh rather than starting
-    /// over, per the scrolling skill's own rule against ever losing scroll position.
+    /// over, to never lose scroll position.
     case resync
     case mailNew(accountId: UUID?, folderId: UUID?, messageId: UUID?)
     case mailUpdated(accountId: UUID?, folderId: UUID?, messageId: UUID?, changed: [String])
@@ -22,7 +21,7 @@ public enum MVLiveInvalidation: Sendable, Equatable {
     case identitiesChanged(accountId: UUID?)
     /// `outbox.updated` carrying `itip: "reply"`, or `calendar.object` — the reader's invitation
     /// card and its event-details sheet are what this refreshes, never a mail toast or list
-    /// refresh (the addendum's own amendment to the base event table).
+    /// refresh.
     case invitationOrEventChanged
     /// Every event name this app has no effect for — `pipeline.*`, and every `calendar.*` /
     /// `contact.*` besides `calendar.object`. Carrying the name rather than discarding it keeps
@@ -35,8 +34,7 @@ public enum MVLiveInvalidation: Sendable, Equatable {
 }
 
 /// `outbox.updated`'s own payload — mirrored by hand against `server.py::_outbox_event_payload`,
-/// since SSE payload shapes are untyped dicts server-side (systems design §5.02's own note on
-/// what stays manual).
+/// since SSE payload shapes are untyped dicts server-side.
 public struct MVOutboxEventPayload: Sendable, Equatable {
     public let id: UUID?
     public let changed: [String]

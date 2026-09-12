@@ -1,9 +1,9 @@
 import Foundation
 
 // Mirrors mail_verdict/api/schemas.py's contact shapes this app actually uses — composer
-// autocomplete and sender-avatar photos. Contacts management screens are out of scope (Freddy's
-// scope rules: contacts are used only via the backend, never an iOS Contacts integration), so the
-// full ContactResponse/ContactListResponse/create/update shapes are not ported here.
+// autocomplete and sender-avatar photos. Contacts management screens are out of scope: contacts
+// are used only via the backend, never an iOS Contacts integration, so the full
+// ContactResponse/ContactListResponse/create/update shapes are not ported here.
 
 public struct ContactSearchHitOut: ContractModel, Codable, Sendable, Equatable, Identifiable {
     public static let schemaName = "ContactSearchHitOut"

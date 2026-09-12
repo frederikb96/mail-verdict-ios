@@ -104,8 +104,8 @@ private func textToHTML(_ value: String) -> String {
 }
 
 /// A composer sheet's one presentation state — never a pushed `Route`: a dirty composer blocks
-/// navigation by being modal, the same idiom the UX design names as the native replacement for
-/// the web's own "dirty composer blocks navigation" guard.
+/// navigation by being modal, the native replacement for the web's own "dirty composer blocks
+/// navigation" guard.
 public struct ComposeIntent: Identifiable, Hashable, Sendable {
     public enum Kind: Hashable, Sendable {
         case new(accountId: UUID?)

@@ -5,11 +5,11 @@
     /// Every colour token a SwiftUI screen in this app uses — views never write a colour literal,
     /// they read a case here. Chrome uses iOS system semantics directly (`.primary`,
     /// `.secondaryLabel`, Liquid Glass bars); this type is only for MailVerdict's own marks, the
-    /// ones the web carries its own tokens for (UX design §5).
+    /// ones the web carries its own tokens for.
     ///
     /// `messageCanvas` and the find-highlight colours are the reader's own CSS-level tokens
-    /// (`emailStyles`/`mark.search-match`), not `Color` values — they stay in `Reader/`, that
-    /// block's own files, since nothing here ever renders inside the message `WKWebView`.
+    /// (`emailStyles`/`mark.search-match`), not `Color` values — they stay in `Reader/`'s own
+    /// files, since nothing here ever renders inside the message `WKWebView`.
     public enum MVPalette {
         /// The web's primary is a neutral near-black; a neutral tint here would make buttons
         /// read as plain text rather than controls, so this follows iOS Mail instead.
@@ -17,9 +17,9 @@
 
         public static let unreadDot = Color(light: "#0ea5e9", dark: "#38bdf8")
 
-        /// The IMAP `\Flagged` bit, labelled "Star" on iOS (row 38 note 4) rather than the web's
-        /// "Flag" wording — same bit, different name and colour than either the web's own yellow
-        /// star or iOS Mail's orange flag idiom.
+        /// The IMAP `\Flagged` bit, labelled "Star" on iOS rather than the web's "Flag" wording —
+        /// same bit, different name and colour than either the web's own yellow star or iOS
+        /// Mail's orange flag idiom.
         public static let star = Color.yellow
 
         public static let destructive = Color.red
