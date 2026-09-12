@@ -104,6 +104,12 @@ jobs:
           xcrun simctl spawn "$udid" defaults write com.apple.keyboard.preferences \
             DidShowContinuousPathIntroduction -bool true
 
+          # A reference point for "Collect crash reports" below, rather than a literal date —
+          # `find -newermt` takes a parseable date string on Linux's GNU find but nothing this
+          # portable on the runner's own BSD one, and a timestamp this job minted is already
+          # exactly the boundary that matters.
+          touch /tmp/mac-sweep-start-marker
+
       - name: Install the app
         if: inputs.run_app != false
         run: |
@@ -216,6 +222,13 @@ jobs:
 
             if [ "$reached" -ne 1 ]; then
               echo "::error::screen '$id' never reported ready on /screen/current"
+              # The debug bridge never answering again is exactly what a dead process looks
+              # like too — `launchctl list` is what actually distinguishes "still starting up
+              # slowly" from "crashed and gone", rather than leaving that to be guessed from the
+              # device log, which carries nothing about a crash at all.
+              if ! xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "$bundle"; then
+                echo "screen $id: app crashed"
+              fi
               fail=1
             else
               xcrun simctl io "$udid" screenshot "artifacts/screen-$id.png"
@@ -261,6 +274,19 @@ jobs:
           mkdir -p artifacts
           xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 3m --style compact \
             --predicate 'processImagePath CONTAINS "MailVerdict"' > artifacts/app.log 2>&1 || true
+
+      # `log show`'s own predicate never includes a crash — a crashed process stops logging,
+      # it doesn't log its own crash — so a dead-on-launch screen otherwise leaves nothing in
+      # app.log to explain it. A simulator app crashes into the HOST's own DiagnosticReports,
+      # not anywhere inside the simulator, because it runs as a host process.
+      - name: Collect crash reports
+        if: always() && inputs.run_app != false
+        run: |
+          mkdir -p artifacts/crashes
+          find ~/Library/Logs/DiagnosticReports -maxdepth 1 -iname '*MailVerdict*' \
+            -newer /tmp/mac-sweep-start-marker -exec cp {} artifacts/crashes/ \; 2>/dev/null || true
+          count=$(find artifacts/crashes -type f 2>/dev/null | wc -l | tr -d ' ')
+          echo "collected ${count} crash report file(s)"
 
       - uses: actions/upload-artifact@v4
         if: always()
