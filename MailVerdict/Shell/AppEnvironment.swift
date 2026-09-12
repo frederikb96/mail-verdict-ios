@@ -1,6 +1,7 @@
 import Foundation
 import MailVerdictKit
 import Observation
+import SwiftUI
 
 /// Where the app's connection lives.
 ///
@@ -25,6 +26,26 @@ final class AppEnvironment {
         didSet { defaults.set(backendURL, forKey: Self.backendURLKey) }
     }
 
+    /// The `NavigationStack`'s own path — restored from `MVPersistedPath` at launch (already
+    /// stripped of any trailing reader, so cold launch is never deeper than the list) and saved
+    /// back on every change by whoever owns the stack (`RootView`).
+    var navigationPath: [Route]
+
+    /// The composer's one sheet-presentation slot — `nil` means no composer is showing. Every
+    /// entry point (compose buttons, Reply/Reply All/Forward, a `mailto:` link, a collapsed
+    /// draft, Undo Send, "New Message to…") sets this rather than pushing a `Route`, since a
+    /// composer is a modal, not a navigation destination.
+    var presentedCompose: ComposeIntent?
+
+    let toasts = MVToastStore()
+
+    /// Device-local, applied to the whole window (UX design's Settings > Appearance) — `nil`
+    /// means "follow the system", which is also the default before anyone has ever changed it.
+    var colorScheme: ColorScheme? {
+        get { Self.colorScheme(from: defaults.string(forKey: Self.colorSchemeKey)) }
+        set { defaults.set(Self.string(from: newValue), forKey: Self.colorSchemeKey) }
+    }
+
     private let defaults: UserDefaults
     private let credentials: MVKeychainCredentialStore
 
@@ -36,6 +57,7 @@ final class AppEnvironment {
     }
 
     private static let backendURLKey = "backendURL"
+    private static let colorSchemeKey = "colorScheme"
 
     init(
         defaults: UserDefaults = .standard,
@@ -45,6 +67,7 @@ final class AppEnvironment {
         self.credentials = credentials
         self.backendURL = defaults.string(forKey: Self.backendURLKey) ?? ""
         self.router = Router(gate: .needsConfiguration)
+        self.navigationPath = MVPersistedPath.load(from: defaults)
 
         if credentials.read() != nil {
             connect()
@@ -78,6 +101,19 @@ final class AppEnvironment {
         router = Router(gate: .needsConfiguration)
     }
 
+    /// Persists `navigationPath` — called from `RootView`'s own `.onChange`, not automatically
+    /// on every mutation, so a rapid sequence of pushes during one navigation gesture writes once
+    /// rather than once per frame.
+    func persistNavigationPath() {
+        MVPersistedPath.save(navigationPath, to: defaults)
+    }
+
+    /// `scenePhase` going `.active` is where a later block's own stores do their bounded re-read
+    /// of every open list plus a counts refetch (UX design §2.0's "Foreground return" rule) —
+    /// nothing to bind that to yet, since no store exists, but the call site belongs here rather
+    /// than in `RootView` so a store added later has one place to subscribe from.
+    func handleScenePhaseChange(to phase: ScenePhase) {}
+
     @discardableResult
     private func connect() -> Bool {
         guard
@@ -102,5 +138,21 @@ final class AppEnvironment {
         lastAuthFailure = nil
         router.gate = .ready
         return true
+    }
+
+    private static func colorScheme(from stored: String?) -> ColorScheme? {
+        switch stored {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
+
+    private static func string(from colorScheme: ColorScheme?) -> String? {
+        switch colorScheme {
+        case .light: return "light"
+        case .dark: return "dark"
+        default: return nil
+        }
     }
 }
