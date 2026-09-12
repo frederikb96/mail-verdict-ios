@@ -1115,6 +1115,14 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     }
 }
 
+extension MVMailListStore: ReaderConversationScopedSource {
+    /// Grouped by conversation, a row stands for its whole conversation within this list's
+    /// folders; ungrouped, a row is one message.
+    public func conversationFolderIds(for messageId: UUID) -> [UUID]? {
+        identity.threaded ? scopeFolderIds : nil
+    }
+}
+
 extension MessageSummary {
     /// A search hit as a list row — the backend's `SearchResult` is `MessageSummary` plus how the
     /// query matched, which the quick filter does not show.
