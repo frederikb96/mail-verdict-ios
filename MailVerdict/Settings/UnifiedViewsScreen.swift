@@ -10,5 +10,8 @@ struct UnifiedViewsScreen: View {
         Text("Unified Views")
             .navigationTitle("Unified Views")
             .accessibilityIdentifier("unifiedviews-stub")
+            #if DEBUG
+                .screenshotReady(route: .unifiedViews, environment: environment, connection: connection)
+            #endif
     }
 }

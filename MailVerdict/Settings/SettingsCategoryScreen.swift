@@ -12,5 +12,10 @@ struct SettingsCategoryScreen: View {
         Text(category)
             .navigationTitle(category.capitalized)
             .accessibilityIdentifier("settings-category-stub")
+            #if DEBUG
+                .screenshotReady(
+                    route: .settingsCategory(category), environment: environment, connection: connection
+                )
+            #endif
     }
 }

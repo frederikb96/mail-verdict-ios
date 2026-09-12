@@ -61,6 +61,18 @@ struct MailVerdictApp: App {
                 return .encoding(DebugLogBuffer.shared.snapshot(minimumLevel: level, limit: limit))
             }
 
+            // Every registered screenshot id, and the id the screen actually on top reported —
+            // see ScreenshotRegistry.swift. `/screen/current` answers `{"id": null}` until some
+            // screen calls `ScreenshotReporter.shared.report`, which only the destination screen
+            // itself does once it has truly appeared, never the launcher that navigated to it.
+            router.register("GET", "/screens") { _ in
+                .encoding(["screens": ScreenshotRegistry.all.map(\.id)])
+            }
+
+            router.register("GET", "/screen/current") { _ in
+                .encoding(["id": ScreenshotReporter.shared.currentId])
+            }
+
             for registrar in featureRegistrars { registrar(&router) }
 
             routeNames = router.registeredRoutes

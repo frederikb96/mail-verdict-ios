@@ -11,5 +11,8 @@ struct NotificationSettingsScreen: View {
         Text("New Mail Notifications")
             .navigationTitle("New Mail Notifications")
             .accessibilityIdentifier("notificationsettings-stub")
+            #if DEBUG
+                .screenshotReady(route: .notificationSettings, environment: environment, connection: connection)
+            #endif
     }
 }
