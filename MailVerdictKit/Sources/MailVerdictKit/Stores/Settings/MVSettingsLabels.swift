@@ -81,6 +81,21 @@ public enum MVSettingsLabels {
     }
 }
 
+extension MVSettingsCategory {
+    /// The screen title for this category's generic form — "Filing and Notifications" for `mail`
+    /// rather than a bare capitalised key, matching the card headings on the web's settings page.
+    public var displayTitle: String {
+        switch self {
+        case .ai: return "AI"
+        case .semantic: return "Semantic Search"
+        case .retry: return "Retry"
+        case .pipeline: return "Pipeline"
+        case .outbox: return "Outbox"
+        case .mail: return "Filing and Notifications"
+        }
+    }
+}
+
 /// Which fields a category's GET response carries that the generic renderer must never draw as an
 /// editable field — the `ai` category's write-only key status, computed on every read and
 /// stripped from any write (`settings_api.py`'s `_AI_COMPUTED_FIELDS`). `calendar` has its own

@@ -14,7 +14,6 @@ public final class MVSettingsCategoryStore {
     public enum LoadState: Equatable {
         case loading
         case loaded
-        case missing
         case failed(String)
     }
 
