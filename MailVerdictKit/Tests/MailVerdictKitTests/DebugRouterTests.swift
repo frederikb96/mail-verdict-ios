@@ -123,6 +123,22 @@
             XCTAssertEqual(buffer.snapshot(minimumLevel: .warning).map(\.message), ["w", "e"])
             XCTAssertEqual(buffer.snapshot(minimumLevel: .debug).count, 4)
         }
+
+        /// `since` is what lets a caller that relaunches this process repeatedly (a Mac
+        /// workflow's fixture sweep) ask for only the current launch's own entries, rather than
+        /// trust that the previous launch's process and bridge are actually gone by the time it
+        /// asks.
+        func testSinceExcludesEntriesLoggedBeforeItAndIncludesThoseAfter() {
+            let buffer = DebugLogBuffer()
+            buffer.append(.info, "test", "before")
+            let since = Date()
+            // A real clock only moves forward between two calls if some time actually passes —
+            // the boundary this test checks is exact ordering, not a fixed gap.
+            Thread.sleep(forTimeInterval: 0.01)
+            buffer.append(.info, "test", "after")
+
+            XCTAssertEqual(buffer.snapshot(since: since).map(\.message), ["after"])
+        }
     }
 
 #endif

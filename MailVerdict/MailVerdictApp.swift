@@ -65,7 +65,11 @@ struct MailVerdictApp: App {
             router.register("GET", "/logs") { request in
                 let level = request.query["level"].flatMap(DebugLogBuffer.Level.init(rawValue:)) ?? .debug
                 let limit = request.query["limit"].flatMap(Int.init) ?? 100
-                return .encoding(DebugLogBuffer.shared.snapshot(minimumLevel: level, limit: limit))
+                // A Unix epoch (seconds, `date -u +%s`), not this bridge's own JSON date
+                // encoding — the caller is a plain shell script, and the comparison happens
+                // here against a `Date` either way.
+                let since = request.query["since"].flatMap(Double.init).map(Date.init(timeIntervalSince1970:))
+                return .encoding(DebugLogBuffer.shared.snapshot(minimumLevel: level, limit: limit, since: since))
             }
 
             // Every registered screenshot id, and the id the screen actually on top reported —

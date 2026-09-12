@@ -174,7 +174,7 @@ jobs:
         if: inputs.run_app != false && (inputs.configuration || 'Debug') == 'Debug'
         run: |
           set -o pipefail
-          mkdir -p artifacts
+          mkdir -p artifacts artifacts/logs
           udid="${{ steps.sim.outputs.udid }}"
           bundle=com.frederikberg.mailverdict
           fail=0
@@ -225,6 +225,10 @@ jobs:
 
           while IFS= read -r id; do
             [ -n "$id" ] || continue
+            # A fresh process starts this ring empty anyway, but `since` is what keeps this
+            # screen's own dump from also carrying the previous screen's entries if its process
+            # (and bridge) were not entirely gone by the time this one launched.
+            since=$(date -u +%s)
             xcrun simctl launch "$udid" "$bundle" -MVFixtureMode YES -MVFixtureScreen "$id" > /dev/null
 
             reached=0
@@ -267,6 +271,13 @@ jobs:
                 fail=1
               fi
             fi
+
+            # Before terminate_and_wait, which is what makes this the last chance to ask this
+            # screen's own process anything — /logs was otherwise only ever read once, before
+            # this loop even starts, so no feature's own debug markers reached the artifacts for
+            # any individual screen, success or failure alike.
+            curl -sS --max-time 3 "http://127.0.0.1:8765/logs?since=$since&limit=500" \
+              -o "artifacts/logs/$id.json" 2>/dev/null || true
             terminate_and_wait
           done <<< "$ids_list"
 

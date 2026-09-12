@@ -54,11 +54,17 @@
             }
         }
 
-        /// Newest last, so reading it top-to-bottom matches the order things happened.
-        public func snapshot(minimumLevel: Level = .debug, limit: Int = 200) -> [Entry] {
+        /// Newest last, so reading it top-to-bottom matches the order things happened. `since`
+        /// is for a caller that launches this process repeatedly (a Mac workflow's fixture
+        /// sweep, one process per screen) and wants only the current launch's own entries —
+        /// there is nothing here to actually separate by launch, since a fresh process starts
+        /// this buffer empty anyway, but a caller that cannot be completely sure the previous
+        /// launch's process and bridge are gone yet can still ask for "only after I launched
+        /// this one" rather than trust that.
+        public func snapshot(minimumLevel: Level = .debug, limit: Int = 200, since: Date? = nil) -> [Entry] {
             lock.lock()
             defer { lock.unlock() }
-            let filtered = entries.filter { $0.level >= minimumLevel }
+            let filtered = entries.filter { $0.level >= minimumLevel && (since == nil || $0.at > since!) }
             return Array(filtered.suffix(limit))
         }
 
