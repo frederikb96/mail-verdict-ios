@@ -110,30 +110,6 @@ public struct MVListPositionStore: @unchecked Sendable {
     }
 }
 
-/// The list store currently mounted for each scope, so a reader opened from a list pages through
-/// that same store in list order. Held weakly — a list that is gone is simply not found.
-@MainActor
-public final class MVMailListRegistry {
-    public static let shared = MVMailListRegistry()
-
-    private final class WeakStore {
-        weak var store: MVMailListStore?
-        init(_ store: MVMailListStore) { self.store = store }
-    }
-
-    private var stores: [ListScope: WeakStore] = [:]
-
-    public init() {}
-
-    public func register(_ store: MVMailListStore) {
-        stores[store.scope] = WeakStore(store)
-    }
-
-    public func store(for scope: ListScope) -> MVMailListStore? {
-        stores[scope]?.store
-    }
-}
-
 /// Where the controller should put the reader once the first page of a list has landed.
 public enum MVListLanding: Equatable, Sendable {
     /// A message opened from outside the list (a notification, "Show in Folder"): its row a
@@ -161,6 +137,8 @@ public struct MVListContext: Equatable, Sendable {
     public var neverConnectedError: String?
     public var deadOutboxCount = 0
     public var deadOutboxAccountNames: [String] = []
+    /// Contact photos by lower-cased sender address, from each account's photo index.
+    public var avatarPhotos: [String: MVAvatarPhotoSource] = [:]
 
     public init() {}
 }

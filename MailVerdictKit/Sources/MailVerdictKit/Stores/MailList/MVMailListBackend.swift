@@ -40,6 +40,13 @@ public protocol MVMailListBackend: Sendable {
     func fetchSyncStatus(accountId: UUID) async throws -> SyncStatusResponse
     func fetchUnifiedViews() async throws -> [UnifiedFolderResponse]
     func fetchDeadOutbox() async throws -> [OutboxResponse]
+    func fetchContactPhotoIndex(accountId: UUID) async throws -> ContactPhotoIndexResponse
+}
+
+extension MVApiClient {
+    public func fetchContactPhotoIndex(accountId: UUID) async throws -> ContactPhotoIndexResponse {
+        try await getContactPhotoIndex(accountId: accountId)
+    }
 }
 
 extension MVApiClient: MVMailListBackend {
