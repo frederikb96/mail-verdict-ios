@@ -1,21 +1,6 @@
 import Foundation
 
-/// Connection health for one account's header chip — a port of the web's `accountConnectionState`
-/// (`ui/src/hooks/use-sync-status.ts`): PostIMAP retries a failed account unboundedly, so
-/// `state == "error"` alone means "having a bad time", not "dead". Whether a full sync has ever
-/// completed is what tells the two apart.
-public enum MVAccountConnectionState: Sendable, Equatable {
-    case ok
-    case retrying
-    case neverConnected
-}
-
 public enum MailboxesSupport {
-
-    public static func connectionState(accountState: String, lastFullSync: Date?) -> MVAccountConnectionState {
-        guard accountState == "error" else { return .ok }
-        return lastFullSync != nil ? .retrying : .neverConnected
-    }
 
     /// Visible folders in the order `GET /folder-order` already resolved (a saved custom order, or
     /// alphabetical when none was ever saved — the server's own fallback), with INBOX forced to

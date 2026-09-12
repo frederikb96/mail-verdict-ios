@@ -185,8 +185,8 @@ public final class MailboxesStore {
         for account: AccountResponse, apiClient: MVApiClient
     ) async -> MailboxesAccountSection {
         let syncStatus = try? await apiClient.getSyncStatus(accountId: account.id)
-        let connectionState = MailboxesSupport.connectionState(
-            accountState: account.state, lastFullSync: syncStatus?.lastFullSync
+        let connectionState = MVAccountConnectionState.classify(
+            state: account.state, lastFullSync: syncStatus?.lastFullSync != nil
         )
 
         var folders: [MailboxesFolderRow] = []
@@ -308,8 +308,8 @@ public final class MailboxesStore {
             // a failed poll is dropped rather than trusted: it must never downgrade a healthy
             // section to "never connected" on a transient network hiccup.
             guard let syncStatus = try? await apiClient.getSyncStatus(accountId: section.id) else { continue }
-            let state = MailboxesSupport.connectionState(
-                accountState: syncStatus.state, lastFullSync: syncStatus.lastFullSync
+            let state = MVAccountConnectionState.classify(
+                state: syncStatus.state, lastFullSync: syncStatus.lastFullSync != nil
             )
             updated[index] = MailboxesAccountSection(
                 id: section.id, name: section.name, emoji: section.emoji, connectionState: state,

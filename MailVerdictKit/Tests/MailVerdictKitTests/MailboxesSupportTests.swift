@@ -1,26 +1,8 @@
 import XCTest
 @testable import MailVerdictKit
 
-final class MailboxesSupportConnectionStateTests: XCTestCase {
-
-    func testOkWhenTheAccountIsNotInError() {
-        XCTAssertEqual(
-            MailboxesSupport.connectionState(accountState: "active", lastFullSync: nil), .ok
-        )
-    }
-
-    func testRetryingWhenInErrorButAFullSyncHasCompletedBefore() {
-        XCTAssertEqual(
-            MailboxesSupport.connectionState(accountState: "error", lastFullSync: Date()), .retrying
-        )
-    }
-
-    func testNeverConnectedWhenInErrorWithNoCompletedFullSync() {
-        XCTAssertEqual(
-            MailboxesSupport.connectionState(accountState: "error", lastFullSync: nil), .neverConnected
-        )
-    }
-}
+// Connection-state classification (`MVAccountConnectionState.classify`) lives in
+// `Stores/Accounts/` — Mailboxes only consumes it, and its own tests belong with that type.
 
 final class MailboxesSupportOrderFoldersTests: XCTestCase {
 
