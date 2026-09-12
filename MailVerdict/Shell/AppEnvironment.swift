@@ -67,7 +67,9 @@ final class AppEnvironment {
 
     /// Internal, not private — `FixtureBootstrap` seeds this default too, so a fixture-mode
     /// launch has a base URL to build `MVRequestFactory` from without restating the key.
-    static let backendURLKey = "backendURL"
+    /// `nonisolated`: a plain immutable `String` carries no actor state, and `FixtureBootstrap`
+    /// reads it from `MailVerdictApp.init()`, which runs before any actor context exists.
+    nonisolated static let backendURLKey = "backendURL"
     private static let colorSchemeKey = "colorScheme"
 
     init(
