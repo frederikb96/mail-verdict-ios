@@ -17,10 +17,14 @@ public enum QuoteCollapser {
         #"\b(?:gmail_quote|moz-cite-prefix|yahoo_quoted|protonmail_quote)\b"#
     static let ancestorDepth = 2
 
-    /// Everything the wrap puts before the quote; `</details>` closes it.
+    /// Everything the wrap puts before the quote; `</details>` closes it. The visible "•••"
+    /// matches Apple Mail's own disclosure for a folded quote; the two hidden spans are what a
+    /// screen reader announces instead, CSS switching which one exists in the accessibility tree.
     static let openingMarkup =
-        #"<details class="mv-quote"><summary class="mv-quote-toggle"><span class="mv-quote-show">Show quoted text</span>"#
-        + #"<span class="mv-quote-hide">Hide quoted text</span></summary>"#
+        #"<details class="mv-quote"><summary class="mv-quote-toggle">"#
+        + #"<span class="mv-quote-dots" aria-hidden="true">•••</span>"#
+        + #"<span class="mv-quote-show mv-sr-only">Show quoted text</span>"#
+        + #"<span class="mv-quote-hide mv-sr-only">Hide quoted text</span></summary>"#
 
     /// A body with its first reply quote collapsed and nothing else changed but sanitization.
     public static func collapse(_ html: String) -> String {
