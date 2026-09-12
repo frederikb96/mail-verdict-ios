@@ -114,8 +114,7 @@ struct AccountFormView: View {
         case MVAccountFormError.invalidSmtpPort: return "The SMTP port must be a positive number."
         case MVAccountFormError.invalidTrashRetention, MVAccountFormError.invalidJunkRetention:
             return "Retention must be at least 1 day, or left blank for Off."
-        case let mvError as MVError: return mvError.userMessage
-        default: return "\(error)"
+        default: return error.mvUserMessage
         }
     }
 }

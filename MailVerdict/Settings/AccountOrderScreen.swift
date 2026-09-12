@@ -28,8 +28,8 @@ struct AccountOrderScreen: View {
             switch store.state {
             case .loading:
                 ProgressView()
-            case .failed(let message):
-                ErrorStateView(message: message) { Task { await store.load() } }
+            case .failed(let error):
+                ErrorStateView(error: error) { Task { await store.load() } }
             case .loaded:
                 List {
                     ForEach(store.accounts) { account in
@@ -40,9 +40,10 @@ struct AccountOrderScreen: View {
                             do {
                                 try await store.move(fromOffsets: offsets, toOffset: destination)
                             } catch {
-                                let message = (error as? MVError)?.userMessage ?? "\(error)"
                                 environment.toasts.show(
-                                    .init(variant: .error, message: "Could not save the order: \(message)"))
+                                    .init(
+                                        variant: .error,
+                                        message: "Could not save the order: \(error.mvUserMessage)"))
                             }
                         }
                     }

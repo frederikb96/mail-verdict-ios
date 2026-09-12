@@ -48,7 +48,7 @@ import MailVerdictKit
                     """#.utf8)
             }
             guard let store = await poll({ AccountsDebugServices.shared.activeAccountDetailStore }) else { return }
-            _ = await poll { store.state == .loading ? nil : true }
+            _ = await poll { store.state.isLoading ? nil : true }
             if case .failed = store.state { await store.load() }
         }
 

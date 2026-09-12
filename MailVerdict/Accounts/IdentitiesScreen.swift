@@ -32,8 +32,8 @@ struct IdentitiesScreen: View {
             switch store.state {
             case .loading:
                 ProgressView()
-            case .failed(let message):
-                ErrorStateView(message: message) { Task { await store.load() } }
+            case .failed(let error):
+                ErrorStateView(error: error) { Task { await store.load() } }
             case .loaded:
                 List {
                     Section {
@@ -81,8 +81,8 @@ struct IdentitiesScreen: View {
             newAddress = ""
             newDisplayName = ""
         } catch {
-            let message = (error as? MVError)?.userMessage ?? "\(error)"
-            environment.toasts.show(.init(variant: .error, message: "Could not add the identity: \(message)"))
+            environment.toasts.show(
+                .init(variant: .error, message: "Could not add the identity: \(error.mvUserMessage)"))
         }
     }
 }
