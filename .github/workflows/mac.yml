@@ -308,6 +308,17 @@ jobs:
               if ! xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "$bundle"; then
                 echo "screen $id: app crashed"
               fi
+              # Whatever is actually on screen when a screen fails to settle, captured anyway —
+              # and whether the main actor itself ever answers tells "pushed but its view never
+              # appeared" apart from "nothing will ever appear, the main actor is stuck", which a
+              # bridge route answering from its own queue (every other one here) cannot.
+              xcrun simctl io "$udid" screenshot "artifacts/screen-$id-notready.png" || true
+              probe=$(curl -sS --max-time 3 "http://127.0.0.1:8765/main-actor-probe" 2>/dev/null || echo "")
+              if [ -n "$probe" ]; then
+                echo "screen $id: main-actor-probe answered: $probe"
+              else
+                echo "screen $id: main-actor-probe did not answer within 3s — main actor may be stuck"
+              fi
               fail=1
             else
               xcrun simctl io "$udid" screenshot "artifacts/screen-$id.png"

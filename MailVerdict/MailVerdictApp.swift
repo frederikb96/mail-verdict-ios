@@ -91,6 +91,18 @@ struct MailVerdictApp: App {
                 .encoding(["misses": MVFixtureURLProtocol.misses])
             }
 
+            // This bridge answers entirely off its own dispatch queue, never the main thread —
+            // every route above proves the process is alive, never that SwiftUI's own executor
+            // still is. `DispatchQueue.main.sync` blocking here for up to the caller's own
+            // timeout (never this route's problem to bound) is what tells "pushed but its view
+            // never appeared" apart from "the main actor itself is stuck and nothing will ever
+            // appear" — a screen that never reports ready could be either.
+            router.register("GET", "/main-actor-probe") { _ in
+                let start = Date()
+                DispatchQueue.main.sync {}
+                return .encoding(["responsive": true, "seconds": Date().timeIntervalSince(start)])
+            }
+
             for registrar in featureRegistrars { registrar(&router) }
 
             routeNames = router.registeredRoutes
