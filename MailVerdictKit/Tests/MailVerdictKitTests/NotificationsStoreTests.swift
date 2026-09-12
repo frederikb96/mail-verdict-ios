@@ -89,4 +89,28 @@ final class NotificationsStoreTests: XCTestCase {
         await store.acknowledgeNotification(accountId: accountId, notificationId: 1)
         XCTAssertEqual(store.notifications.map(\.id), [2])
     }
+
+    func testApplyingAlertsChangedReloads() async throws {
+        let store = makeStore()
+        let mailId = UUID()
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:], body: Data("[\(alertJSON(id: mailId, kind: "mail"))]".utf8))
+
+        store.apply([.alertsChanged])
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(store.mailAlerts.map(\.id), [mailId])
+    }
+
+    func testApplyingAnUnrelatedInvalidationDoesNothing() async throws {
+        let store = makeStore()
+        // No stub registered — a reload here would fail with `.badServerResponse` and the test
+        // would catch nothing changing, same observable outcome either way, so this also proves
+        // no network call was made by asserting the store stays in its untouched initial state.
+        store.apply([.settingsChanged(category: "mail")])
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(store.mailAlerts, [])
+        XCTAssertNil(store.errorMessage)
+    }
 }
