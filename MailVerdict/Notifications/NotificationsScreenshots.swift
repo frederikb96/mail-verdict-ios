@@ -1,9 +1,10 @@
 #if DEBUG
 
-    /// The bell's own screenshot entries — empty until S6 replaces the stub with the real
-    /// Mail/System tabs.
+    /// The bell's own screenshot entries.
     enum NotificationsScreenshots {
-        static let entries: [MVScreenshotEntry] = []
+        static let entries: [MVScreenshotEntry] = [
+            MVScreenshotEntry(id: "notifications-mail-tab", destination: .route(.notifications))
+        ]
     }
 
 #endif

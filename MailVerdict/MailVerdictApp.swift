@@ -39,6 +39,7 @@ struct MailVerdictApp: App {
         /// `MailVerdictApp.swift`; `make()` below needs no other change to pick it up.
         private static let featureRegistrars: [@Sendable (inout DebugRouter) -> Void] = [
             MailboxesDebugRoutes.register, SearchDebugRoutes.register, SpamReviewDebugRoutes.register,
+            NotificationsDebugRoutes.register,
         ]
 
         static func make() -> DebugRouter {
