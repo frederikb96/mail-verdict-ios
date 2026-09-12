@@ -40,6 +40,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Inside a `container:` job `run:` defaults to `sh`, which has no `pipefail`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   checks:
     if: github.event_name != 'schedule'
@@ -57,6 +62,11 @@ jobs:
           apt-get install -y --no-install-recommends ca-certificates curl git python3 zstd
 
       - uses: actions/checkout@v6
+
+      # The workspace belongs to the runner's user and the container runs as root, so git refuses
+      # it as unsafe in every later step; checkout only marks it safe for its own commands.
+      - name: Mark the workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       # Part of the cache key, so a `.build` produced by a different compiler is never restored
       # into this one — its module files would be rejected, or worse, half-reused.
@@ -135,6 +145,11 @@ jobs:
           apt-get install -y --no-install-recommends ca-certificates curl git
 
       - uses: actions/checkout@v6
+
+      # The workspace belongs to the runner's user and the container runs as root, so git refuses
+      # it as unsafe in every later step; checkout only marks it safe for its own commands.
+      - name: Mark the workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Fetch mail-verdict main's own contract snapshot over the vendored one
         run: |

@@ -109,7 +109,8 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
             if allowed != imagesAllowed {
                 rebuild(imagesAllowed: allowed, makeDocument)
             } else {
-                Task { try? await call(.replaceBlock, ["id": id, "html": html]) }
+                // The script's result is discarded: a task's value must be `Sendable`, and it is `Any?`.
+                Task { _ = try? await call(.replaceBlock, ["id": id, "html": html]) }
             }
         }
     }
