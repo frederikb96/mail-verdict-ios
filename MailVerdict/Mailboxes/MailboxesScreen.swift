@@ -76,6 +76,9 @@ struct MailboxesScreen: View {
                 healthStatus = (error as? MVError)?.userMessage ?? "\(error)"
             }
         }
+        #if DEBUG
+            .screenshotReadyRoot(environment: environment, connection: connection)
+        #endif
     }
 }
 

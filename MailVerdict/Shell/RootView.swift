@@ -61,7 +61,37 @@ private struct ConnectedShell: View {
         .sheet(item: Bindable(environment).presentedCompose) { intent in
             ComposerScreen(intent: intent, environment: environment, connection: connection)
         }
+        #if DEBUG
+            .task {
+                navigateToFixtureScreenshotTargetIfNeeded()
+            }
+        #endif
     }
+
+    #if DEBUG
+        /// Fixture mode's own navigation trigger — `-MVFixtureScreen <id>` names a
+        /// `ScreenshotRegistry` entry, and a `.route`/`.compose` entry needs this push or sheet
+        /// presentation before its destination screen can ever appear and report itself ready.
+        /// `.root` needs nothing: Mailboxes is already on screen. Never reports readiness
+        /// itself — that stays the destination screen's own job (`View.screenshotReady*`), so a
+        /// navigation that silently fails to land still times out `/screen/current` instead of
+        /// lying about it.
+        private func navigateToFixtureScreenshotTargetIfNeeded() {
+            guard MVFixtureLaunch.isEnabled(), let targetId = MVFixtureLaunch.targetScreenId(),
+                let entry = ScreenshotRegistry.entry(id: targetId)
+            else {
+                return
+            }
+            switch entry.destination {
+            case .root:
+                break
+            case .route(let route):
+                environment.navigationPath = [route]
+            case .compose(let intent):
+                environment.presentedCompose = intent
+            }
+        }
+    #endif
 
     @ViewBuilder
     private func destination(for route: Route) -> some View {

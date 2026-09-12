@@ -11,5 +11,8 @@ struct AccountsScreen: View {
         Text("Accounts")
             .navigationTitle("Accounts")
             .accessibilityIdentifier("accounts-stub")
+            #if DEBUG
+                .screenshotReady(route: .accounts, environment: environment, connection: connection)
+            #endif
     }
 }

@@ -105,10 +105,9 @@ jobs:
           [ -n "$app" ] || { echo 'build produced no .app'; exit 1; }
           xcrun simctl install "$udid" "$app"
 
-      # The debug bridge and its routes are `#if DEBUG`, so this only runs for Debug. Nothing to
-      # screenshot by named screen yet — this repo has no feature screens — so the one screenshot
-      # here is just whatever the app shows on a cold launch (the connection screen), plus proof
-      # the bridge itself answers.
+      # The debug bridge and its routes are `#if DEBUG`, so this only runs for Debug. A plain,
+      # non-fixture launch — this is the sign-in screen by design (no Keychain credential exists
+      # on a fresh simulator), proof the real (non-fixture) launch path still reaches it.
       - name: Launch and ask the debug bridge what it thinks
         if: inputs.run_app != false && (inputs.configuration || 'Debug') == 'Debug'
         run: |
@@ -149,6 +148,81 @@ jobs:
           xcrun simctl terminate "$udid" "$bundle" || true
 
           [ "$fail" -eq 0 ] || { echo 'one or more checks failed — see the warnings above'; exit 1; }
+
+      # Every registered screen, captured by name. `-MVFixtureMode YES` connects to the fixture
+      # backend and skips sign-in straight into the shell (no network, no real credential); a
+      # second relaunch per id adds `-MVFixtureScreen <id>`, which the app reads to navigate
+      # there itself. `/screen/current` is set by the destination screen's own body once it has
+      # genuinely appeared (never by this workflow, and never by the app's own launcher) — so
+      # polling it rather than sleeping-and-hoping is what catches a screen that silently never
+      # rendered (a sign-in gate fixture mode failed to skip, a crash, a broken route) as a
+      # failure instead of a screenshot of the wrong thing.
+      - name: Fixture-mode screenshot sweep
+        if: inputs.run_app != false && (inputs.configuration || 'Debug') == 'Debug'
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          udid="${{ steps.sim.outputs.udid }}"
+          bundle=com.frederikberg.mailverdict
+          fail=0
+
+          xcrun simctl terminate "$udid" "$bundle" || true
+          xcrun simctl launch "$udid" "$bundle" -MVFixtureMode YES > /dev/null
+
+          ok=0
+          for attempt in $(seq 1 10); do
+            if curl -sS --max-time 3 "http://127.0.0.1:8765/screens" -o artifacts/screens.json; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "::error::debug bridge never answered /screens in fixture mode"
+            xcrun simctl terminate "$udid" "$bundle" || true
+            exit 1
+          fi
+
+          # A plain `while read` rather than `mapfile` — the macOS runner's default `/bin/bash`
+          # is the ancient Apple-shipped 3.2, which does not have `mapfile` (bash 4+ only).
+          ids_list=$(python3 -c "import json; print('\n'.join(json.load(open('artifacts/screens.json'))['screens']))")
+          xcrun simctl terminate "$udid" "$bundle" || true
+
+          if [ -z "$ids_list" ]; then
+            echo "no registered screenshot ids yet — nothing to sweep"
+          fi
+
+          while IFS= read -r id; do
+            [ -n "$id" ] || continue
+            xcrun simctl launch "$udid" "$bundle" -MVFixtureMode YES -MVFixtureScreen "$id" > /dev/null
+
+            reached=0
+            for attempt in $(seq 1 15); do
+              current=$(curl -sS --max-time 3 "http://127.0.0.1:8765/screen/current" 2>/dev/null \
+                | python3 -c "import json,sys; print(json.load(sys.stdin).get('id') or '')" 2>/dev/null || echo "")
+              if [ "$current" = "$id" ]; then
+                reached=1
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$reached" -ne 1 ]; then
+              echo "::error::screen '$id' never reported ready on /screen/current"
+              fail=1
+            else
+              xcrun simctl io "$udid" screenshot "artifacts/screen-$id.png"
+              bytes=$(stat -f %z "artifacts/screen-$id.png")
+              echo "$id: ${bytes} bytes"
+              if [ "$bytes" -le 20000 ]; then
+                echo "::warning::screenshot for '$id' suspiciously small — the screen may be blank"
+                fail=1
+              fi
+            fi
+            xcrun simctl terminate "$udid" "$bundle" || true
+          done <<< "$ids_list"
+
+          [ "$fail" -eq 0 ] || { echo 'one or more fixture screenshots failed — see above'; exit 1; }
 
       # No debug bridge in Release — this is the plain "does it draw anything" check the Debug
       # path above replaces with a bridge-verified one.
