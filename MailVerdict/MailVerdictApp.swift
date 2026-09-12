@@ -100,7 +100,7 @@ struct MailVerdictApp: App {
             router.register("GET", "/main-actor-probe") { _ in
                 let start = Date()
                 DispatchQueue.main.sync {}
-                return .encoding(["responsive": true, "seconds": Date().timeIntervalSince(start)])
+                return .encoding(MainActorProbe(responsive: true, seconds: Date().timeIntervalSince(start)))
             }
 
             for registrar in featureRegistrars { registrar(&router) }
@@ -114,6 +114,11 @@ struct MailVerdictApp: App {
         // anything registered after it) exists, so reading `router.registeredRoutes` from inside
         // it would answer with whatever was registered up to that point — not the full list.
         private nonisolated(unsafe) static var routeNames: [String] = []
+    }
+
+    private struct MainActorProbe: Encodable {
+        let responsive: Bool
+        let seconds: TimeInterval
     }
 
 #endif
