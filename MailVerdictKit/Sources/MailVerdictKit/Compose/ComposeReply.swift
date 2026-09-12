@@ -35,14 +35,15 @@ public enum ComposeReply {
         to source: MessageDetail, ownAddresses: [String], mode: ComposeReplyMode,
         formatDate: (Date?) -> String = MVDateFormat.fullDate
     ) -> ComposeReplyDraft {
+        // RFC 5322: a reply goes to Reply-To when the message names one, otherwise to From.
         let senderEmail = extractEmail(source.fromAddr)
-        var exclude = Set(ownAddresses.map { extractEmail($0).lowercased() })
-        let to = dedupe(senderEmail.isEmpty ? [] : [senderEmail], excluding: [])
+        let replyTo = splitAddressHeader(source.replyTo).map(extractEmail).filter { !$0.isEmpty }
+        let to = dedupe(replyTo.isEmpty ? (senderEmail.isEmpty ? [] : [senderEmail]) : replyTo, excluding: [])
 
         var cc: [String] = []
         if mode == .replyAll {
             let others = ((source.toAddrs?.addresses ?? []) + (source.ccAddrs?.addresses ?? [])).map(extractEmail)
-            exclude.insert(senderEmail.lowercased())
+            let exclude = Set(ownAddresses.map { extractEmail($0).lowercased() } + to.map { $0.lowercased() })
             cc = dedupe(others, excluding: exclude)
         }
 
@@ -95,6 +96,31 @@ public enum ComposeReply {
     static func quotedPlainText(body: String?, attribution: String) -> String {
         let quoted = (body ?? "").components(separatedBy: "\n").map { "> \($0)" }.joined(separator: "\n")
         return "\n\n\(attribution)\n\(quoted)"
+    }
+
+    /// One address per entry of a header that may list several. A comma or semicolon inside a
+    /// quoted display name (`"Doe, Jane" <jane@x.test>`) or angle brackets separates nothing.
+    static func splitAddressHeader(_ header: String?) -> [String] {
+        guard let header else { return [] }
+        var entries: [String] = []
+        var current = ""
+        var inQuotes = false
+        var inAngle = false
+        for character in header {
+            switch character {
+            case "\"": inQuotes.toggle()
+            case "<" where !inQuotes: inAngle = true
+            case ">" where !inQuotes: inAngle = false
+            case "," where !inQuotes && !inAngle, ";" where !inQuotes && !inAngle:
+                entries.append(current)
+                current = ""
+                continue
+            default: break
+            }
+            current.append(character)
+        }
+        entries.append(current)
+        return entries.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
     /// Case-insensitive, first occurrence wins, empty entries dropped.

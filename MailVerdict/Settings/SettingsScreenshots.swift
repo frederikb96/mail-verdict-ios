@@ -1,3 +1,4 @@
+import Foundation
 import MailVerdictKit
 
 #if DEBUG
@@ -5,46 +6,37 @@ import MailVerdictKit
     /// Settings' own screenshot entries: the top-level screen, one generic category form (`ai`,
     /// since it is also the one carrying the provider-key section), and Unified Views setup.
     ///
-    /// `entries`' own initializer is where the fixture routes these screens call get registered —
-    /// `ScreenshotRegistry.all` forces every feature's `entries` to evaluate the moment fixture
-    /// mode looks up its first entry (`RootView`'s own navigation trigger, before any destination
-    /// screen exists to fetch anything), so by the time this screen's `.task` actually runs the
-    /// route table already has an answer for it.
+    /// Each entry's `prepare` registers only the fixture routes *that screen* calls, never at
+    /// `entries`' own evaluation — `ScreenshotRegistry.all` forces every feature's `entries` to
+    /// evaluate together the moment fixture mode looks up the target id, so registering routes
+    /// there would answer another feature's request to the same path (`/api/accounts`, most
+    /// concretely) in every single-screen launch, not only this one's. `prepare` runs only for
+    /// the matching entry, and only once the destination screen already exists.
+    ///
+    /// `prepare` is itself synchronous work plus a short `Task.sleep` — no real network inside
+    /// it, so the screen's own `.screenshotReady` task (declared ahead of its data-loading
+    /// `.task` in every screen here) runs to completion without yielding until that sleep, which
+    /// is the one genuine suspension point. That is what hands the main actor back to the
+    /// screen's own loading task and gives it time to finish before `report(entry.id)` tells the
+    /// sweep this screen is ready to capture.
     enum SettingsScreenshots {
-        static let entries: [MVScreenshotEntry] = {
-            registerFixtures()
-            return [
-                MVScreenshotEntry(id: "settings-main", destination: .route(.settings)),
-                MVScreenshotEntry(
-                    id: "settings-category-ai",
-                    destination: .route(.settingsCategory(MVSettingsCategory.ai.rawValue))),
-                MVScreenshotEntry(id: "unified-views", destination: .route(.unifiedViews)),
-            ]
-        }()
+        static let entries: [MVScreenshotEntry] = [
+            MVScreenshotEntry(id: "settings-main", destination: .route(.settings), prepare: prepareSettingsMain),
+            MVScreenshotEntry(
+                id: "settings-category-ai",
+                destination: .route(.settingsCategory(MVSettingsCategory.ai.rawValue)),
+                prepare: prepareSettingsCategoryAI),
+            MVScreenshotEntry(
+                id: "unified-views", destination: .route(.unifiedViews), prepare: prepareUnifiedViews),
+        ]
 
-        private static func registerFixtures() {
-            MVFixtureURLProtocol.register(method: "GET", path: "/api/accounts") {
-                Data(
-                    #"""
-                    [
-                      {"id":"11111111-1111-1111-1111-111111111111","name":"Posteo",
-                       "imap_host":"posteo.de","imap_port":993,"imap_user":"me@posteo.de",
-                       "is_active":true,"state":"active","state_error":null,
-                       "created_at":"2025-01-10T08:00:00+00:00","updated_at":"2026-01-15T10:30:00+00:00",
-                       "emoji":"📧","spam_enabled":true,"trash_retention_days":30,"junk_retention_days":14},
-                      {"id":"22222222-2222-2222-2222-222222222222","name":"Work",
-                       "imap_host":"imap.work.example","imap_port":993,"imap_user":"me@work.example",
-                       "is_active":true,"state":"active","state_error":null,
-                       "created_at":"2025-03-01T08:00:00+00:00","updated_at":"2026-01-15T10:30:00+00:00",
-                       "emoji":"💼","spam_enabled":false,"trash_retention_days":null,"junk_retention_days":null}
-                    ]
-                    """#.utf8)
-            }
-            MVFixtureURLProtocol.register(method: "GET", path: "/api/account-order") {
-                Data(
-                    #"{"order":["11111111-1111-1111-1111-111111111111","22222222-2222-2222-2222-222222222222"]}"#
-                        .utf8)
-            }
+        private static func prepareSettingsMain(_: AppEnvironment, _: AppEnvironment.Connection) async {
+            registerAccountsFixture()
+            registerAccountOrderFixture()
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+
+        private static func prepareSettingsCategoryAI(_: AppEnvironment, _: AppEnvironment.Connection) async {
             MVFixtureURLProtocol.register(method: "GET", path: "/api/settings/ai") {
                 Data(
                     #"""
@@ -54,6 +46,11 @@ import MailVerdictKit
                      "openai_api_key_configured":false,"openai_api_key_hint":null}
                     """#.utf8)
             }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+
+        private static func prepareUnifiedViews(_: AppEnvironment, _: AppEnvironment.Connection) async {
+            registerAccountsFixture()
             MVFixtureURLProtocol.register(method: "GET", path: "/api/unified/folders") {
                 Data(
                     #"""
@@ -83,6 +80,37 @@ import MailVerdictKit
                 method: "GET", path: "/api/accounts/22222222-2222-2222-2222-222222222222/folders"
             ) {
                 Data("[]".utf8)
+            }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+
+        /// Two accounts, shared by every entry here that lists accounts at all — kept as one
+        /// function so the same fixture data reads the same way wherever it shows up.
+        private static func registerAccountsFixture() {
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/accounts") {
+                Data(
+                    #"""
+                    [
+                      {"id":"11111111-1111-1111-1111-111111111111","name":"Posteo",
+                       "imap_host":"posteo.de","imap_port":993,"imap_user":"me@posteo.de",
+                       "is_active":true,"state":"active","state_error":null,
+                       "created_at":"2025-01-10T08:00:00+00:00","updated_at":"2026-01-15T10:30:00+00:00",
+                       "emoji":"📧","spam_enabled":true,"trash_retention_days":30,"junk_retention_days":14},
+                      {"id":"22222222-2222-2222-2222-222222222222","name":"Work",
+                       "imap_host":"imap.work.example","imap_port":993,"imap_user":"me@work.example",
+                       "is_active":true,"state":"active","state_error":null,
+                       "created_at":"2025-03-01T08:00:00+00:00","updated_at":"2026-01-15T10:30:00+00:00",
+                       "emoji":"💼","spam_enabled":false,"trash_retention_days":null,"junk_retention_days":null}
+                    ]
+                    """#.utf8)
+            }
+        }
+
+        private static func registerAccountOrderFixture() {
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/account-order") {
+                Data(
+                    #"{"order":["11111111-1111-1111-1111-111111111111","22222222-2222-2222-2222-222222222222"]}"#
+                        .utf8)
             }
         }
     }

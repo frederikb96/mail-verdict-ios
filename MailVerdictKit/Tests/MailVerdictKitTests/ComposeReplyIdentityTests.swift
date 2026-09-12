@@ -11,12 +11,12 @@ final class ComposeReplyIdentityTests: XCTestCase {
         from: String = "Ann Example <ann@example.com>", to: [String] = ["me@example.com"], cc: [String] = [],
         subject: String? = "Plans", messageId: String? = "<m2@example.com>",
         references: [String]? = ["<m1@example.com>"],
-        bodyText: String? = "line one\nline two"
+        bodyText: String? = "line one\nline two", replyTo: String? = nil
     ) -> MessageDetail {
         MessageDetail(
             id: UUID(), accountId: accountId, folderId: UUID(), threadId: UUID(), subject: subject, fromAddr: from,
             toAddrs: .array(to), receivedAt: Date(timeIntervalSince1970: 0), snippet: nil, messageId: messageId,
-            ccAddrs: .array(cc), bccAddrs: nil, replyTo: nil, inReplyTo: nil, references: references,
+            ccAddrs: .array(cc), bccAddrs: nil, replyTo: replyTo, inReplyTo: nil, references: references,
             bodyText: bodyText, bodyHtml: nil, sizeBytes: nil, createdAt: Date(), verdict: nil)
     }
 
@@ -39,6 +39,24 @@ final class ComposeReplyIdentityTests: XCTestCase {
         XCTAssertEqual(draft.inReplyTo, "<m2@example.com>")
         XCTAssertEqual(draft.attribution, "On D, Ann Example wrote:")
         XCTAssertEqual(draft.quotedText, "\n\nOn D, Ann Example wrote:\n> line one\n> line two")
+    }
+
+    func testReplyGoesToEveryReplyToAddressRatherThanFrom() {
+        let draft = ComposeReply.reply(
+            to: Self.message(replyTo: #""List, Team" <list@example.com>, bob@example.com"#), ownAddresses: [],
+            mode: .reply)
+        XCTAssertEqual(draft.to, ["list@example.com", "bob@example.com"])
+        XCTAssertEqual(draft.cc, [])
+    }
+
+    /// Reply-all with a Reply-To answers it plus the original To and Cc; From is not added back.
+    func testReplyAllWithReplyToCopiesToAndCcButNotFrom() {
+        let source = Self.message(
+            to: ["me@example.com", "carol@example.com"], cc: ["List <list@example.com>", "dave@example.com"],
+            replyTo: "list@example.com")
+        let draft = ComposeReply.reply(to: source, ownAddresses: ["me@example.com"], mode: .replyAll)
+        XCTAssertEqual(draft.to, ["list@example.com"])
+        XCTAssertEqual(draft.cc, ["carol@example.com", "dave@example.com"])
     }
 
     func testPlainReplyCopiesNobodyAndNeverDoublesThePrefix() {

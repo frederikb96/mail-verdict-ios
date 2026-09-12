@@ -12,6 +12,7 @@ struct UndoSendCapsule: View {
 
     @State private var store: UndoSendStore
     @State private var accountNames: [UUID: String] = [:]
+    @State private var liveSubscription: MVSubscriptionToken?
     @Environment(\.scenePhase) private var scenePhase
 
     init(environment: AppEnvironment, connection: AppEnvironment.Connection) {
@@ -39,6 +40,7 @@ struct UndoSendCapsule: View {
         .allowsHitTesting(!store.pending.isEmpty)
         .task {
             ComposerServices.shared.undoSend = store
+            if liveSubscription == nil { liveSubscription = connection.liveEventHub.subscribe(store) }
             offerRecoveredMessage()
             await store.refresh()
             let accounts = (try? await connection.apiClient.listAccounts()) ?? []
@@ -46,6 +48,10 @@ struct UndoSendCapsule: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await store.refresh() } }
+        }
+        .onDisappear {
+            if let liveSubscription { connection.liveEventHub.unsubscribe(liveSubscription) }
+            liveSubscription = nil
         }
     }
 
