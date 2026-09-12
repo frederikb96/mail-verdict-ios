@@ -21,6 +21,9 @@ struct UnifiedViewsScreen: View {
             #endif
             .task {
                 if store == nil { store = MVUnifiedSetupStore(apiClient: connection.apiClient) }
+                #if DEBUG
+                    SettingsDebugServices.shared.activeUnifiedSetupStore = store
+                #endif
                 await store?.load()
             }
     }
