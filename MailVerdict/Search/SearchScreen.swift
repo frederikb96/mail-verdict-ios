@@ -44,6 +44,7 @@ struct SearchScreen: View {
                 SearchFixtures.activeStore = store
             #endif
             store.subscribeToLive(connection.liveEventHub)
+            ReaderSourceRegistry.shared.register(store, for: .search(store.context))
             isSearchFieldFocused = true
             scrollTarget = store.topVisibleRowId
             async let accountList = try? connection.apiClient.listAccounts()
@@ -56,6 +57,11 @@ struct SearchScreen: View {
         }
         .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
         .onChange(of: scrollTarget) { _, newValue in store.topVisibleRowId = newValue }
+        // The reader is keyed by the exact identity a row was pushed with — re-registering
+        // under the new context on every chip change keeps that lookup valid.
+        .onChange(of: store.context) { _, newContext in
+            ReaderSourceRegistry.shared.register(store, for: .search(newContext))
+        }
         #if DEBUG
             .screenshotReady(
                 route: .search(initialQuery: initialQuery), environment: environment, connection: connection
