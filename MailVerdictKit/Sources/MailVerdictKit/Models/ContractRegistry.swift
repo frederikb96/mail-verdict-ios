@@ -6,7 +6,9 @@
 /// fails CI rather than silently going unchecked; one removed here without deleting the model
 /// does too.
 public enum ContractRegistry {
-    public static let all: [any ContractModel.Type] = [
+    // A list of metatypes, read-only after this file loads — `nonisolated(unsafe)` says exactly
+    // that, since `[any ContractModel.Type]` itself cannot be `Sendable`.
+    nonisolated(unsafe) public static let all: [any ContractModel.Type] = [
         // Message.swift
         TagResponse.self,
         AttachmentSummary.self,

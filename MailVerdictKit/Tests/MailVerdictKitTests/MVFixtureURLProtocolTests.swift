@@ -5,6 +5,31 @@
 
     final class MVFixtureURLProtocolTests: XCTestCase {
 
+        override func tearDown() {
+            MVFixtureURLProtocol.resetToDefaults()
+            super.tearDown()
+        }
+
+        /// The mechanism a feature slice's own store or screen file uses to add its fixtures —
+        /// never by editing this shared file.
+        func testARegisteredRouteAnswersWithItsOwnBodyAndStatus() {
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/accounts", status: 200) {
+                Data("[]".utf8)
+            }
+            let match = MVFixtureURLProtocol.route(method: "GET", path: "/api/accounts")
+            XCTAssertEqual(match.status, 200)
+            XCTAssertEqual(String(decoding: match.body(), as: UTF8.self), "[]")
+        }
+
+        /// A later registration for the same method and path wins outright, rather than the two
+        /// somehow coexisting or the first staying stuck forever.
+        func testRegisteringTheSameRouteTwiceReplacesIt() {
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/accounts") { Data("[]".utf8) }
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/accounts") { Data("[1]".utf8) }
+            let match = MVFixtureURLProtocol.route(method: "GET", path: "/api/accounts")
+            XCTAssertEqual(String(decoding: match.body(), as: UTF8.self), "[1]")
+        }
+
         func testKnownRouteAnswers200WithItsBody() {
             let match = MVFixtureURLProtocol.route(method: "GET", path: "/api/health")
             XCTAssertEqual(match.status, 200)

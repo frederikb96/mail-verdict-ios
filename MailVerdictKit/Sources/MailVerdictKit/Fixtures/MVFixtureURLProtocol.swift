@@ -19,9 +19,12 @@
     /// intercepted. `canInit` still gates on `MVFixtureLaunch`, so a registered-but-inactive
     /// protocol leaves an ordinary debug run talking to the real network.
     ///
-    /// The table below carries only `/api/health`, matching the one real route this app calls.
-    /// Extend `routes` alongside a new screen's own fetch call — the one place a fixture response
-    /// is wired to the path that requests it.
+    /// Routes are registered dynamically (`register`), the same shape `Debug/DebugRouter.swift`
+    /// already uses for the debug bridge — a feature slice adds its own fixture routes from its
+    /// own store or screen file, the one place that already knows the shape of what it fetches,
+    /// rather than editing this shared file. Only `/api/health` is seeded here, since this file's
+    /// own directory is where `MVFixtureLaunch`/`MVFixtureURLProtocol` themselves are, not where
+    /// any feature's data lives.
     public final class MVFixtureURLProtocol: URLProtocol {
 
         override public class func canInit(with request: URLRequest) -> Bool {
@@ -52,15 +55,48 @@
 
         // MARK: - Route table
 
-        struct Match {
-            let status: Int
-            let body: () -> Data
+        public struct Match: Sendable {
+            public let status: Int
+            public let body: @Sendable () -> Data
         }
 
         private struct FixtureRoute: Sendable {
             let method: String
             let path: String
+            let status: Int
             let body: @Sendable () -> Data
+        }
+
+        private static let lock = NSLock()
+        nonisolated(unsafe) private static var routes: [FixtureRoute] = [
+            FixtureRoute(method: "GET", path: "/api/health", status: 200) {
+                Data(#"{"status":"ready","postimap_contract":"ok","database":"ok"}"#.utf8)
+            }
+        ]
+
+        /// Adds one route, or replaces it if the same method and path were already registered —
+        /// a later registration winning rather than silently doing nothing matches
+        /// `DebugRouter.register`'s own rule, and lets a test override a screen's default fixture
+        /// for one case without the two fighting over which wins.
+        public static func register(
+            method: String, path: String, status: Int = 200, body: @escaping @Sendable () -> Data
+        ) {
+            lock.lock()
+            defer { lock.unlock() }
+            routes.removeAll { $0.method == method.uppercased() && $0.path == path }
+            routes.append(FixtureRoute(method: method.uppercased(), path: path, status: status, body: body))
+        }
+
+        /// Back to just `/api/health` — for a test that registers its own routes and must not
+        /// leak them into the next one.
+        public static func resetToDefaults() {
+            lock.lock()
+            defer { lock.unlock() }
+            routes = [
+                FixtureRoute(method: "GET", path: "/api/health", status: 200) {
+                    Data(#"{"status":"ready","postimap_contract":"ok","database":"ok"}"#.utf8)
+                }
+            ]
         }
 
         /// The response for a request the table has no entry for: a well-formed `MVError` body —
@@ -68,18 +104,15 @@
         /// empty or wrongly-typed payload a decoder would choke on. Internal, not private, so a
         /// test can assert on it directly without going through a real `URLRequest`.
         static func route(method: String, path: String) -> Match {
-            guard let fixture = routes.first(where: { $0.method == method && $0.path == path }) else {
+            lock.lock()
+            let found = routes.first { $0.method == method.uppercased() && $0.path == path }
+            lock.unlock()
+            guard let fixture = found else {
                 let detail = "no fixture route for \(method) \(path)"
                 return Match(status: 404) { Data("{\"detail\":\"\(detail)\"}".utf8) }
             }
-            return Match(status: 200, body: fixture.body)
+            return Match(status: fixture.status, body: fixture.body)
         }
-
-        private static let routes: [FixtureRoute] = [
-            FixtureRoute(method: "GET", path: "/api/health") {
-                Data(#"{"status":"ready","postimap_contract":"ok","database":"ok"}"#.utf8)
-            }
-        ]
     }
 
 #endif
