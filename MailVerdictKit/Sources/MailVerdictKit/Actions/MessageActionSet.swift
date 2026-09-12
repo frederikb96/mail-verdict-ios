@@ -1,7 +1,7 @@
 import Foundation
 
-/// Where the Options set is being shown — the three surfaces UX design §2.3 names: the row
-/// short-swipe sheet, the row long-press context menu, and the reader's own Options button menu.
+/// Where the Options set is being shown — the row short-swipe sheet, the row long-press context
+/// menu, or the reader's own Options button menu.
 public enum MVMessageActionSurface: Sendable, Equatable {
     case swipeSheet
     case contextMenu

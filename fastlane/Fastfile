@@ -11,9 +11,9 @@ SCHEME     = "MailVerdict"
 OUTPUT_DIR = "build"
 
 # Bundle id -> provisioning profile name. Both profiles are signed against the SAME distribution
-# certificate (Apple caps certificates per account, not per bundle id, and one already exists —
-# see the ios skill's signing reference). The notification service extension has no target in the
-# Xcode project yet; its entry here is unused until that target exists, and then needs no change.
+# certificate — Apple caps certificates per account, not per bundle id, and one already exists.
+# The notification service extension has no target in the Xcode project yet; its entry here is
+# unused until that target exists, and then needs no change.
 PROFILE_NAMES = {
   "com.frederikberg.mailverdict" => "MailVerdict App Store",
   "com.frederikberg.mailverdict.notify" => "MailVerdict Notify App Store",
@@ -49,7 +49,7 @@ end
 # Owning the key removes the whole failure mode: CI imports it and never calls Apple's
 # certificate endpoints.
 #
-# Mint or renew with the ios skill's setup-signing.sh; both expire two years from issue.
+# The key and certificate both expire two years from issue and need minting again after that.
 def asc_key
   app_store_connect_api_key(
     key_id:      ENV.fetch("ASC_KEY_ID"),

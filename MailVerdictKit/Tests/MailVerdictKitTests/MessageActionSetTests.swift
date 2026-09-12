@@ -112,8 +112,8 @@ final class MessageActionSetTests: XCTestCase {
         }
     }
 
-    /// The reader's Options menu never duplicates its own bottom-bar Delete — except the one
-    /// case the UX design calls out by name, Delete Forever while in Trash.
+    /// The reader's Options menu never duplicates its own bottom-bar Delete — except for Delete
+    /// Forever while in Trash.
     func testReaderOptionsMenuHasNoDestructiveGroupExceptDeleteForeverInTrash() {
         XCTAssertNil(
             actions(

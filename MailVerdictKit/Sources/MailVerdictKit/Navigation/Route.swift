@@ -40,8 +40,8 @@ public struct SearchContext: Hashable, Codable, Sendable {
     public let mode: Mode
     public let query: String
     public let accountId: UUID?
-    /// `nil` means every folder; `[]` means search nothing — the same distinction the UX design's
-    /// Folders sheet makes.
+    /// `nil` means every folder; `[]` means search nothing — the same distinction the Folders
+    /// sheet makes.
     public let folderIds: [UUID]?
     public let fields: [MVSearchField]?
     public let strictness: MVSemanticStrictness?

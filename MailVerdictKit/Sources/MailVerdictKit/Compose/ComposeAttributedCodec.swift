@@ -150,7 +150,7 @@ public enum ComposeAttributedCodec {
         return ComposeDocument(blocks: blocks).normalized()
     }
 
-    static func blockKind(at location: Int, in text: NSAttributedString) -> ComposeBlockKind? {
+    public static func blockKind(at location: Int, in text: NSAttributedString) -> ComposeBlockKind? {
         guard location >= 0, location < text.length else { return nil }
         return (text.attribute(.mvBlock, at: location, effectiveRange: nil) as? String)
             .flatMap(ComposeBlockKind.init(attributeValue:))

@@ -1,7 +1,7 @@
-/// Every SF Symbol name this app uses for a MailVerdict-specific action or element — UX design
-/// §5's table, with row 38 note 4's Star correction applied (`star`/`star.fill`, not
-/// `flag`/`flag.fill`; the IMAP `\Flagged` bit stays `{flag}`/`{unflag}` at the API layer,
-/// `Models/BulkAction.swift`'s `MVBulkAction` — only the user-facing name and symbol change).
+/// Every SF Symbol name this app uses for a MailVerdict-specific action or element. The IMAP
+/// `\Flagged` bit is "Star" on iOS (`star`/`star.fill`, not `flag`/`flag.fill`) and stays
+/// `{flag}`/`{unflag}` at the API layer, `Models/BulkAction.swift`'s `MVBulkAction` — only the
+/// user-facing name and symbol change.
 ///
 /// A plain `String` rather than `Image(systemName:)` directly: this package builds on Linux,
 /// where `Image` does not exist.

@@ -70,13 +70,9 @@ public final class MVAccountDetailStore {
         try await apiClient.triggerSync(accountId: accountId)
     }
 
-    /// Goes through `MVAccountFormModel.buildUpdateBody` rather than the typed
-    /// `AccountUpdateRequest`, since the edit sheet is exactly the call site that needs to clear
-    /// retention back to "Off" — see that builder's own doc comment for why a typed request
-    /// cannot do that.
     public func update(_ input: MVAccountFormInput) async throws {
-        let body = try MVAccountFormModel.buildUpdateBody(input)
-        account = try await apiClient.send(path: "/api/accounts/\(accountId)", method: "PATCH", body: body)
+        let request = try MVAccountFormModel.buildUpdateRequest(input)
+        account = try await apiClient.updateAccount(id: accountId, request)
     }
 
     public func delete() async throws {
