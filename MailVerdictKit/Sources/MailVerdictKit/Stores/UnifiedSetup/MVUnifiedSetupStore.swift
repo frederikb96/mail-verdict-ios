@@ -66,21 +66,11 @@ public final class MVUnifiedSetupStore {
         await load()
     }
 
-    /// Setting an emoji goes through the typed request; clearing one cannot — `PATCH
-    /// /unified/views/{id}` reads its body with `exclude_unset`, so a `nil` property on a
-    /// synthesized `Encodable` is omitted rather than sent as `null` and the emoji would never
-    /// actually clear (see `MVJSONLiteral`'s own doc comment). Building the body by hand for that
-    /// one case is what makes "clear it" distinguishable from "leave it".
+    /// `emoji: .some(emoji)` either way — `UnifiedViewUpdate`'s own `encode(to:)` is what turns
+    /// `.some(nil)` into an explicit JSON `null` rather than an omitted key, which is what
+    /// actually clears it on a route read with `exclude_unset`.
     public func setViewEmoji(id: UUID, emoji: String?) async throws {
-        if let emoji {
-            _ = try await apiClient.updateUnifiedView(id: id, UnifiedViewUpdate(emoji: emoji))
-        } else {
-            let body = Data("{\"emoji\":null}".utf8)
-            _ =
-                try await apiClient.send(
-                    path: "/api/unified/views/\(id)", method: "PATCH", body: body
-                ) as UnifiedViewResponse
-        }
+        _ = try await apiClient.updateUnifiedView(id: id, UnifiedViewUpdate(emoji: .some(emoji)))
         await load()
     }
 
