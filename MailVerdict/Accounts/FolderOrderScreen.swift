@@ -31,8 +31,8 @@ struct FolderOrderScreen: View {
             switch store.state {
             case .loading:
                 ProgressView()
-            case .failed(let message):
-                ErrorStateView(message: message) { Task { await store.load() } }
+            case .failed(let error):
+                ErrorStateView(error: error) { Task { await store.load() } }
             case .loaded:
                 if store.folders.isEmpty {
                     EmptyStateView(systemImage: "folder", message: "No folders available")
@@ -72,9 +72,10 @@ private struct FolderOrderRow: View {
                     do {
                         try await store.setVisible(folderId: folder.folderId, isVisible: !folder.isVisible)
                     } catch {
-                        let message = (error as? MVError)?.userMessage ?? "\(error)"
                         environment.toasts.show(
-                            .init(variant: .error, message: "Could not change visibility: \(message)"))
+                            .init(
+                                variant: .error,
+                                message: "Could not change visibility: \(error.mvUserMessage)"))
                     }
                 }
             } label: {
