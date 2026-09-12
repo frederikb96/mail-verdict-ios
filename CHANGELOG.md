@@ -11,3 +11,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Project scaffold: `MailVerdictKit` local Swift package, `MailVerdict` app target, CI workflows,
   signing lanes, and the debug bridge.
+- The message list: swipe right to archive; swipe left to delete, or a short swipe for Options
+  and Delete (in Trash, Delete Forever asks first); long-press for the Options menu with a
+  preview.
+- Select mode: Select, Select All over the whole folder, a two-finger swipe to tick rows, and
+  bulk Mark, Move, Junk, Archive and Trash with Undo.
+- An unread filter, an in-folder quick filter with "Search all mail for …", and a Group by
+  Conversation toggle.
+- Mark All as Read and Empty Folder… in the list's ••• menu.
+- New mail arriving while you read further down never moves the list; a "N New Messages" button
+  takes you to it.
+- Going back from a message returns the list to exactly where you were, and the app reopens where
+  you left each list.
+- Move to… lists your recently used folders first.
+- Reader: swipe between messages like Photos, pinch to zoom, and a bottom bar of Archive, Delete
+  and Options.
+- Reader: every message renders sanitized in its own isolated view with no message script; remote
+  images stay blocked unless the sender is allowed.
+- Reader: Find in Message, attachments in Quick Look with Share, and calendar invitations with
+  Accept, Tentative and Decline.
+- Composer: new message, reply, reply all, forward and drafts in one native sheet, with rich text
+  (bold, italic, underline, strikethrough, lists, checklists, quotes, code blocks, links) and no
+  markdown.
+- Composer: recipients with contact autocomplete, Cc/Bcc, and a From picker that follows each
+  account's identities.
+- Composer: attachments from Photos and Files, pasted images inline with a size menu, forwarded
+  attachments carried along.
+- Composer: the quoted original as a collapsible, removable card; drafts reopen with their quote.
+- Undo send: a countdown capsule whose Undo reopens the message with everything restored.
+- Crash recovery: an unsent message, attachments included, is offered back after the app is
+  closed or killed.
+- New-mail notifications on iPhone through the push relay, end-to-end encrypted. The banner's
+  sender and subject are decrypted on the phone; the relay and Apple see ciphertext only.
+- Mark as Read on the notification. Tapping a notification opens the message.
+- New Mail Notifications settings: permission, device name, New Mail/System channels, folder
+  scope per account, other devices with Remove, and Send Test Notification.
+- Notifications read or dismissed elsewhere disappear from the phone, and the app icon badge
+  follows the server's count.
+- Mailboxes: unified and per-account folder sections, account health and sync status, folder
+  actions (Mark All Read, Empty Folder, New/Delete Folder), and a banner when an account's outbox
+  can't send.
+- Search: text and semantic search across accounts and folders, with filters for fields,
+  strictness, sort, account, folder and received-date range.
+- Spam Review: a queue of messages pending a spam/not-spam decision, swipe or thumbs up/down to
+  decide, and Accept All/Reject All.
+- Notifications screen: a Mail tab and a System tab for alerts and cross-account notifications,
+  with Dismiss All and swipe to dismiss or acknowledge.
+- Settings: an appearance picker (System/Light/Dark), account order, every backend setting
+  category editable on the phone, AI provider keys (Anthropic, OpenAI), and Unified Views
+  management.
+- Accounts: a list and detail screen with sync status, add/edit accounts, Folder Order &
+  Visibility, Image Exceptions, and Sending Identities with a default picker.

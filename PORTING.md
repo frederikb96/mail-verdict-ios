@@ -17,4 +17,200 @@ still owed, and the next agent either redoes them or stops trusting the file.
 
 ## Backlog
 
-Empty — nothing has been ported yet.
+### A mid-row swipe right archives without popping the screen — web anchor: n/a (native gesture)
+Needs a device because: the edge-swipe-to-go-back gesture and a mid-row swipe-to-archive gesture
+share the same screen edge; only a real touch can tell whether the reader's and the list's own
+content-pop disable/restore agree when pushing and popping.
+
+### Swipe actions: full right archives, full left deletes (no snap-back), short left shows Options + Delete — web anchor: n/a (native gesture)
+Needs a device because: `UISwipeActionsConfiguration`'s full-swipe threshold and the row's removal
+animation are driven by real touch velocity, not reproducible from a script. In Trash, a full-swipe
+Delete Forever must ask and leave the row in place until confirmed.
+
+### A two-finger pan enters select mode and ticks rows — web anchor: n/a (native gesture)
+Needs a device because: `shouldBeginMultipleSelectionInteractionAt` only fires for a genuine
+two-finger touch. Under Select All, every visible row must show ticked, and unticking one must
+exclude it.
+
+### The measured row height holds at the smallest and largest Dynamic Type sizes — web anchor: n/a (native accessibility setting)
+Needs a device because: Dynamic Type categories are a device/simulator accessibility setting: no
+row may clip, and changing the category while the reader is open must keep its row in place.
+
+### Open, Back returns to the same row and offset — web anchor: n/a (native scroll restoration)
+Needs a device because: `/list/state`'s first-visible-row id and `offsetInRow` must match before
+and after Open/Back, and again after an archive performed from the reader while it's open —
+UIKit's own scroll-position bookkeeping isn't exercised by the fixture sweep's scripted navigation.
+
+### Rows scroll correctly under the glass nav bar and bottom bar — web anchor: n/a (native chrome)
+Needs a device because: `contentInset`/`adjustedContentInset` under the translucent bars, and
+whether the first row is hidden under the nav bar at the top, only render on real glass materials.
+
+### The search field's placement in select mode, and a five-action bottom bar — web anchor: n/a (native toolbar)
+Needs a device because: `DefaultToolbarItem(kind: .search, placement: .bottomBar)` removing itself
+when select mode starts is a layout question a screenshot sweep with no scripted select-mode entry
+doesn't exercise end to end.
+
+### navigationSubtitle reads "Updated …" / "Filtered by: Unread" — web anchor: n/a (native subtitle)
+Needs a device because: `navigationSubtitle` rendering under the inline title is an iOS 26 API
+with no Linux or prior-art compile check; only a real render confirms the two lines read right
+together.
+
+### Relaunch lands on the saved row at the same point — web anchor: n/a (native persistence)
+Needs a device because: `MVListPositionStore`'s anchor restoration runs through a real app
+relaunch (process death, not just a screen navigation), which the fixture sweep's scripted
+per-screen launches don't reproduce.
+
+### The literal swipe-revealed-buttons screenshot — web anchor: n/a (native gesture)
+Needs a device because: nothing in `mac.yml` drives a real swipe gesture (`idb ui swipe` would be
+the mechanism); `list-swipe-options` currently captures the Options sheet a swipe opens, not the
+mid-swipe reveal itself.
+
+### reader.js works with page JavaScript off — web anchor: ui/src/components/email-renderer (fit-to-width, find, canvas toggle)
+Needs a device because: the injected `WKUserScript`'s fit-to-width `zoom`, the Custom Highlight
+API find, and the canvas (dark/light) toggle all run inside a real `WKWebView` content process.
+
+### The pager stands still while a message is zoomed — web anchor: n/a (native gesture)
+Needs a device because: pinch-to-zoom and the scroll-view delegate's zoom forwarding need a real
+pinch gesture; the pinch-end backstop that re-enables paging is itself gated on a genuine gesture
+ending.
+
+### A horizontal swipe pages at zoom 1 and pans after a pinch — web anchor: n/a (native gesture, Photos-style paging)
+Needs a device because: distinguishing "paging swipe" from "panning swipe" depends on
+`gestureRecognizerShouldBegin`'s real-time zoom-scale check during an actual touch sequence.
+
+### Find in Message highlights paint inside the declarative shadow root — web anchor: n/a (native WKFindInteraction)
+Needs a device because: the Custom Highlight API's paint-only find has no `<mark>` fallback built,
+and a `UIFindInteraction` panel only opens with a real find gesture/keyboard shortcut.
+
+### The screen-edge swipe goes Back; a mid-screen right swipe pages to the newer message — web anchor: n/a (native gesture)
+Needs a device because: both gestures share similar start geometry; only real touch disambiguates
+edge-pop from mid-screen paging.
+
+### The fixture newsletter's contentWidth equals boundsWidth at zoom 1 — web anchor: n/a (native WKWebView layout)
+Needs a device because: `/reader/state`'s `contentWidth`/`boundsWidth` comparison needs the page
+actually laid out and fit-to-width applied inside a real web view.
+
+### Zoomed-edge handoff: overshoot pages, a small sideways move never pages, a mid-content drag only pans — web anchor: n/a (native gesture, `MVZoomEdgeHandoff` tunables)
+Needs a device because: the 24 pt slop, the 30%-of-width/600 pt-per-second commit thresholds, and
+the spring-back are all tuned against real finger movement, not a scripted drag.
+
+### setHTMLUnsafe swapping a message body from the canvas toggle or a verdict update — web anchor: n/a (native WKWebView API)
+Needs a device because: `setHTMLUnsafe` is a real `WKWebView` content-process API with no Linux or
+simulator-only substitute for confirming the swap is seamless (scroll, zoom and find state kept).
+
+### Attachment long-press menus, `.eml` share, and the Event Details sheet — web anchor: n/a (native long-press, share sheet)
+Needs a device because: long-press context menus and the system share sheet both need a real touch
+and a real extension host process.
+
+### Content inset under the glass bars in the reader — web anchor: n/a (native chrome)
+Needs a device because: same as the list's inset check — translucent-material insets only render
+on real glass.
+
+### TextKit 2 draws NSTextList markers correctly (disc/circle/square, decimal, box/check) with consistent nested indent — web anchor: ui/src/components/compose (list rendering)
+Needs a device because: `includesTextListMarkers` and marker glyph rendering are TextKit 2 drawing
+behavior with no Linux equivalent.
+
+### A tap in a checklist item's marker column toggles it — web anchor: tiptap task-list markup (ComposeHTMLSerializer's target shape)
+Needs a device because: the tap target for the marker column versus the text itself needs a real
+touch to confirm it doesn't also move the caret.
+
+### Return/Backspace list semantics, and dictation/CJK input stays undisturbed — web anchor: n/a (native IME/dictation)
+Needs a device because: marked text from dictation or CJK input only exists during a real IME
+session; a simulator has no dictation and no CJK input method by default.
+
+### Aa swaps keyboard and format panel, with active states and the 📎/🔗 menus — web anchor: ui/src/components/compose toolbar
+Needs a device because: `inputAccessoryView` swapping and active-state highlighting are keyboard
+and rendering behavior that needs the real keyboard to appear.
+
+### HTML paste from Safari/Notes/Mail keeps structure; image paste goes inline; no stray paste banner — web anchor: n/a (native pasteboard)
+Needs a device because: the system pasteboard's real HTML/webarchive representations, and the edit
+menu's paste-banner heuristic, only exist with a real copy source.
+
+### An inline image tap opens the size sheet; Remove is undoable — web anchor: ComposeImageAttachment (size menu: Small/Medium/Large/Full Width/Remove)
+Needs a device because: `NSTextAttachment` tap handling inside a live `UITextView` needs real
+touch dispatch through TextKit 2.
+
+### The growing text view keeps the caret visible above the keyboard — web anchor: n/a (native caret/keyboard)
+Needs a device because: `revealCaret` scrolling the sheet's enclosing `UIScrollView` as the
+keyboard rises is real keyboard-avoidance behavior.
+
+### Swipe-down on a dirty composer shows Save/Discard/Cancel; a clean one swipes away — web anchor: n/a (native sheet dismissal)
+Needs a device because: `DismissAttemptObserver`'s presentation-controller delegate proxy only
+intercepts a real interactive swipe-to-dismiss gesture.
+
+### The recipient token field: separators commit, Backspace rhythm, blur commit, invalid-text styling, suggestions — web anchor: ui/src/components/compose recipient input
+Needs a device because: a `UITextField`'s real keyboard input (Return, comma, semicolon,
+Backspace-Backspace) and blur timing need actual typing to confirm.
+
+### From grouped by account with 2+ accounts, hidden with one address — web anchor: ui/src/components/compose From picker
+Needs a device because: the menu's actual grouped layout only renders in a live `Menu`.
+
+### The Photos picker returns named JPEGs; `.fileImporter` reads files — web anchor: n/a (native pickers)
+Needs a device because: `PHPickerViewController` and the system document picker are real iOS UI
+with no simulator-free substitute, and the security-scoped resource access they grant only works
+live.
+
+### The quote card expands, its web-view height is measured, and its links stay inert — web anchor: ui/src/components/quote-card
+Needs a device because: the collapsible `WKWebView`'s `contentSize` measurement
+(`didFinish` + 400 ms) depends on real web-view layout timing.
+
+### The undo-send capsule countdown, Undo restoring inline images/chips, and the "Too late" failure — web anchor: ui/src/components/undo-send-capsule (UNDO_TOAST_LABELS)
+Needs a device because: the `TimelineView`-driven countdown and the race against a message
+actually sending server-side both need real wall-clock time passing.
+
+### Kill mid-compose, relaunch, "You have an unsent message · Open", Restore brings fields and files back — web anchor: ui/src/hooks/use-compose-recovery (or equivalent)
+Needs a device because: `ComposeRecoveryStore`'s crash-recovery path requires a real process kill
+and relaunch, not a screen navigation inside one running process.
+
+### The sent toast, a staged send producing the capsule, and the failure banner — web anchor: ui/src/components/compose (submit flow)
+Needs a device because: confirming the right toast/capsule/banner appears depends on a real
+network round trip to the backend's outbox endpoint, including its timing (staged vs. immediate).
+
+### composer-empty and composer-reply capture the loaded composer correctly — web anchor: n/a (fixture-mode screenshot)
+Needs a device because: this is the rendered result of every item above; a single screenshot is
+the cheapest confirmation that the composer as a whole reads right once a device is in hand.
+
+### Notification banner decrypts while the phone is locked — web anchor: ui/src/hooks/use-push.ts
+Needs a device because: the extension reads its content key from the shared Keychain group with
+the phone locked, and only a real APNs push reaches it.
+
+### Banners for alerts dismissed elsewhere are withdrawn by the next push — web anchor: src/mail_verdict/push/envelope.py (resolved ids)
+Needs a device because: removing other delivered notifications from inside a notification service
+extension only runs on a device.
+
+### A silent read-sync push clears banners and sets the badge in the background — web anchor: src/mail_verdict/alerts/resolve.py (announce_alerts_dismissed)
+Needs a device because: iOS delivers background pushes to a real device only, and throttles them.
+
+### Mark as Read from a banner, with the app not running — web anchor: n/a (native notification action)
+Needs a device because: a notification action launching the app in the background needs a real
+push.
+
+### `.scrollPosition(id:anchor:)` genuinely restores scroll position and collapse state on Mailboxes and Search — web anchor: n/a (native SwiftUI List scroll restoration)
+Needs a device because: SwiftUI's own scroll-restoration behavior on `List` cannot be exercised
+from the Linux toolchain, and the fixture sweep's single-screenshot-per-screen shape never
+navigates away and back to test restoration.
+
+### Spam Review's and Mailboxes' folder-row swipe actions and context menus — web anchor: ui/src/pages/spam-review-page.tsx, ui/src/components/mailboxes
+Needs a device because: gesture shapes on a live `List`/`UITableView` row need real touch, the
+same reasoning as the list's own swipe checks above.
+
+### Int field's stepper range renders sanely — web anchor: ui/src/components/settings (generic category renderer)
+Needs a device because: the generic settings renderer's `Stepper` over a wide integer range has
+never been seen rendered; confirm the control itself handles it, not only that `Int.min...Int.max`
+doesn't crash (bounded already, per the `ios` skill's own Stepper warning).
+
+### JSON editor's `TextEditor` keyboard behavior and live validity check — web anchor: ui/src/components/settings (object/array field editor)
+Needs a device because: a monospaced `TextEditor`'s real keyboard interaction and
+`.fragmentsAllowed` validation leniency for a bare array/object edit need a live keyboard.
+
+### Folder Order & Visibility's and Account Order's drag reorder — web anchor: ui/src/pages/account-settings (folder/account ordering)
+Needs a device because: `EditButton`-driven drag reorder is a real-touch gesture, not exercised on
+a simulator or device so far.
+
+### Unified Views' per-folder multi-select Menu stays open per tap — web anchor: ui/src/components/unified-views-setup
+Needs a device because: confirming a `Menu` + `Button` combination keeps the menu open across
+repeated taps (rather than dismissing after the first) needs a live menu interaction.
+
+### Confirmation dialog wording fits at a real device width — web anchor: ui/src/components/settings, ui/src/components/accounts (delete/confirm dialogs)
+Needs a device because: text wrapping in a system alert is a rendering question only a real (or
+simulator) screen width settles, and none of these were given more than a glance so far.
