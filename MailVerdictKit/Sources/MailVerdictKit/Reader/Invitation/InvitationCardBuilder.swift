@@ -188,10 +188,7 @@ public enum InvitationCardBuilder {
             let reason = invitation.error.map { ": \($0)" } ?? "."
             sections.append(
                 #"<div class="mv-invite-line mv-danger">\#(escape("Could not add to \(target)\(reason)"))</div>"#)
-            // The web's own Retry waits on a calendar picked in a branch the failed state never
-            // shows, so it can never be pressed; the intended guard is the invitation's own
-            // calendar, which is what the retry imports into.
-            sections.append(
+sections.append(
                 button(
                     "Retry", icon: .retry, link: .invitation(messageId: id, action: .retry), model: model,
                     busyAs: .retrying, enabled: invitation.calendarId != nil))
