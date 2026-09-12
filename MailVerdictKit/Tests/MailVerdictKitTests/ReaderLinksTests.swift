@@ -42,6 +42,16 @@ final class ReaderLinksTests: XCTestCase {
         XCTAssertEqual(MVReaderNavigation.classify(URL(string: "mv://retry")!, isUserAction: true), .control(.retry))
     }
 
+    /// Same handling for a tapped `tel:`/`sms:` link as for a number the data detector found:
+    /// only a tap may hand it to the Phone/Messages app, never the page loading.
+    func testPhoneLinksHandOffOnlyFromAUserTap() {
+        let tel = URL(string: "tel:+15551234567")!
+        XCTAssertEqual(MVReaderNavigation.classify(tel, isUserAction: true), .phone(tel))
+        XCTAssertEqual(MVReaderNavigation.classify(tel, isUserAction: false), .ignore)
+        let sms = URL(string: "sms:+15551234567")!
+        XCTAssertEqual(MVReaderNavigation.classify(sms, isUserAction: true), .phone(sms))
+    }
+
     /// WebKit compiles these at launch; a list that is not valid JSON fails there, silently
     /// leaving every page unprotected.
     func testContentRuleListsAreValidJSON() throws {

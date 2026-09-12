@@ -146,6 +146,12 @@ dropped request.
 A reverse proxy in front of a given deployment may also apply its own, coarser rate limiting —
 that is a second, independent layer, not a replacement for the limits above.
 
+The per-IP limits key on `X-Forwarded-For`'s first entry when the header is present, falling back
+to the TCP peer address otherwise. That is only safe behind a proxy that sets or overwrites this
+header itself rather than forwarding whatever a caller sent — one that appends to an
+attacker-supplied value lets the attacker's own first entry stand in for any IP they like, evading
+the per-IP buckets entirely. Deploy this behind a proxy you trust to do that.
+
 ## What the relay sees, and what it never sees
 
 - **Sees, transiently, per request:** the caller's source IP, the device token (held in memory

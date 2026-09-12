@@ -42,6 +42,9 @@ final class ReaderScreenModel {
     var noteText = ""
     var quickLookURL: URL?
     var confirmingDeleteForever = false
+    /// A tapped `tel:`/`sms:` link, or a detected phone number, awaiting the user's confirmation
+    /// before it leaves the app.
+    var confirmingPhoneHandoff: URL?
     /// Debug screenshots only: the Options menu's content in a sheet, since a system menu
     /// cannot be opened without a touch.
     var optionsPreview = false
@@ -172,9 +175,19 @@ final class ReaderScreenModel {
             if let link = parseMailto(url.absoluteString) {
                 environment.presentedCompose = ComposeIntent(kind: .mailto(link))
             }
+        case .phone(let url):
+            confirmingPhoneHandoff = url
         case .allow, .anchor, .ignore:
             break
         }
+    }
+
+    var phoneHandoffIsMessage: Bool { confirmingPhoneHandoff?.scheme?.lowercased() == "sms" }
+
+    func confirmPhoneHandoff() {
+        guard let url = confirmingPhoneHandoff else { return }
+        confirmingPhoneHandoff = nil
+        UIApplication.shared.open(url)
     }
 
     private func handle(_ link: MVReaderLink) {

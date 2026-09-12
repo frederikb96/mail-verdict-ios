@@ -26,7 +26,9 @@ enum ReaderWebKit {
             WKUserScript(
                 source: ReaderScript.source, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
         configuration.userContentController = controller
-        configuration.dataDetectorTypes = []
+        // Phone numbers only — the web hands `tel:`/`sms:` to the OS, and everything else a
+        // detector could find (addresses, dates) has no equivalent handoff here.
+        configuration.dataDetectorTypes = [.phoneNumber]
         return configuration
     }
 
@@ -70,13 +72,23 @@ enum ReaderWebKit {
             pending.forEach { $0() }
             return
         }
-        store.compileContentRuleList(forIdentifier: identifier, encodedContentRuleList: json) { list, error in
+        // WebKit persists a compiled list across launches under its own identifier — looking it
+        // up first skips recompiling the same JSON every cold start, which is the slow half of
+        // this wait.
+        store.lookUpContentRuleList(forIdentifier: identifier) { list, _ in
             if let list {
                 compiled[identifier] = list
-            } else if let error {
-                DebugLog.error("content rule list \(identifier) failed to compile: \(error)")
+                compile(Array(remaining.dropFirst()), in: store)
+                return
             }
-            compile(Array(remaining.dropFirst()), in: store)
+            store.compileContentRuleList(forIdentifier: identifier, encodedContentRuleList: json) { list, error in
+                if let list {
+                    compiled[identifier] = list
+                } else if let error {
+                    DebugLog.error("content rule list \(identifier) failed to compile: \(error)")
+                }
+                compile(Array(remaining.dropFirst()), in: store)
+            }
         }
     }
 }

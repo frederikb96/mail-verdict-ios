@@ -65,6 +65,7 @@ final class PushCoordinator {
     /// Re-asks APNs for this install's token when notifications are on and permitted. Never shows
     /// a prompt, so it is safe on every launch; the token's arrival is what may refresh.
     func applicationDidLaunch() async {
+        PushKeychain.migrateFromLegacyGroupIfNeeded()
         UNUserNotificationCenter.current().setNotificationCategories([Self.mailCategory()])
         guard await authorization() == .authorized, let context = context(),
             records.load(serverOrigin: context.origin)?.isEnabled == true

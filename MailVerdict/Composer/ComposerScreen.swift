@@ -98,7 +98,8 @@ struct ComposerScreen: View {
             VStack(alignment: .leading, spacing: 0) {
                 banners
                 RecipientTokenField(
-                    field: .to, store: store, activeField: $activeField, onQueryChange: suggestions.update)
+                    field: .to, store: store, activeField: $activeField, onQueryChange: suggestions.update,
+                    autofocus: intent.focusesRecipientsOnOpen)
                 if let hint = store.sendHint {
                     Text(hint)
                         .font(.footnote)
@@ -235,13 +236,17 @@ struct ComposerScreen: View {
                 .padding(.top, 10)
                 .accessibilityIdentifier("composer-attachments")
             }
-            RichTextEditorView(store: store, height: $editorHeight) { source in
+            RichTextEditorView(
+                store: store, height: $editorHeight, autofocus: !intent.focusesRecipientsOnOpen
+            ) { source in
                 switch source {
                 case .photos: showsPhotoPicker = true
                 case .files: showsFileImporter = true
                 }
             }
-            .frame(height: max(editorHeight, 220))
+            // An empty, unquoted body still wants room to type into; a quoted one doesn't need
+            // padding below its own (typically short) text — the card follows right after it.
+            .frame(height: store.quote == nil ? max(editorHeight, 220) : max(editorHeight, 60))
             if let quote = store.quote {
                 QuoteCard(quote: quote) { store.removeQuote() }
                     .padding(.horizontal, 16)

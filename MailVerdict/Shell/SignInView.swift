@@ -102,6 +102,19 @@ struct SignInView: View {
                             .textContentType(.password)
                             .accessibilityIdentifier("signin-password")
                     }
+
+                    if sendsCredentialOverCleartext {
+                        Label {
+                            Text(
+                                "This address is http, not https — the \(mode == .bearer ? "token" : "username and password") will travel in the clear."
+                            )
+                            .font(.footnote)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                        .accessibilityIdentifier("signin-cleartext-warning")
+                    }
                 }
 
                 if failed {
@@ -135,6 +148,10 @@ struct SignInView: View {
             if url.isEmpty { url = environment.backendURL }
             if case .rejected = reason { tokenFocused = true }
         }
+    }
+
+    private var sendsCredentialOverCleartext: Bool {
+        mode != .none && url.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("http://")
     }
 
     private var isCredentialFilled: Bool {

@@ -14,6 +14,7 @@ public enum ReaderScript {
         case messageOffsets
         case openMessageIds
         case scrollToAnchor
+        case isPainted
     }
 
     public static let globalName = "mvReader"

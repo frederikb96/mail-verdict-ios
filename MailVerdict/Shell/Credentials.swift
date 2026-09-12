@@ -39,11 +39,21 @@ struct MVKeychainCredentialStore {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            // This app's own group, explicit rather than left to default — the entitlements list
+            // a second group now (the one shared with the push extension), and an unspecified
+            // access group is no longer guaranteed to resolve to this one. It is the same literal
+            // an existing item already carries (it was the only group before the split), so
+            // pinning it does not strand anything already written.
+            kSecAttrAccessGroup as String: "\(Self.teamId).\(service)",
             // Explicit, not inherited. This is a personal device credential for one backend and
             // has no business syncing to other hardware through iCloud Keychain.
             kSecAttrSynchronizable as String: false,
         ]
     }
+
+    /// The literal team id `$(AppIdentifierPrefix)` resolves to at build time — a Keychain query
+    /// needs the resolved string, never the build variable.
+    private static let teamId = "CSHG4AV9YH"
 
     func read() -> MVAuthMode? {
         #if DEBUG
@@ -83,8 +93,11 @@ struct MVKeychainCredentialStore {
         var query = baseQuery
         query[kSecValueData as String] = data
         // Survives a relaunch and works while the phone is locked but has been unlocked once,
-        // which is what a background refresh needs.
-        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // which is what a background refresh needs. `ThisDeviceOnly` because this is a personal
+        // device credential for one self-hosted backend — it has no business migrating through
+        // an encrypted backup restore to a different phone, the way the bare `AfterFirstUnlock`
+        // form does.
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
         let status = SecItemAdd(query as CFDictionary, nil)
         #if DEBUG
