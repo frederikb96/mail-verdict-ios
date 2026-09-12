@@ -41,11 +41,20 @@ struct AccountDetailScreen: View {
                         + "account re-syncs everything from scratch.")
             }
             .task {
+                #if DEBUG
+                    DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: screen task start")
+                #endif
                 if store == nil { store = MVAccountDetailStore(accountId: accountId, apiClient: connection.apiClient) }
                 #if DEBUG
                     AccountsDebugServices.shared.activeAccountDetailStore = store
+                    DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: store created, loading")
                 #endif
                 await store?.load()
+                #if DEBUG
+                    DebugLogBuffer.shared.append(
+                        .info, "screenshot",
+                        "account-detail: load() returned, state=\(String(describing: store?.state))")
+                #endif
             }
     }
 

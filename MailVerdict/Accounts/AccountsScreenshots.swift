@@ -22,6 +22,7 @@ import MailVerdictKit
 
         @MainActor
         private static func prepareAccountDetail(_: AppEnvironment, _: AppEnvironment.Connection) async {
+            DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: prepare start")
             MVFixtureURLProtocol.register(
                 method: "GET", path: "/api/accounts/11111111-1111-1111-1111-111111111111"
             ) {
@@ -48,13 +49,20 @@ import MailVerdictKit
                      "error_count":0,"last_error":null,"updated_at":"2026-01-15T10:29:00+00:00"}
                     """#.utf8)
             }
-            guard let store = await poll({ AccountsDebugServices.shared.activeAccountDetailStore }) else { return }
+            DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: fixtures registered, polling for store")
+            guard let store = await poll({ AccountsDebugServices.shared.activeAccountDetailStore }) else {
+                DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: store never appeared")
+                return
+            }
+            DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: store found, waiting for settle")
             await waitUntilSettled(
+                label: "account-detail",
                 isLoading: { store.state.isLoading },
                 isFailed: {
                     if case .failed = store.state { return true }; return false
                 },
                 reload: { await store.load() })
+            DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: prepare end")
         }
 
         /// Up to five seconds, checked every 50 ms.
@@ -70,9 +78,12 @@ import MailVerdictKit
         /// Waits up to five seconds for `isLoading` to go false, then reloads once if the store
         /// settled into its failed state. Each probe runs through `MainActor.run` and reports a
         /// plain `Bool` rather than handing back the store's own load-state enum, since that enum
-        /// carries an `Error` and isn't `Sendable`.
+        /// carries an `Error` and isn't `Sendable`. `label` only feeds the temporary debug-log
+        /// markers around the one unbounded step here (`reload`), so a hung sweep shows exactly
+        /// which screen's reload never returned.
         @MainActor
         private static func waitUntilSettled(
+            label: String,
             isLoading: @MainActor @Sendable () -> Bool,
             isFailed: @MainActor @Sendable () -> Bool,
             reload: @MainActor @Sendable () async -> Void
@@ -82,7 +93,11 @@ import MailVerdictKit
                 try? await Task.sleep(for: .milliseconds(50))
             }
             if await MainActor.run(body: isFailed) {
+                DebugLogBuffer.shared.append(.info, "screenshot", "\(label): settled failed, reloading")
                 await reload()
+                DebugLogBuffer.shared.append(.info, "screenshot", "\(label): reload returned")
+            } else {
+                DebugLogBuffer.shared.append(.info, "screenshot", "\(label): settled loaded")
             }
         }
     }
