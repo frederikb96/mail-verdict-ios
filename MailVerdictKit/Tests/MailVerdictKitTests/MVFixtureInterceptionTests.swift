@@ -76,6 +76,40 @@
 
             XCTAssertTrue(MVFixtureURLProtocol.misses.contains("GET /api/contacts/search"))
         }
+
+        /// A screen's own `prepare` registers after `FixtureBootstrap`'s shell-level baseline —
+        /// this is what lets it answer the same path differently without the two fighting over
+        /// which wins, the same `register`-replaces-`register` rule `MVFixtureURLProtocolTests`
+        /// already proves in isolation, narrated here as the baseline/override scenario it backs.
+        func testAScreensOwnRegistrationOverridesTheShellBaseline() {
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/alerts/native-push", status: 200) {
+                Data(#"{"available":false,"relay_urls":[],"reason":"fixture mode"}"#.utf8)
+            }
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/alerts/native-push", status: 200) {
+                Data(#"{"available":true,"relay_urls":["https://relay.example"],"reason":null}"#.utf8)
+            }
+
+            let match = MVFixtureURLProtocol.route(method: "GET", path: "/api/alerts/native-push")
+            let body = String(decoding: match.body(), as: UTF8.self)
+            XCTAssertTrue(body.contains("\"available\":true"), body)
+        }
+
+        /// A streaming route (SSE) never calls `urlProtocolDidFinishLoading` on its own — the
+        /// client is what decides when the connection ends, by cancelling the task, not this
+        /// table by answering it. `route(method:path:)` is where that flag survives the lookup.
+        func testAKeepOpenRouteReportsItselfAsSuch() {
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/events", keepOpen: true) {
+                Data(": keepalive\n\n".utf8)
+            }
+            let match = MVFixtureURLProtocol.route(method: "GET", path: "/api/events")
+            XCTAssertTrue(match.keepOpen)
+        }
+
+        func testAnOrdinaryRouteDoesNotKeepOpen() {
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/accounts") { Data("[]".utf8) }
+            let match = MVFixtureURLProtocol.route(method: "GET", path: "/api/accounts")
+            XCTAssertFalse(match.keepOpen)
+        }
     }
 
 #endif

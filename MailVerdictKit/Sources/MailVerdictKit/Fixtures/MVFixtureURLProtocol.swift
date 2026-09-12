@@ -73,7 +73,14 @@
             )!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: match.body())
-            client?.urlProtocolDidFinishLoading(self)
+            // A streaming route (SSE) never finishes on its own — finishing immediately is what
+            // reads to `MVSseClient` as the connection dropping the instant it came up, which
+            // sends it straight into its own reconnect-with-backoff loop forever. `stopLoading()`
+            // is still a no-op: the real disconnect happens when the client cancels the task, not
+            // when this object is told to.
+            if !match.keepOpen {
+                client?.urlProtocolDidFinishLoading(self)
+            }
         }
 
         override public func stopLoading() {}
@@ -83,33 +90,39 @@
         public struct Match: Sendable {
             public let status: Int
             public let body: @Sendable () -> Data
+            public let keepOpen: Bool
         }
 
         private struct FixtureRoute: Sendable {
             let method: String
             let path: String
             let status: Int
+            let keepOpen: Bool
             let body: @Sendable () -> Data
         }
 
         private static let lock = NSLock()
         nonisolated(unsafe) private static var routes: [FixtureRoute] = [
-            FixtureRoute(method: "GET", path: "/api/health", status: 200) {
+            FixtureRoute(method: "GET", path: "/api/health", status: 200, keepOpen: false) {
                 Data(#"{"status":"ready","postimap_contract":"ok","database":"ok"}"#.utf8)
             }
         ]
 
         /// Adds one route, or replaces it if the same method and path were already registered —
         /// a later registration winning rather than silently doing nothing matches
-        /// `DebugRouter.register`'s own rule, and lets a test override a screen's default fixture
-        /// for one case without the two fighting over which wins.
+        /// `DebugRouter.register`'s own rule, and lets a screen's own `prepare` override a
+        /// shell-level baseline (`FixtureBootstrap`) registered for the same path, or a test
+        /// override a screen's default fixture for one case, without the two fighting over which
+        /// wins. `keepOpen` is for a streaming response (SSE) only — see `startLoading()`.
         public static func register(
-            method: String, path: String, status: Int = 200, body: @escaping @Sendable () -> Data
+            method: String, path: String, status: Int = 200, keepOpen: Bool = false,
+            body: @escaping @Sendable () -> Data
         ) {
             lock.lock()
             defer { lock.unlock() }
             routes.removeAll { $0.method == method.uppercased() && $0.path == path }
-            routes.append(FixtureRoute(method: method.uppercased(), path: path, status: status, body: body))
+            routes.append(
+                FixtureRoute(method: method.uppercased(), path: path, status: status, keepOpen: keepOpen, body: body))
         }
 
         /// Back to just `/api/health` — for a test that registers its own routes and must not
@@ -119,7 +132,7 @@
             lock.lock()
             defer { lock.unlock() }
             routes = [
-                FixtureRoute(method: "GET", path: "/api/health", status: 200) {
+                FixtureRoute(method: "GET", path: "/api/health", status: 200, keepOpen: false) {
                     Data(#"{"status":"ready","postimap_contract":"ok","database":"ok"}"#.utf8)
                 }
             ]
@@ -140,9 +153,9 @@
             lock.unlock()
             guard let fixture = found else {
                 let detail = "no fixture route for \(method) \(path)"
-                return Match(status: 404) { Data("{\"detail\":\"\(detail)\"}".utf8) }
+                return Match(status: 404, body: { Data("{\"detail\":\"\(detail)\"}".utf8) }, keepOpen: false)
             }
-            return Match(status: fixture.status, body: fixture.body)
+            return Match(status: fixture.status, body: fixture.body, keepOpen: fixture.keepOpen)
         }
 
         // MARK: - Misses
