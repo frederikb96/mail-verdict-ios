@@ -34,7 +34,10 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-crypto.git", from: "4.5.2"),
     ],
     targets: [
-        .target(name: "MailVerdictKit", dependencies: ["SwiftSoup"]),
+        .target(
+            name: "MailVerdictKit", dependencies: ["SwiftSoup"],
+            resources: [.copy("Reader/Resources/reader.js")]
+        ),
         .target(
             name: "PushEnvelope",
             dependencies: [
