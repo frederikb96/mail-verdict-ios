@@ -30,8 +30,8 @@ extension LiveEventSubscriber {
 
 public typealias MVSubscriptionToken = UUID
 
-/// What `LiveEventHub.connectionState` reports — the UX design's list-subtitle rule ("Connecting…"
-/// for reconnecting, "Offline" for disconnected) reads this directly. `MVSseClient` retries with
+/// What `LiveEventHub.connectionState` reports — a list's own subtitle ("Connecting…" for
+/// reconnecting, "Offline" for disconnected) reads this directly. `MVSseClient` retries with
 /// capped backoff forever once told to connect, so losing the stream always becomes
 /// `.reconnecting`, never `.disconnected` — that state is reserved for an explicit `disconnect()`
 /// (signed out, or never connected yet).
@@ -42,8 +42,8 @@ public enum MVConnectionState: Sendable, Equatable {
 }
 
 /// Consumes `GET /api/events` over `MVSseClient` and publishes typed invalidations to every
-/// subscribed store — the UX design's event table (§2.0, amended by the calendar-invitation
-/// addendum) as its test matrix, `LiveEventHubMappingTests` as the proof every row is covered.
+/// subscribed store — `LiveEventHubMappingTests` is the proof every SSE event name this app
+/// knows about maps to the right invalidation.
 ///
 /// One instance for the whole app, owned by `AppEnvironment` — never one per screen, since the
 /// backend's own event ring has no notion of "this SSE connection is for screen X" and opening a
@@ -242,8 +242,8 @@ public final class LiveEventHub {
                 id: json.uuid("id"), changed: json.stringArray("changed"),
                 status: json.string("status"), kind: json.string("kind"), itip: json.string("itip")
             )
-            // The addendum's own amendment: a calendar reply's outbox row routes to the
-            // invitation card and event detail, never a mail toast or list refresh.
+            // A calendar reply's outbox row routes to the invitation card and event detail,
+            // never a mail toast or list refresh.
             return payload.itip == "reply" ? .invitationOrEventChanged : .outboxUpdated(payload)
         case .settingsChanged:
             return .settingsChanged(category: json.string("category"))

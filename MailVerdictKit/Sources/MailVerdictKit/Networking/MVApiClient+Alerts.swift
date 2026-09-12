@@ -49,7 +49,7 @@ extension MVApiClient {
         try await sendNoContent(path: "/api/alerts/subscriptions/\(id)", method: "DELETE")
     }
 
-    // MARK: Native push (systems §5.05)
+    // MARK: Native push
 
     public func getNativePushConfig() async throws -> NativePushConfigResponse {
         try await send(path: "/api/alerts/native-push")
@@ -74,7 +74,7 @@ extension MVApiClient {
     }
 
     /// Either a registered device's own scope (`subscriptionId`) or an explicit folder scope —
-    /// the same two ways `list_for_alert` itself resolves "which folders alert" (systems §5.05).
+    /// the same two ways `list_for_alert` itself resolves "which folders alert".
     public func getAlertBadge(subscriptionId: UUID) async throws -> AlertBadgeResponse {
         try await send(
             path: "/api/alerts/badge",

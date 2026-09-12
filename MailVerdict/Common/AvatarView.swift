@@ -2,7 +2,7 @@ import MailVerdictKit
 import SwiftUI
 
 /// A circle holding a contact photo, or initials on a stable per-identity tint. A unified row
-/// adds the contributing account's emoji as a badge at the bottom-trailing corner (UX design §5).
+/// adds the contributing account's emoji as a badge at the bottom-trailing corner.
 struct AvatarView: View {
     let identity: String
     let displayName: String

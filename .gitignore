@@ -34,5 +34,5 @@ AuthKey_*.p8
 # macOS
 .DS_Store
 
-# Its own git repo, per the PAI convention
+# Its own git repo
 .claude/

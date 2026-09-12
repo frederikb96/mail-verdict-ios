@@ -1,9 +1,9 @@
 import XCTest
 @testable import MailVerdictKit
 
-/// Every row of the UX design's event table (§2.0, amended by the calendar-invitation addendum)
-/// gets its own mapping test here — `LiveEventHub.mapRecord` is `nonisolated` precisely so these
-/// can call it directly, with no actor hop and no SSE transport involved.
+/// Every SSE event name this app knows about gets its own mapping test here —
+/// `LiveEventHub.mapRecord` is `nonisolated` precisely so these can call it directly, with no
+/// actor hop and no SSE transport involved.
 final class LiveEventHubMappingTests: XCTestCase {
 
     private func record(_ name: String, _ json: String = "{}", id: String? = nil) -> MVSseRecord {
@@ -91,8 +91,8 @@ final class LiveEventHubMappingTests: XCTestCase {
         )
     }
 
-    /// The addendum's own amendment: an `itip: "reply"` outbox row is never the ordinary
-    /// `.outboxUpdated` case — no mail toast, no list refresh, only the invitation card.
+    /// An `itip: "reply"` outbox row is never the ordinary `.outboxUpdated` case — no mail
+    /// toast, no list refresh, only the invitation card.
     func testOutboxUpdatedWithItipReplyBecomesInvitationOrEventChanged() {
         let json = "{\"id\":\"\(UUID())\",\"itip\":\"reply\"}"
         XCTAssertEqual(LiveEventHub.mapRecord(record("outbox.updated", json)), .invitationOrEventChanged)

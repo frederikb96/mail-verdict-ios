@@ -6,8 +6,8 @@ public enum MVToastVariant: Sendable, Equatable {
 }
 
 /// One toast — `duration == 0` means persistent, dismissed only by its own ✕ or an explicit
-/// `dismiss(id:)` call, matching the UX design's own rule. `action`/`actionTitle` are both `nil`
-/// or both set; there is at most one action button.
+/// `dismiss(id:)` call. `action`/`actionTitle` are both `nil` or both set; there is at most one
+/// action button.
 public struct MVToast: Identifiable, Sendable {
     public let id: UUID
     public let variant: MVToastVariant

@@ -1,8 +1,8 @@
 import Foundation
 
-/// Cold launch restores `[Mailboxes, last List]`, never a reader — Apple Mail's own behaviour,
-/// and Freddy's screenshot (a Back chevron to Mailboxes from the list, never from deeper). The
-/// root (Mailboxes) is never itself a `Route` case, so the persisted array is everything pushed
+/// Cold launch restores `[Mailboxes, last List]`, never a reader — the same shape Apple Mail
+/// itself restores to (a Back chevron to Mailboxes from the list, never from deeper). The root
+/// (Mailboxes) is never itself a `Route` case, so the persisted array is everything pushed
 /// *after* it.
 public enum MVPersistedPath {
     private static let key = "navigationPath"

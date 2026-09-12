@@ -1,8 +1,8 @@
 import MailVerdictKit
 import SwiftUI
 
-/// The root toast host — a floating glass capsule above the bottom bar, UX design §2.0. Reads
-/// `MVToastStore` and renders whatever it currently holds; it never decides what shows, only how.
+/// The root toast host — a floating glass capsule above the bottom bar. Reads `MVToastStore` and
+/// renders whatever it currently holds; it never decides what shows, only how.
 struct ToastOverlay: View {
     let store: MVToastStore
 

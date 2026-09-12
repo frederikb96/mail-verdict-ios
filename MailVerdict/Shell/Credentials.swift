@@ -3,8 +3,8 @@ import MailVerdictKit
 import Security
 
 /// Where the backend's credential lives — none, a bearer token, or a basic-auth username and
-/// password (systems design §5.01's three auth modes), encoded as JSON so one Keychain item
-/// holds whichever of the three this install actually uses.
+/// password, encoded as JSON so one Keychain item holds whichever of the three this install
+/// actually uses.
 ///
 /// The Keychain is the only place on the device holding a secret; everything else the app
 /// remembers (the backend URL) is an ordinary preference and lives in `UserDefaults`.
@@ -40,7 +40,7 @@ struct MVKeychainCredentialStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             // Explicit, not inherited. This is a personal device credential for one backend and
-            // has no business syncing to Freddy's other hardware through iCloud Keychain.
+            // has no business syncing to other hardware through iCloud Keychain.
             kSecAttrSynchronizable as String: false,
         ]
     }
