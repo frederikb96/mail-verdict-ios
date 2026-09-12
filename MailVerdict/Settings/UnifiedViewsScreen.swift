@@ -11,6 +11,9 @@ struct UnifiedViewsScreen: View {
     @State private var store: MVUnifiedSetupStore
     @State private var newViewName = ""
     @State private var createError: String?
+    /// Shared across every view's rename field — what `.onDisappear` clears, flushing whichever
+    /// row was still focused when the screen is left.
+    @FocusState private var focusedViewId: UUID?
 
     init(environment: AppEnvironment, connection: AppEnvironment.Connection) {
         self.environment = environment
@@ -35,6 +38,7 @@ struct UnifiedViewsScreen: View {
                 .screenshotReady(route: .unifiedViews, environment: environment, connection: connection)
                 .onAppear { DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: onAppear") }
             #endif
+            .onDisappear { focusedViewId = nil }
             .task {
                 #if DEBUG
                     DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: screen task start")
@@ -58,7 +62,8 @@ struct UnifiedViewsScreen: View {
             List {
                 Section {
                     ForEach(store.views) { view in
-                        UnifiedViewRow(store: store, view: view, environment: environment)
+                        UnifiedViewRow(
+                            store: store, view: view, environment: environment, focusedViewId: $focusedViewId)
                     }
                     .onMove { offsets, destination in
                         var reordered = store.views
@@ -81,10 +86,8 @@ struct UnifiedViewsScreen: View {
                 }
 
                 if !store.views.isEmpty {
-                    Section("Which views each folder belongs to") {
-                        ForEach(store.accounts) { account in
-                            AccountFolderViewsSection(store: store, account: account)
-                        }
+                    ForEach(store.accounts) { account in
+                        AccountFolderViewsSection(store: store, account: account)
                     }
                 }
             }
@@ -114,14 +117,19 @@ private struct UnifiedViewRow: View {
     let store: MVUnifiedSetupStore
     let view: UnifiedFolderResponse
     let environment: AppEnvironment
+    var focusedViewId: FocusState<UUID?>.Binding
 
     @State private var name: String
     @State private var confirmDelete = false
 
-    init(store: MVUnifiedSetupStore, view: UnifiedFolderResponse, environment: AppEnvironment) {
+    init(
+        store: MVUnifiedSetupStore, view: UnifiedFolderResponse, environment: AppEnvironment,
+        focusedViewId: FocusState<UUID?>.Binding
+    ) {
         self.store = store
         self.view = view
         self.environment = environment
+        self.focusedViewId = focusedViewId
         _name = State(initialValue: view.unifiedName)
     }
 
@@ -131,7 +139,9 @@ private struct UnifiedViewRow: View {
                 emoji in
                 Task { try? await store.setViewEmoji(id: view.id, emoji: emoji) }
             }
-            TextField("Name", text: $name).onSubmit(commitName)
+            TextField("Name", text: $name)
+                .focused(focusedViewId, equals: view.id)
+                .onSubmit(commitName)
             Text("\(view.folders.count) folder\(view.folders.count == 1 ? "" : "s")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -150,6 +160,9 @@ private struct UnifiedViewRow: View {
             Text("Only the view goes. Its folders and every message in them stay exactly where they are.")
         }
         .onChange(of: view.unifiedName) { _, newValue in name = newValue }
+        .onChange(of: focusedViewId.wrappedValue) { old, new in
+            if old == view.id, new != view.id { commitName() }
+        }
     }
 
     private func commitName() {
@@ -176,11 +189,13 @@ private struct AccountFolderViewsSection: View {
 
     var body: some View {
         let folders = store.orderedFolders(accountId: account.id)
-        if folders.isEmpty {
-            LabeledContent(account.name) { Text("No folders synced yet").foregroundStyle(.secondary) }
-        } else {
-            ForEach(folders) { folder in
-                FolderViewsMenu(store: store, folder: folder, accountName: account.name)
+        Section(account.name) {
+            if folders.isEmpty {
+                Text("No folders synced yet").foregroundStyle(.secondary)
+            } else {
+                ForEach(folders) { folder in
+                    FolderViewsMenu(store: store, folder: folder, accountName: account.name)
+                }
             }
         }
     }
@@ -190,6 +205,10 @@ private struct FolderViewsMenu: View {
     let store: MVUnifiedSetupStore
     let folder: FolderResponse
     let accountName: String
+
+    private var folderName: String {
+        folderDisplayName(imapName: folder.imapName, displayName: folder.displayName, specialUse: folder.specialUse)
+    }
 
     var body: some View {
         Menu {
@@ -207,7 +226,7 @@ private struct FolderViewsMenu: View {
             }
         } label: {
             HStack {
-                Text(folder.displayName ?? folder.imapName)
+                Text(folderName)
                     .foregroundStyle(.primary)
                 Spacer()
                 Text(chosenSummary)
@@ -215,6 +234,7 @@ private struct FolderViewsMenu: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .tint(.primary)
     }
 
     private var chosenSummary: String {
