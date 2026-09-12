@@ -22,6 +22,8 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
         var perform: (MVMessageUIAction, MessageSummary) -> Void
         var showOptions: (MessageSummary) -> Void
         var openAccounts: () -> Void
+        /// The row the reader last settled on for this list, if it was opened from here.
+        var lastSettledMessageId: () -> UUID?
     }
 
     private static let cellIdentifier = "MailRow"
@@ -271,7 +273,7 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
     /// Back after paging the reader away from the opened row: the least scroll that shows the
     /// row the reader ended on, and nothing at all when it is already in view.
     private func revealLastViewedRow() {
-        guard let rowId = store.lastViewedMessageId, rowId != store.openedMessageId,
+        guard let rowId = actions.lastSettledMessageId(), rowId != store.openedMessageId,
             let index = appliedIds.firstIndex(of: rowId),
             let offset = MVListAnchoring.offsetRevealing(
                 rowIndex: index, offsetY: Double(tableView.contentOffset.y), geometry: geometry(),
@@ -682,7 +684,7 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
                     hasOlder: store.hasOlder, hasNewer: store.hasNewer, newArrivalCount: store.newMessagesCapsuleCount,
                     isOnScreen: isOnScreen, isSelecting: store.isSelecting, selectionCount: selection.count,
                     selectionIsPredicate: selection.predicate != nil,
-                    lastViewedMessageId: store.lastViewedMessageId?.uuidString, phase: "\(store.phase)"
+                    openedMessageId: store.openedMessageId?.uuidString, phase: "\(store.phase)"
                 )
             )
         #endif

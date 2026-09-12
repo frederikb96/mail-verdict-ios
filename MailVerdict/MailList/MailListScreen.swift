@@ -347,7 +347,8 @@ struct MailListScreen: View {
             open: { row in open(row) },
             perform: { action, row in route(action, row) },
             showOptions: { row in optionsRow = row },
-            openAccounts: { environment.navigationPath.append(.accounts) }
+            openAccounts: { environment.navigationPath.append(.accounts) },
+            lastSettledMessageId: { nil }
         )
     }
 

@@ -31,7 +31,7 @@
         let isSelecting: Bool
         let selectionCount: Int
         let selectionIsPredicate: Bool
-        let lastViewedMessageId: String?
+        let openedMessageId: String?
         let phase: String
     }
 
