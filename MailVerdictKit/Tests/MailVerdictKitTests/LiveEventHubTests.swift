@@ -244,21 +244,28 @@ final class LiveEventHubBufferingTests: XCTestCase {
     }
 
     /// A subscriber joining after the hub is already connected is told so immediately, rather
-    /// than sitting as "offline" until the next state change.
+    /// than sitting as "offline" until the next state change. The stub's stream ends (and the
+    /// hub starts reconnecting) the instant it finishes delivering its empty body, so the late
+    /// subscribe has to happen inside the same synchronous broadcast that reports `.connected` —
+    /// anything that first returns to the test function risks racing the hub's own disconnect.
     func testSubscribingAfterConnectionIsUpReportsConnectedRightAway() async throws {
         MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data())
         let signal = MVStreamConnectionSignal()
-        let connector = MockSubscriber(onSetConnected: { connected in
-            if connected { Task { await signal.fire() } }
-        })
         let hub = try makeHub()
+        var lateSubscriberStates: [Bool] = []
+
+        let connector = MockSubscriber(onSetConnected: { connected in
+            guard connected else { return }
+            let lateSubscriber = MockSubscriber()
+            hub.subscribe(lateSubscriber)
+            lateSubscriberStates = lateSubscriber.connectedStates
+            Task { await signal.fire() }
+        })
         hub.subscribe(connector)
         hub.connect()
         await signal.wait()
 
-        let lateSubscriber = MockSubscriber()
-        hub.subscribe(lateSubscriber)
-        XCTAssertEqual(lateSubscriber.connectedStates, [true])
+        XCTAssertEqual(lateSubscriberStates, [true])
     }
 }
 
