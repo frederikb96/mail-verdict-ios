@@ -110,6 +110,20 @@ final class UndoSendStoreTests: XCTestCase {
         XCTAssertTrue(store.pending.isEmpty)
     }
 
+    func testOutboxEventRefreshesPendingSendsAndUnrelatedEventsDoNot() async {
+        let staged = row()
+        let store = UndoSendStore(
+            dependencies: UndoSendDependencies(
+                listPending: { [staged] }, cancel: { _ in }, getAttachment: { _, _ in (Data(), nil, nil) }))
+
+        store.apply([.alertsChanged, .foldersChanged])
+        XCTAssertNil(store.liveRefresh)
+
+        store.apply([.outboxUpdated(MVOutboxEventPayload(id: staged.id, status: "pending"))])
+        await store.liveRefresh?.value
+        XCTAssertEqual(store.pending.map(\.id), [staged.id])
+    }
+
     func testCountdownRoundsUpAndNeverGoesNegative() {
         let now = Date()
         XCTAssertEqual(UndoSendStore.secondsRemaining(until: now.addingTimeInterval(4.1), now: now), 5)

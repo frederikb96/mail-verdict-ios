@@ -75,12 +75,14 @@ public enum UndoSendOutcome: Equatable, Sendable {
 /// submit's own response and from `GET /outbox/pending` whenever the app looks again.
 @Observable
 @MainActor
-public final class UndoSendStore {
+public final class UndoSendStore: LiveEventSubscriber {
 
     public private(set) var pending: [PendingSendResponse] = []
     public private(set) var cancelling: Set<UUID> = []
     private var restorations: [UUID: UndoSendRestoration] = [:]
     private let dependencies: UndoSendDependencies
+    /// The refresh the latest live outbox event started.
+    @ObservationIgnored private(set) var liveRefresh: Task<Void, Never>?
 
     /// How long a row stays after its countdown reaches zero, while the server finishes sending
     /// it; past that it has either gone out or will show up again on the next refresh.
@@ -104,6 +106,19 @@ public final class UndoSendStore {
         pending.filter { $0.sendAfter.addingTimeInterval(Self.expiryGrace) > now }.sorted {
             $0.sendAfter < $1.sendAfter
         }
+    }
+
+    /// A send leaving its undo window, or cancelled from another device, changes the pending
+    /// list; `outbox.updated` says so, and a resync may have missed it.
+    public func apply(_ invalidations: [MVLiveInvalidation]) {
+        let affectsPending = invalidations.contains { invalidation in
+            switch invalidation {
+            case .outboxUpdated, .resync: return true
+            default: return false
+            }
+        }
+        guard affectsPending else { return }
+        liveRefresh = Task { await refresh() }
     }
 
     public static func secondsRemaining(until sendAfter: Date, now: Date) -> Int {
