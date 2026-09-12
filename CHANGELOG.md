@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-12
+
+### Fixed
+
+- The message list: folders with no saved order now follow the web's order — Inbox, Drafts, Sent,
+  Archive, Junk, Trash, then everything else alphabetically.
+- Mailboxes folder and Unified View rows, and the folder checklists in Search, Notifications and
+  the Move picker, look like native rows instead of tinted buttons.
+- Select mode: the title reads "N Selected" instead of truncating, and the swipe Options sheet
+  opens large enough to show every action without scrolling.
+- Reader: a plain message with no colours of its own opens dark in dark mode instead of as a white
+  block; a message that sets its own colours stays light, and the Dark/Light toggle is unchanged.
+- Reader: folded quotes show a native "•••" disclosure instead of an underlined link; the
+  composer's quote card matches.
+- Reader: a tapped or detected phone number can be handed off to Phone or Messages.
+- Reader: a brief loading placeholder replaces what could otherwise be a black flash while a
+  message opens, and the body now follows the system text size like the rest of the reader.
+- Settings: fields save when you leave them or the screen, and number fields get a keyboard Done
+  key.
+- Unified Views: folders are grouped under their accounts, with proper folder names.
+- Accounts: account detail stays correct if the account is removed elsewhere, and names the sync
+  method in words.
+- Composer: the cursor starts in To for a new message, and in the body for a reply or forward.
+- Keychain items are scoped to least privilege; an existing install migrates automatically on
+  first launch.
+- The Connect screen warns before sending a credential over plain http.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added
