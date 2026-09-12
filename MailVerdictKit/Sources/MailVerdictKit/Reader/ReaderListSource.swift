@@ -22,4 +22,18 @@ public protocol ReaderListSource: AnyObject {
 
     /// Loads the next newer page. A no-op, not an error, once `hasNewer` is already `false`.
     func loadNewer() async
+
+    /// The reader's own nav title for this source — "{N} Messages" for a folder or unified view,
+    /// "{total} Results" for search, "{n} to Review" for spam review (UX design §2.4). `nil`
+    /// while the count this is built from has not loaded yet.
+    ///
+    /// A protocol requirement, not only an extension member with a default: a call through `any
+    /// ReaderListSource` dispatches an extension-only member statically (to the extension's own
+    /// default), never reaching a conformer's override — only a requirement dispatches
+    /// dynamically to what the conformer actually implements.
+    var readerTitle: String? { get }
+}
+
+extension ReaderListSource {
+    public var readerTitle: String? { nil }
 }
