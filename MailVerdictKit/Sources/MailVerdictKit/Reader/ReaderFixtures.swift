@@ -40,7 +40,7 @@
 
         /// The list the fixture reader pages through.
         @MainActor
-        public final class Source: ReaderTitledSource {
+        public final class Source: ReaderListSource {
             public let rowIds = ReaderFixtures.rowIds
             public let hasOlder = false
             public let hasNewer = false

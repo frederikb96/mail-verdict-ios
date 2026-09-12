@@ -188,7 +188,7 @@ public enum InvitationCardBuilder {
             let reason = invitation.error.map { ": \($0)" } ?? "."
             sections.append(
                 #"<div class="mv-invite-line mv-danger">\#(escape("Could not add to \(target)\(reason)"))</div>"#)
-sections.append(
+            sections.append(
                 button(
                     "Retry", icon: .retry, link: .invitation(messageId: id, action: .retry), model: model,
                     busyAs: .retrying, enabled: invitation.calendarId != nil))

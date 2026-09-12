@@ -37,13 +37,6 @@ public final class ReaderSourceRegistry {
     }
 }
 
-/// Adopted by a source that can name itself in the reader's title — "{N} Messages" for a folder
-/// or view, "{total} Results" for search, "{n} to Review" for spam review. `nil` while unknown.
-@MainActor
-public protocol ReaderTitledSource: ReaderListSource {
-    var readerTitle: String? { get }
-}
-
 /// Adopted by a source whose rows can stand for whole conversations (the list grouped by
 /// conversation): the reader then marks the rest of a row's conversation read when it settles on
 /// it, as opening a grouped row does on the web.
@@ -51,10 +44,4 @@ public protocol ReaderTitledSource: ReaderListSource {
 public protocol ReaderConversationScopedSource: ReaderListSource {
     /// The folders a row's conversation is read within, or `nil` when rows are single messages.
     func conversationFolderIds(for messageId: UUID) -> [UUID]?
-}
-
-extension MVExplicitUnreadTracker {
-    /// The one "explicitly marked unread" id every surface shares — the list's Mark as Unread must
-    /// set it too, or opening that message would mark it read again straight away.
-    public static let shared = MVExplicitUnreadTracker()
 }

@@ -92,8 +92,11 @@ private struct ReaderContent: View {
                 Text("Sent with your next reply.")
             }
             .sheet(item: $model.moveRequest) { request in
-                ReaderMoveSheet(request: request, lookups: model.session.lookups) { folderId in
-                    model.move(to: folderId)
+                MovePickerSheet(
+                    source: .folders(accountId: request.accountId, excludingFolderId: request.currentFolderId),
+                    backend: api
+                ) { target in
+                    model.move(to: target, accountId: request.accountId)
                 }
             }
             .sheet(item: $model.eventDetails) { request in
@@ -238,8 +241,8 @@ struct ReaderOptionsMenuContent: View {
             model.perform(action)
         } label: {
             Label(
-                action.title(senderEmail: model.senderEmail, senderDomain: model.senderDomain),
-                systemImage: action.systemImage)
+                action.readerTitle(senderEmail: model.senderEmail, senderDomain: model.senderDomain),
+                systemImage: action.symbol)
         }
     }
 }

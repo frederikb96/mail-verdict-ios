@@ -88,7 +88,7 @@ public final class ReaderSession {
     // MARK: Reading state
 
     public var title: String? {
-        (source as? any ReaderTitledSource)?.readerTitle
+        source?.readerTitle
     }
 
     public var currentRowId: UUID { paging.currentId }
@@ -734,5 +734,11 @@ public final class ReaderSession {
 
     static func message(for error: Error) -> String {
         (error as? MVError)?.userMessage ?? error.localizedDescription
+    }
+}
+
+extension ReaderSession: LiveEventSubscriber {
+    public func apply(_ invalidations: [MVLiveInvalidation]) {
+        handle(invalidations)
     }
 }

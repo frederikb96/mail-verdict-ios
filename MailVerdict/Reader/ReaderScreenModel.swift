@@ -59,6 +59,8 @@ final class ReaderScreenModel {
         session = ReaderSession(
             context: context, api: connection.apiClient, theme: theme,
             cacheDirectory: caches ?? FileManager.default.temporaryDirectory)
+        // Held weakly by the hub, so the subscription ends with the reader.
+        _ = connection.liveEventHub.subscribe(session)
         session.onToast = { [weak environment] toast in
             environment?.toasts.show(toast)
         }
@@ -153,7 +155,8 @@ final class ReaderScreenModel {
         }
     }
 
-    func move(to folderId: UUID) {
+    func move(to target: MVMoveTarget, accountId: UUID) {
+        guard let folderId = target.folderId(forAccount: accountId) else { return }
         Task { await session.move(to: folderId) }
     }
 
