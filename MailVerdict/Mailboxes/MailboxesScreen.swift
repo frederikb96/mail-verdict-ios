@@ -131,14 +131,14 @@ struct MailboxesScreen: View {
                 }
             } else {
                 ForEach(store.unifiedRows) { row in
-                    Button {
-                        store.recordViewed(.unified(viewId: row.id, name: row.name))
-                        environment.navigationPath.append(
-                            .list(.unified(viewId: row.id, name: row.name), aroundMessageId: nil))
-                    } label: {
+                    NavigationLink(value: Route.list(.unified(viewId: row.id, name: row.name), aroundMessageId: nil)) {
                         UnifiedRowLabel(row: row)
                     }
                     .id(row.anchorId)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            store.recordViewed(.unified(viewId: row.id, name: row.name))
+                        })
                 }
             }
         } header: {
@@ -166,23 +166,24 @@ struct MailboxesScreen: View {
             if collapsed {
                 EmptyView()
             } else if section.connectionState == .neverConnected {
-                Button {
-                    environment.navigationPath.append(.account(section.id))
-                } label: {
+                NavigationLink(value: Route.account(section.id)) {
                     Text(section.stateError ?? "This account has never connected")
                         .foregroundStyle(.red)
                 }
             } else {
                 ForEach(section.folders) { folder in
-                    Button {
-                        store.recordViewed(.folder(accountId: section.id, folderId: folder.id))
-                        environment.navigationPath.append(
-                            .list(.folder(accountId: section.id, folderId: folder.id), aroundMessageId: nil)
-                        )
-                    } label: {
+                    NavigationLink(
+                        value: Route.list(
+                            .folder(accountId: section.id, folderId: folder.id), aroundMessageId: nil)
+                    ) {
                         FolderRowLabel(folder: folder)
                     }
                     .id(folder.anchorId)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            store.recordViewed(.folder(accountId: section.id, folderId: folder.id))
+                        }
+                    )
                     .contextMenu { folderContextMenu(accountId: section.id, folder: folder) }
                 }
             }

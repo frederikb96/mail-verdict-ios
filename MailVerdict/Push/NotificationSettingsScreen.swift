@@ -191,6 +191,7 @@ private struct NotificationSettingsForm: View {
             }
             .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityAddTraits(enabled ? .isSelected : [])
     }
 

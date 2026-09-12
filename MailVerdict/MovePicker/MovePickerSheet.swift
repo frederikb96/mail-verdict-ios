@@ -33,8 +33,8 @@ struct MovePickerSheet: View {
                     dismiss()
                 } label: {
                     Label(target.name, systemImage: target.symbol)
-                        .foregroundStyle(.primary)
                 }
+                .buttonStyle(.plain)
                 .accessibilityIdentifier("move-target-\(target.name)")
             }
             .overlay { overlay }
