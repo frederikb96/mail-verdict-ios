@@ -35,6 +35,9 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
     private var anchorToRestore: ReaderScrollAnchor?
     private var imagesAllowed = false
     private var loadGeneration = 0
+    /// Blocks that arrived while the document was still loading — `reader.js` only exists once it
+    /// has, so they are swapped in then rather than lost.
+    private var pendingBlocks: [(id: String, html: String)] = []
     private var pinnedEdges: Set<MVZoomEdgeHandoff.Edge> = []
     private var handoff: (edge: MVZoomEdgeHandoff.Edge, distance: CGFloat)?
 
@@ -108,6 +111,8 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
             // fresh load installs.
             if allowed != imagesAllowed {
                 rebuild(imagesAllowed: allowed, makeDocument)
+            } else if !isLoaded {
+                pendingBlocks.append((id, html))
             } else {
                 // The script's result is discarded: a task's value must be `Sendable`, and it is `Any?`.
                 Task { _ = try? await call(.replaceBlock, ["id": id, "html": html]) }
@@ -119,6 +124,8 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
         loadGeneration += 1
         let generation = loadGeneration
         isLoaded = false
+        // The new document is built from the latest state, so held blocks are already in it.
+        pendingBlocks = []
         self.revealsOpened = revealsOpened
         anchorToRestore = nil
         imagesAllowed = allowed
@@ -255,6 +262,11 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
                 await revealOpenedMessage()
             }
             isLoaded = true
+            let held = pendingBlocks
+            pendingBlocks = []
+            for block in held {
+                _ = try? await call(.replaceBlock, ["id": block.id, "html": block.html])
+            }
             delegate?.pageDidFinishLoading(self)
         }
     }
@@ -355,5 +367,14 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
     #if DEBUG
         var debugContentWidth: Double { Double(webView.scrollView.contentSize.width) }
         var debugBoundsWidth: Double { Double(webView.scrollView.bounds.width) }
+
+        /// Whether the loaded document holds an element matching `selector` — what the page
+        /// actually shows, not what the store holds.
+        func debugContains(_ selector: String) async -> Bool {
+            let found = try? await webView.callAsyncJavaScript(
+                "return document.querySelector(selector) !== null;", arguments: ["selector": selector], in: nil,
+                contentWorld: .defaultClient)
+            return (found as? NSNumber)?.boolValue ?? false
+        }
     #endif
 }
