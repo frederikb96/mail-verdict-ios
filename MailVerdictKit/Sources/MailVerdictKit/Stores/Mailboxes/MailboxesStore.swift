@@ -44,8 +44,8 @@ public struct MailboxesUnifiedRow: Identifiable, Sendable, Equatable {
 }
 
 /// Everything the Mailboxes screen (overview) needs: unified views plus one collapsible section
-/// per account, the dead-outbox banner, the bell badge, and the scroll/collapse restoration the
-/// UX design's own requirement demands. `membership` is what `MVMessagePlaceResolver` takes as its
+/// per account, the dead-outbox banner, the bell badge, and scroll/collapse restoration across
+/// relaunch. `membership` is what `MVMessagePlaceResolver` takes as its
 /// `MVUnifiedViewMembershipLookup` — see that type's own doc comment for why it is not this class
 /// itself.
 @Observable
@@ -157,7 +157,7 @@ public final class MailboxesStore {
             accountSections = try await loadAccountSections(accounts: accountList)
             saveSnapshotToDiskCache()
         } catch {
-            loadError = (error as? MVError)?.userMessage ?? "\(error)"
+            loadError = error.mvUserMessage
         }
         isLoading = false
         reportDebugState()
@@ -281,8 +281,8 @@ public final class MailboxesStore {
 
     // MARK: - Sync-status polling
 
-    /// The UX design polls account health every 30s while this screen is visible — called from
-    /// the screen's own `.task`, cancelled from `.onDisappear`/task cancellation, never left
+    /// Polls account health every 30s while this screen is visible — called from the screen's
+    /// own `.task`, cancelled from `.onDisappear`/task cancellation, never left
     /// running once the screen is off-screen.
     public func startSyncStatusPolling() {
         syncPollingTask?.cancel()
@@ -371,9 +371,8 @@ public final class MailboxesStore {
 
     // MARK: - Recording which kind of view was last opened
 
-    /// Tapping a folder or unified row records whether the last view was unified — the UX
-    /// design's `markAccountView`/`recordUnifiedView` — so a later deep link or notification tap
-    /// opens in the same kind of view this screen was last showing.
+    /// Tapping a folder or unified row records whether the last view was unified, so a later
+    /// deep link or notification tap opens in the same kind of view this screen was last showing.
     public func recordViewed(_ kind: MailboxesRowKind) {
         switch kind {
         case .folder:

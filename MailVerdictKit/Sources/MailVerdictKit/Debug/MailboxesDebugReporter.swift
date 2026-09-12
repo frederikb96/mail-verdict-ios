@@ -2,8 +2,8 @@
 
     import Foundation
 
-    /// What `/mailboxes/state` answers — Freddy's own verification ("same scroll position and
-    /// collapse state") read back without a screenshot.
+    /// What `/mailboxes/state` answers — the same scroll position and collapse state read back
+    /// without a screenshot.
     public struct MVMailboxesDebugSnapshot: Codable, Sendable {
         public let unifiedCollapsed: Bool
         public let accountCollapsed: [Bool]

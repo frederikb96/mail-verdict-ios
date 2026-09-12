@@ -152,8 +152,8 @@ struct SpamReviewScreen: View {
 }
 
 /// One review row — sender, Junk/account chips, subject, the model's reasoning, and the two
-/// thumbs. Not `MailRowView`: the UX design gives this screen its own anatomy (no avatar, a
-/// reasoning line instead of a snippet).
+/// thumbs. Not `MailRowView`: this screen has its own anatomy, with no avatar and a reasoning
+/// line instead of a snippet.
 private struct SpamReviewRow: View {
     let item: SpamReviewItem
     let accountChip: String?

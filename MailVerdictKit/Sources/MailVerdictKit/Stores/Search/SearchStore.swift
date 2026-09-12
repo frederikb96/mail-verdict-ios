@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// Search — text and semantic modes, every filter the UX design's chip bar offers, results built
-/// from the same `MVMailRowData` the list uses, persisted prefs and scroll position, and
+/// Search — text and semantic modes, every filter the chip bar offers, results built from the
+/// same `MVMailRowData` the list uses, persisted prefs and scroll position, and
 /// `ReaderListSource` so the reader pages through results in result order.
 @Observable
 @MainActor
@@ -91,9 +91,9 @@ public final class SearchStore {
         let thisGeneration = generation
         searchTask?.cancel()
 
-        // Both gates the UX design's own states list names — "search nothing" and "too short to
-        // search" — checked here rather than only by `resultsState` (the screen's own rendering
-        // decision), so an empty-folders or too-short query never reaches the network at all.
+        // Both gates — "search nothing" and "too short to search" — are checked here rather than
+        // only by `resultsState` (the screen's own rendering decision), so an empty-folders or
+        // too-short query never reaches the network at all.
         guard context.folderIds?.isEmpty != true, context.query.count >= 2 else {
             results = []
             hasSearched = false
@@ -205,7 +205,7 @@ public final class SearchStore {
                 }
             }()
             let message = SearchSupport.errorMessage(
-                mode: context.mode, statusCode: statusCode, serverDetail: mvError?.userMessage ?? "\(error)"
+                mode: context.mode, statusCode: statusCode, serverDetail: error.mvUserMessage
             )
             return .failure(message)
         }

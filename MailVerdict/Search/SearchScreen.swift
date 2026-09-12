@@ -1,8 +1,8 @@
 import MailVerdictKit
 import SwiftUI
 
-/// Search — text and semantic modes, the chip bar the UX design specifies, and results rendered
-/// with the list's own row shape.
+/// Search — text and semantic modes, a chip bar for every filter, and results rendered with the
+/// list's own row shape.
 struct SearchScreen: View {
     let initialQuery: String?
     let environment: AppEnvironment
@@ -133,7 +133,7 @@ struct SearchScreen: View {
         // than reaching for a `Set`.
         var fields = selectedFields
         if fields.contains(field) {
-            // A toggle refuses to clear the last field — the UX design's own rule.
+            // A toggle refuses to clear the last field — at least one must always stay on.
             guard fields.count > 1 else { return }
             fields.removeAll { $0 == field }
         } else {
@@ -394,8 +394,8 @@ extension SearchContext {
 }
 
 extension SearchResult {
-    /// The 2.2 row anatomy, with line3 the recipient list and line4 the bold-parsed snippet — the
-    /// UX design's own search-result variant of `MailRowView`.
+    /// A search result's own variant of the list row: line3 is the recipient list, line4 is the
+    /// bold-parsed snippet.
     func toMailRowData(showAccountChip: Bool, accounts: [AccountResponse]) -> MVMailRowData {
         MVMailRowData(
             id: id, isUnread: !isSeen, senderName: extractSenderName(fromAddr),

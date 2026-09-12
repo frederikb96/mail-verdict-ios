@@ -144,12 +144,12 @@ struct NotificationsScreen: View {
 
     private func openAlert(_ alert: AlertResponse) {
         Task {
-            let resolver = MVMessagePlaceResolver(apiClient: connection.apiClient)
             // `alert.url` (a non-mail kind with nowhere else to go) has no iOS route to open —
-            // the web's `router.push(alert.url)` targets a web-only path. Nothing in scope for
-            // this run has a non-mail alert kind that sets it, so this stays unhandled rather
-            // than faking a destination.
-            guard let resolution = await store.resolveAndDismiss(alert, resolver: resolver) else { return }
+            // a web-only path with no native equivalent. Nothing in scope for this run has a
+            // non-mail alert kind that sets it, so this stays unhandled rather than faking a
+            // destination.
+            guard let resolution = await store.resolveAndDismiss(alert, resolver: connection.placeResolver)
+            else { return }
             switch resolution {
             case .route(let routes):
                 environment.navigationPath.append(contentsOf: routes)
