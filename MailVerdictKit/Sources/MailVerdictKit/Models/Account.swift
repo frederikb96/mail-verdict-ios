@@ -132,14 +132,18 @@ public struct AccountUpdateRequest: ContractModel, Codable, Sendable, Equatable 
     public let isActive: Bool?
     public let emoji: String?
     public let spamEnabled: Bool?
-    public let trashRetentionDays: Int?
-    public let junkRetentionDays: Int?
+    /// `nil` leaves retention alone; `.some(nil)` clears it back to "Off" (`AccountResponse`'s
+    /// own doc comment: "NULL/omitted is off"); `.some(.some(days))` sets it. `PATCH
+    /// /accounts/{id}` reads its body with Pydantic's `exclude_unset`, so only an explicit `null`
+    /// — never an omitted key — turns retention off; `encode(to:)` is what tells the two apart.
+    public let trashRetentionDays: Int??
+    public let junkRetentionDays: Int??
 
     public init(
         name: String? = nil, imapPassword: String? = nil, smtpHost: String? = nil,
         smtpPort: Int? = nil, smtpUser: String? = nil, smtpPassword: String? = nil,
         isActive: Bool? = nil, emoji: String? = nil, spamEnabled: Bool? = nil,
-        trashRetentionDays: Int? = nil, junkRetentionDays: Int? = nil
+        trashRetentionDays: Int?? = nil, junkRetentionDays: Int?? = nil
     ) {
         self.name = name
         self.imapPassword = imapPassword
@@ -152,6 +156,33 @@ public struct AccountUpdateRequest: ContractModel, Codable, Sendable, Equatable 
         self.spamEnabled = spamEnabled
         self.trashRetentionDays = trashRetentionDays
         self.junkRetentionDays = junkRetentionDays
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(name, forKey: .name)
+        try container.encodeIfPresent(imapPassword, forKey: .imapPassword)
+        try container.encodeIfPresent(smtpHost, forKey: .smtpHost)
+        try container.encodeIfPresent(smtpPort, forKey: .smtpPort)
+        try container.encodeIfPresent(smtpUser, forKey: .smtpUser)
+        try container.encodeIfPresent(smtpPassword, forKey: .smtpPassword)
+        try container.encodeIfPresent(isActive, forKey: .isActive)
+        try container.encodeIfPresent(emoji, forKey: .emoji)
+        try container.encodeIfPresent(spamEnabled, forKey: .spamEnabled)
+        if let trashRetentionDays {
+            if let trashRetentionDays {
+                try container.encode(trashRetentionDays, forKey: .trashRetentionDays)
+            } else {
+                try container.encodeNil(forKey: .trashRetentionDays)
+            }
+        }
+        if let junkRetentionDays {
+            if let junkRetentionDays {
+                try container.encode(junkRetentionDays, forKey: .junkRetentionDays)
+            } else {
+                try container.encodeNil(forKey: .junkRetentionDays)
+            }
+        }
     }
 }
 

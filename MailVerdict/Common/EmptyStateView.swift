@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// A centred icon, a message, and an optional single action — every screen's "nothing here"
-/// state (UX design §2.0's own rule: every screen gets one, rather than each writing its own).
+/// state, shared so every screen gets one rather than each writing its own.
 struct EmptyStateView: View {
     let systemImage: String
     let message: String

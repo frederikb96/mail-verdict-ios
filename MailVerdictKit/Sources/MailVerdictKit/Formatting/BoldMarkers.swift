@@ -1,8 +1,8 @@
 import Foundation
 
 /// One run of a snippet split on `**bold**` markers — search results render their snippet with
-/// the matched terms bold (UX design §2.6); this is the parse, kept separate from rendering
-/// (`Text(_:).bold()`, an app-target concern) so it has its own test on Linux.
+/// the matched terms bold; this is the parse, kept separate from rendering (`Text(_:).bold()`,
+/// an app-target concern) so it has its own test on Linux.
 public struct MVTextSegment: Equatable, Sendable {
     public let text: String
     public let isBold: Bool

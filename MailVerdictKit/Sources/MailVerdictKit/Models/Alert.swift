@@ -1,9 +1,9 @@
 import Foundation
 
-// Mirrors mail_verdict/api/schemas.py's alert and push-subscription shapes, native push (systems
-// design §5.05) included — landed on mail-verdict's own main alongside the cross-account
-// notifications endpoint (Models/Notification.swift) and MessageSummary/SearchResult's
-// has_attachments/verdict_is_spam fields.
+// Mirrors mail_verdict/api/schemas.py's alert and push-subscription shapes, native push included
+// — landed on mail-verdict's own main alongside the cross-account notifications endpoint
+// (Models/Notification.swift) and MessageSummary/SearchResult's has_attachments/verdict_is_spam
+// fields.
 
 public struct AlertResponse: ContractModel, Codable, Sendable, Equatable, Identifiable {
     public static let schemaName = "AlertResponse"
@@ -193,7 +193,7 @@ public struct PushSubscriptionResponse: ContractModel, Codable, Sendable, Equata
     }
 }
 
-// MARK: - Native push (systems §5.05)
+// MARK: - Native push
 
 public struct NativePushConfigResponse: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "NativePushConfigResponse"

@@ -55,11 +55,10 @@ private struct ConnectedShell: View {
 
             ToastOverlay(store: environment.toasts)
 
-            // The undo-send capsule's host slot — S3 adds `UndoSendCapsule` here, above the
-            // toast overlay, the one file it is allowed to add to Shell (systems design's own
-            // slicing rule). Deliberately empty until then.
+            UndoSendCapsule(environment: environment, connection: connection)
         }
         .environment(\.mvImageLoader, connection.imageLoader)
+        .environment(\.mvApiClient, connection.apiClient)
         .sheet(item: Bindable(environment).presentedCompose) { intent in
             ComposerScreen(intent: intent, environment: environment, connection: connection)
         }

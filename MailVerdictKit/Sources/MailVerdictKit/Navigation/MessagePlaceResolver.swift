@@ -22,10 +22,9 @@ public protocol MVUnifiedViewMembershipLookup: Sendable {
     func mostRecentUnifiedView(containingFolderId folderId: UUID) -> MVUnifiedViewRef?
 }
 
-/// Persists "was the last mail view a unified one" plus up to 5 recently opened unified views —
-/// the UX design's own record, kept by `MessagePlaceResolver` so a deep link opens in the same
-/// kind of view the person was last looking at rather than always falling back to the message's
-/// own folder.
+/// Persists "was the last mail view a unified one" plus up to 5 recently opened unified views,
+/// kept by `MessagePlaceResolver` so a deep link opens in the same kind of view the person was
+/// last looking at rather than always falling back to the message's own folder.
 // `@unchecked Sendable`: `UserDefaults` is thread-safe by Apple's own documentation, but
 // swift-corelibs-foundation does not mark it `Sendable`, so the package (built on Linux too)
 // asserts it by hand rather than inheriting whatever the platform's own annotation happens to be.

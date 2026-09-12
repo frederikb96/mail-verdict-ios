@@ -2,9 +2,8 @@ import SwiftSoup
 import XCTest
 
 /// Proves the dependency itself — parses on this Linux toolchain, not just on a Mac — rather than
-/// anything about how the reader will eventually use it; the document builder, sanitizer allowlist
-/// and canvas rewriting are that block's own work (systems design row 9.08's own scope is the
-/// dependency, not the feature).
+/// anything about how the reader will eventually use it; the document builder, sanitizer
+/// allowlist and canvas rewriting are the reader's own work, built on top of this dependency.
 final class SwiftSoupSmokeTests: XCTestCase {
 
     func testParsesAndQueriesHTML() throws {

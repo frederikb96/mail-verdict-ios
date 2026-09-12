@@ -72,8 +72,7 @@ public struct VerdictResponse: ContractModel, Codable, Sendable, Equatable, Iden
 /// flat inheritance (`MessageSummary` plus two fields), not a nested one, so a client decoding it
 /// from the wire needs the same flat shape to match.
 ///
-/// `hasAttachments`/`verdictIsSpam` are not on this type yet: the backend does not send them.
-/// UX design for the list's attachment and spam marks depends on them; see this block's report.
+/// `hasAttachments`/`verdictIsSpam` feed the list row's attachment and spam marks.
 public struct MessageSummary: ContractModel, Codable, Sendable, Equatable, Identifiable {
     public static let schemaName = "MessageSummary"
     public enum ContractKeys: String, CodingKey, CaseIterable {

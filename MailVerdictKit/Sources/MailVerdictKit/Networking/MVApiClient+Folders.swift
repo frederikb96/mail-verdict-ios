@@ -20,8 +20,8 @@ extension MVApiClient {
     }
 
     /// 409 (the actual message count disagrees with `confirmMessageCount`) reaches the caller as
-    /// an ordinary `MVError.detail` naming the real count — the confirm-and-retry flow the UX
-    /// design describes reads that text directly rather than this method re-deriving it.
+    /// an ordinary `MVError.detail` naming the real count — a confirm-and-retry flow reads that
+    /// text directly rather than this method re-deriving it.
     public func deleteFolder(folderId: UUID, confirmMessageCount: Int? = nil) async throws {
         var query: [URLQueryItem] = []
         if let confirmMessageCount {
