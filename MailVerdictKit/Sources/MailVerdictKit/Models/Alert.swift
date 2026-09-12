@@ -1,13 +1,9 @@
 import Foundation
 
-// Mirrors mail_verdict/api/schemas.py's alert and push-subscription shapes.
-//
-// The native-push additions (NativePushConfigResponse, NativeSubscriptionCreate,
-// AlertLookupRequest, AlertBadgeResponse, and the native-transport fields on
-// PushSubscriptionResponse/PushSubscriptionUpdate) are not in the vendored contract snapshot yet
-// — they are systems design §5.05, landing on mail-verdict in its own slice after this one. They
-// do not conform to ContractModel for that reason; re-pin and add conformance once that slice's
-// sha carries them. See this block's report for the full list.
+// Mirrors mail_verdict/api/schemas.py's alert and push-subscription shapes, native push (systems
+// design §5.05) included — landed on mail-verdict's own main alongside the cross-account
+// notifications endpoint (Models/Notification.swift) and MessageSummary/SearchResult's
+// has_attachments/verdict_is_spam fields.
 
 public struct AlertResponse: ContractModel, Codable, Sendable, Equatable, Identifiable {
     public static let schemaName = "AlertResponse"
@@ -124,77 +120,60 @@ public struct PushSubscriptionUpdate: ContractModel, Codable, Sendable, Equatabl
     }
 }
 
+/// One registered device, web-push or native alike — `transport` is what tells them apart.
 public struct PushSubscriptionResponse: ContractModel, Codable, Sendable, Equatable, Identifiable {
     public static let schemaName = "PushSubscriptionResponse"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case id, label, alertFolderIds = "alert_folder_ids",
-            remindersEnabled = "reminders_enabled", createdAt = "created_at",
-            lastSeenAt = "last_seen_at", failedAt = "failed_at"
+        case id, transport, label, alertFolderIds = "alert_folder_ids",
+            remindersEnabled = "reminders_enabled", mutedChannels = "muted_channels",
+            createdAt = "created_at", lastSeenAt = "last_seen_at", failedAt = "failed_at"
     }
-    // No `typealias CodingKeys = ContractKeys` here: `transport`/`muted_channels` decode through
-    // a wider `CodingKeys` below (not yet in the pinned snapshot), while `ContractKeys` stays
-    // exactly the schema's current properties for `ContractTests` to check against.
+    public typealias CodingKeys = ContractKeys
+
+    public enum Transport: String, Sendable, Equatable, Codable {
+        case webpush
+        case apns
+    }
 
     public let id: UUID
+    public let transport: Transport
     public let label: String?
     public let alertFolderIds: [UUID]?
     public let remindersEnabled: Bool
+    public let mutedChannels: [String]
     public let createdAt: Date
     public let lastSeenAt: Date?
     public let failedAt: Date?
-    /// Not in the vendored snapshot yet (systems §5.05's `transport`/`muted_channels`
-    /// additions) — `nil`/`[]` until the running server has them. Decoded permissively so this
-    /// type still works against MV-1-only and MV-1+MV-2 servers alike.
-    public let transport: String?
-    public let mutedChannels: [String]
 
     public init(
-        id: UUID, label: String?, alertFolderIds: [UUID]?, remindersEnabled: Bool,
-        createdAt: Date, lastSeenAt: Date?, failedAt: Date?, transport: String? = nil,
-        mutedChannels: [String] = []
+        id: UUID, transport: Transport, label: String?, alertFolderIds: [UUID]?,
+        remindersEnabled: Bool, mutedChannels: [String] = [], createdAt: Date, lastSeenAt: Date?,
+        failedAt: Date?
     ) {
         self.id = id
+        self.transport = transport
         self.label = label
         self.alertFolderIds = alertFolderIds
         self.remindersEnabled = remindersEnabled
+        self.mutedChannels = mutedChannels
         self.createdAt = createdAt
         self.lastSeenAt = lastSeenAt
         self.failedAt = failedAt
-        self.transport = transport
-        self.mutedChannels = mutedChannels
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case id, label, alertFolderIds = "alert_folder_ids",
-            remindersEnabled = "reminders_enabled", createdAt = "created_at",
-            lastSeenAt = "last_seen_at", failedAt = "failed_at", transport,
-            mutedChannels = "muted_channels"
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        label = try container.decodeIfPresent(String.self, forKey: .label)
-        alertFolderIds = try container.decodeIfPresent([UUID].self, forKey: .alertFolderIds)
-        remindersEnabled = try container.decode(Bool.self, forKey: .remindersEnabled)
-        createdAt = try container.decode(Date.self, forKey: .createdAt)
-        lastSeenAt = try container.decodeIfPresent(Date.self, forKey: .lastSeenAt)
-        failedAt = try container.decodeIfPresent(Date.self, forKey: .failedAt)
-        transport = try container.decodeIfPresent(String.self, forKey: .transport)
-        mutedChannels = try container.decodeIfPresent([String].self, forKey: .mutedChannels) ?? []
     }
 }
 
-// MARK: - Native push (systems §5.05 — beyond the vendored snapshot, see file header)
+// MARK: - Native push (systems §5.05)
 
-public struct NativePushConfigResponse: Codable, Sendable, Equatable {
+public struct NativePushConfigResponse: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "NativePushConfigResponse"
+    public enum ContractKeys: String, CodingKey, CaseIterable {
+        case available, relayUrls = "relay_urls", reason
+    }
+    public typealias CodingKeys = ContractKeys
+
     public let available: Bool
     public let relayUrls: [String]
     public let reason: String?
-
-    enum CodingKeys: String, CodingKey {
-        case available, relayUrls = "relay_urls", reason
-    }
 
     public init(available: Bool, relayUrls: [String], reason: String?) {
         self.available = available
@@ -203,19 +182,21 @@ public struct NativePushConfigResponse: Codable, Sendable, Equatable {
     }
 }
 
-public struct NativeSubscriptionCreate: Codable, Sendable, Equatable {
-    public let installationId: UUID
-    public let relayUrl: String
-    public let ticket: String
-    /// Base64 of exactly 32 bytes.
-    public let contentKey: String
-    public let label: String?
-    public let mutedChannels: [String]?
-
-    enum CodingKeys: String, CodingKey {
+public struct NativeSubscriptionCreate: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "NativeSubscriptionCreate"
+    public enum ContractKeys: String, CodingKey, CaseIterable {
         case installationId = "installation_id", relayUrl = "relay_url", ticket,
             contentKey = "content_key", label, mutedChannels = "muted_channels"
     }
+    public typealias CodingKeys = ContractKeys
+
+    public let installationId: UUID
+    public let relayUrl: String
+    public let ticket: String
+    /// Standard base64 of exactly 32 random bytes.
+    public let contentKey: String
+    public let label: String?
+    public let mutedChannels: [String]?
 
     public init(
         installationId: UUID, relayUrl: String, ticket: String, contentKey: String,
@@ -230,7 +211,11 @@ public struct NativeSubscriptionCreate: Codable, Sendable, Equatable {
     }
 }
 
-public struct AlertLookupRequest: Codable, Sendable, Equatable {
+public struct AlertLookupRequest: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "AlertLookupRequest"
+    public enum ContractKeys: String, CodingKey, CaseIterable { case ids }
+    public typealias CodingKeys = ContractKeys
+
     public let ids: [UUID]
 
     public init(ids: [UUID]) {
@@ -238,7 +223,11 @@ public struct AlertLookupRequest: Codable, Sendable, Equatable {
     }
 }
 
-public struct AlertBadgeResponse: Codable, Sendable, Equatable {
+public struct AlertBadgeResponse: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "AlertBadgeResponse"
+    public enum ContractKeys: String, CodingKey, CaseIterable { case count }
+    public typealias CodingKeys = ContractKeys
+
     public let count: Int
 
     public init(count: Int) {

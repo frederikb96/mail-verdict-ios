@@ -37,7 +37,7 @@ struct MailVerdictApp: App {
         /// (`MailVerdict/MailList/MailListDebugRoutes.swift`, and so on), never the route logic
         /// itself inline in this shared file. This is the one line a feature block adds to
         /// `MailVerdictApp.swift`; `make()` below needs no other change to pick it up.
-        private static let featureRegistrars: [(inout DebugRouter) -> Void] = []
+        private static let featureRegistrars: [@Sendable (inout DebugRouter) -> Void] = []
 
         static func make() -> DebugRouter {
             var router = DebugRouter()

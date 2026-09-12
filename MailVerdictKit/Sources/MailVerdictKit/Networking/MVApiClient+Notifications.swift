@@ -28,9 +28,8 @@ extension MVApiClient {
         try await sendNoContent(path: "/api/accounts/\(accountId)/notifications/ack-all", method: "POST")
     }
 
-    /// Cross-account, every account including inactive ones — systems §5.05, beyond the vendored
-    /// snapshot. Without it the System tab and every background wake would pay one request per
-    /// account; see Models/Alert.swift's header for the same caveat.
+    /// Cross-account, every account including inactive ones — systems §5.05. Without it the
+    /// System tab and every background wake would pay one request per account.
     public func listAllNotifications(
         unacknowledgedOnly: Bool = false, limit: Int = 100
     ) async throws -> [NotificationResponse] {

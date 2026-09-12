@@ -82,7 +82,8 @@ public struct MessageSummary: ContractModel, Codable, Sendable, Equatable, Ident
             isSeen = "is_seen", isFlagged = "is_flagged", isAnswered = "is_answered",
             isDraft = "is_draft", snippet, pendingSync = "pending_sync",
             isTruncated = "is_truncated", threadCount = "thread_count",
-            unreadInThread = "unread_in_thread", mirroredAt = "mirrored_at"
+            unreadInThread = "unread_in_thread", mirroredAt = "mirrored_at",
+            hasAttachments = "has_attachments", verdictIsSpam = "verdict_is_spam"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -106,13 +107,17 @@ public struct MessageSummary: ContractModel, Codable, Sendable, Equatable, Ident
     public let threadCount: Int?
     public let unreadInThread: Int?
     public let mirroredAt: Date
+    public let hasAttachments: Bool
+    /// The latest spam verdict for this message; `nil` if never classified.
+    public let verdictIsSpam: Bool?
 
     public init(
         id: UUID, accountId: UUID, folderId: UUID, threadId: UUID, subject: String?,
         fromAddr: String?, toAddrs: MVJSONValue?, receivedAt: Date?, isSeen: Bool = false,
         isFlagged: Bool = false, isAnswered: Bool = false, isDraft: Bool = false,
         snippet: String?, pendingSync: Bool = false, isTruncated: Bool = false,
-        threadCount: Int? = nil, unreadInThread: Int? = nil, mirroredAt: Date
+        threadCount: Int? = nil, unreadInThread: Int? = nil, mirroredAt: Date,
+        hasAttachments: Bool = false, verdictIsSpam: Bool? = nil
     ) {
         self.id = id
         self.accountId = accountId
@@ -132,6 +137,8 @@ public struct MessageSummary: ContractModel, Codable, Sendable, Equatable, Ident
         self.threadCount = threadCount
         self.unreadInThread = unreadInThread
         self.mirroredAt = mirroredAt
+        self.hasAttachments = hasAttachments
+        self.verdictIsSpam = verdictIsSpam
     }
 }
 

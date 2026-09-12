@@ -98,5 +98,9 @@ public enum ContractRegistry {
         PushSubscriptionCreate.self,
         PushSubscriptionUpdate.self,
         PushSubscriptionResponse.self,
+        NativePushConfigResponse.self,
+        NativeSubscriptionCreate.self,
+        AlertLookupRequest.self,
+        AlertBadgeResponse.self,
     ]
 }

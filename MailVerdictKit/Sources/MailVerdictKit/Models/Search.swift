@@ -33,7 +33,8 @@ public struct SearchResult: ContractModel, Codable, Sendable, Equatable, Identif
             isDraft = "is_draft", snippet, pendingSync = "pending_sync",
             isTruncated = "is_truncated", threadCount = "thread_count",
             unreadInThread = "unread_in_thread", mirroredAt = "mirrored_at",
-            matchTier = "match_tier", similarity
+            matchTier = "match_tier", similarity, hasAttachments = "has_attachments",
+            verdictIsSpam = "verdict_is_spam"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -57,6 +58,8 @@ public struct SearchResult: ContractModel, Codable, Sendable, Equatable, Identif
     public let mirroredAt: Date
     @MVDefaulted<MVDefaultZero> public var matchTier: Int
     public let similarity: Double?
+    public let hasAttachments: Bool
+    public let verdictIsSpam: Bool?
 
     public init(
         id: UUID, accountId: UUID, folderId: UUID, threadId: UUID, subject: String?,
@@ -64,7 +67,8 @@ public struct SearchResult: ContractModel, Codable, Sendable, Equatable, Identif
         isFlagged: Bool = false, isAnswered: Bool = false, isDraft: Bool = false,
         snippet: String?, pendingSync: Bool = false, isTruncated: Bool = false,
         threadCount: Int? = nil, unreadInThread: Int? = nil, mirroredAt: Date,
-        matchTier: Int = 0, similarity: Double? = nil
+        matchTier: Int = 0, similarity: Double? = nil, hasAttachments: Bool = false,
+        verdictIsSpam: Bool? = nil
     ) {
         self.id = id
         self.accountId = accountId
@@ -86,6 +90,8 @@ public struct SearchResult: ContractModel, Codable, Sendable, Equatable, Identif
         self.mirroredAt = mirroredAt
         self.matchTier = matchTier
         self.similarity = similarity
+        self.hasAttachments = hasAttachments
+        self.verdictIsSpam = verdictIsSpam
     }
 }
 

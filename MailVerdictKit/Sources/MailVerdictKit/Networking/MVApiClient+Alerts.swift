@@ -49,7 +49,7 @@ extension MVApiClient {
         try await sendNoContent(path: "/api/alerts/subscriptions/\(id)", method: "DELETE")
     }
 
-    // MARK: Native push (systems §5.05 — beyond the vendored snapshot; see Models/Alert.swift)
+    // MARK: Native push (systems §5.05)
 
     public func getNativePushConfig() async throws -> NativePushConfigResponse {
         try await send(path: "/api/alerts/native-push")
@@ -73,10 +73,18 @@ extension MVApiClient {
         )
     }
 
+    /// Either a registered device's own scope (`subscriptionId`) or an explicit folder scope —
+    /// the same two ways `list_for_alert` itself resolves "which folders alert" (systems §5.05).
     public func getAlertBadge(subscriptionId: UUID) async throws -> AlertBadgeResponse {
         try await send(
             path: "/api/alerts/badge",
             query: [URLQueryItem(name: "subscription_id", value: subscriptionId.uuidString)]
         )
+    }
+
+    public func getAlertBadge(folderIds: [UUID]?) async throws -> AlertBadgeResponse {
+        var query: [URLQueryItem] = [URLQueryItem(name: "folder_scoped", value: "true")]
+        folderIds?.forEach { query.append(URLQueryItem(name: "folder_ids", value: $0.uuidString)) }
+        return try await send(path: "/api/alerts/badge", query: query)
     }
 }

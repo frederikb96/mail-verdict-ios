@@ -43,6 +43,11 @@ STATIC_ANY_COLLECTION_TYPE = re.compile(r":\s*\[[^\]\n]*\bAny\b[^\]\n]*\]")
 #: A Foundation formatter initializer — none of these three are `Sendable` either, and a
 #: `static let formatter = DateFormatter()` is the single most common shape this takes.
 STATIC_FORMATTER_INIT = re.compile(r"\b(?:ISO8601DateFormatter|DateFormatter|NumberFormatter)\(\)")
+#: A function-type arrow inside a stored static's own type annotation — `(Foo) -> Bar`, bare or
+#: inside a collection (`[(Foo) -> Bar]`), is not `Sendable` unless the closure type itself is
+#: marked `@Sendable`. Anchored after the `:` so an unrelated `->` elsewhere on the line (a
+#: trailing closure argument to the initializer, say) is not what is being matched.
+STATIC_CLOSURE_TYPE = re.compile(r":\s*[^={}\n]*\([^()]*\)\s*->")
 SHADOWED_WRAPPER = re.compile(r"^\s*(?:public |internal |private |fileprivate )?(?:enum|struct|class|actor) (State|Binding|Environment|Namespace|Observable)\s*[:{]")
 AMBIGUOUS_PAIR = re.compile(r"(?:width|x|dx): \.[A-Za-z]\w*, (?:height|y|dy): \.[A-Za-z]\w*")
 ISOLATED_STATIC = re.compile(r"^\s*(?:public |internal |private |fileprivate )?static (?:let|var) ([A-Za-z_]\w*)\b")
@@ -459,6 +464,19 @@ def check(path: Path) -> list[tuple[int, str, str]]:
                 "(ISO8601DateFormatter/DateFormatter/NumberFormatter) is not Sendable — Swift 6 "
                 "strict concurrency rejects it as global state; make it computed ({ ... }), or "
                 "isolate the type to @MainActor",
+            ))
+        if (
+            STORED_STATIC.match(line)
+            and index not in isolated
+            and "nonisolated(unsafe)" not in line
+            and "@Sendable" not in line
+            and STATIC_CLOSURE_TYPE.search(line)
+        ):
+            findings.append((
+                index + 1, line.strip(),
+                "a stored static's closure type (bare, or inside a collection) is not Sendable "
+                "unless marked — add '@Sendable' to the closure type itself "
+                "([@Sendable (Foo) -> Bar], not [(Foo) -> Bar]), or isolate the type to @MainActor",
             ))
     return findings
 
