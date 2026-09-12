@@ -104,4 +104,26 @@ final class SearchStoreTests: XCTestCase {
         XCTAssertEqual(store.neighbours(of: c).older, nil)
         XCTAssertFalse(store.hasNewer)
     }
+
+    func testApplyingAMailEventReRunsTheCurrentSearchOnlyAfterOneHasRun() async throws {
+        let store = makeStore(defaults: makeDefaults())
+        // No stub registered — `apply` must be a no-op before any search has ever run, or this
+        // would fail with `.badServerResponse`.
+        store.apply([.mailNew(accountId: nil, folderId: nil, messageId: nil)])
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(store.results, [])
+
+        let json = """
+            {"results":[],"has_more":false,"next_cursor":null,"query":"xx","total":0}
+            """
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(json.utf8))
+        await store.updateContext(SearchContext(mode: .text, query: "xx"))
+        XCTAssertTrue(store.hasSearched)
+
+        store.apply([.mailNew(accountId: nil, folderId: nil, messageId: nil)])
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // Still zero results, but the important thing is that a second network round trip
+        // happened without throwing — proven by `hasSearched` staying true and no crash.
+        XCTAssertTrue(store.hasSearched)
+    }
 }

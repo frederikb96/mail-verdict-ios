@@ -39,6 +39,30 @@ final class SpamReviewStoreTests: XCTestCase {
         XCTAssertNil(store.errorMessage)
     }
 
+    func testReaderTitleGetsATrailingPlusWhenMoreIsKnownToExist() async {
+        let a = UUID()
+        let json = """
+            {"items":[\(itemJSON(messageId: a))],"has_more":true,"next_cursor":"\(UUID())"}
+            """
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(json.utf8))
+        let store = makeStore()
+        await store.load()
+        XCTAssertEqual(store.readerTitle, "1+ to Review")
+    }
+
+    func testApplyingVerdictIssuedReloads() async throws {
+        let store = makeStore()
+        let a = UUID()
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:],
+            body: Data("{\"items\":[\(itemJSON(messageId: a))],\"has_more\":false,\"next_cursor\":null}".utf8))
+
+        store.apply([.verdictIssued(accountId: nil, messageId: a, isSpam: true)])
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(store.items.map(\.messageId), [a])
+    }
+
     func testLoadFailurePopulatesErrorMessage() async {
         MVStubURLProtocol.stub = .init(statusCode: 500, headers: [:], body: Data(#"{"detail":"boom"}"#.utf8))
         let store = makeStore()

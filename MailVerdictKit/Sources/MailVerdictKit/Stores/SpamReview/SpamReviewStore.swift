@@ -30,6 +30,7 @@ public final class SpamReviewStore {
     private var nextCursor: String?
 
     private let apiClient: MVApiClient
+    private var liveSubscriptionToken: MVSubscriptionToken?
 
     public init(apiClient: MVApiClient) {
         self.apiClient = apiClient
@@ -119,5 +120,35 @@ extension SpamReviewStore: ReaderListSource {
     public func loadOlder() async { await loadMore() }
     public func loadNewer() async {}
 
-    public var readerTitle: String? { "\(items.count) to Review" }
+    /// UX design §2.7's own subtitle shape: the loaded count, with a trailing "+" once more is
+    /// known to exist than what is currently loaded.
+    public var readerTitle: String? { "\(items.count)\(hasMore ? "+" : "") to Review" }
+}
+
+extension SpamReviewStore {
+    public func subscribeToLive(_ hub: LiveEventHub) {
+        guard liveSubscriptionToken == nil else { return }
+        liveSubscriptionToken = hub.subscribe(self)
+    }
+
+    public func unsubscribeFromLive(_ hub: LiveEventHub) {
+        guard let token = liveSubscriptionToken else { return }
+        hub.unsubscribe(token)
+        liveSubscriptionToken = nil
+    }
+}
+
+extension SpamReviewStore: LiveEventSubscriber {
+    /// A new verdict is exactly what populates or clears this queue — `resync` too, the same as
+    /// every other store's live-update row.
+    public func apply(_ invalidations: [MVLiveInvalidation]) {
+        let shouldReload = invalidations.contains {
+            switch $0 {
+            case .resync, .verdictIssued: return true
+            default: return false
+            }
+        }
+        guard shouldReload else { return }
+        Task { await self.load() }
+    }
 }
