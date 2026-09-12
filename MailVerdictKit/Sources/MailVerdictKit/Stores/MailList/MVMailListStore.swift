@@ -91,13 +91,6 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
 
     public var rowIds: [UUID] { rows.map(\.id) }
 
-    public func neighbours(of messageId: UUID) -> (older: UUID?, newer: UUID?) {
-        guard let index = rows.firstIndex(where: { $0.id == messageId }) else { return (nil, nil) }
-        let older = index + 1 < rows.count ? rows[index + 1].id : nil
-        let newer = index > 0 ? rows[index - 1].id : nil
-        return (older, newer)
-    }
-
     public func loadOlder() async {
         await page(.older)
     }

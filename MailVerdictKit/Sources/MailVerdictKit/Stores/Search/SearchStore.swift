@@ -217,13 +217,6 @@ extension SearchStore: ReaderListSource {
     public var hasOlder: Bool { hasMore }
     public var hasNewer: Bool { false }
 
-    public func neighbours(of messageId: UUID) -> (older: UUID?, newer: UUID?) {
-        guard let index = results.firstIndex(where: { $0.id == messageId }) else { return (nil, nil) }
-        let older = index + 1 < results.count ? results[index + 1].id : nil
-        let newer = index > 0 ? results[index - 1].id : nil
-        return (older, newer)
-    }
-
     public func loadOlder() async { await loadMore() }
     public func loadNewer() async {}
 
