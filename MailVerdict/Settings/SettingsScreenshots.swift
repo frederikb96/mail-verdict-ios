@@ -32,6 +32,7 @@ import MailVerdictKit
             registerAccountOrderFixture()
             guard let store = await poll({ SettingsDebugServices.shared.activeAccountOrderStore }) else { return }
             await waitUntilSettled(
+                label: "settings-main",
                 isLoading: { store.state.isLoading },
                 isFailed: {
                     if case .failed = store.state { return true }; return false
@@ -41,6 +42,7 @@ import MailVerdictKit
 
         @MainActor
         private static func prepareSettingsCategoryAI(_: AppEnvironment, _: AppEnvironment.Connection) async {
+            DebugLogBuffer.shared.append(.info, "screenshot", "settings-category-ai: prepare start")
             MVFixtureURLProtocol.register(method: "GET", path: "/api/settings/ai") {
                 Data(
                     #"""
@@ -50,17 +52,26 @@ import MailVerdictKit
                      "openai_api_key_configured":false,"openai_api_key_hint":null}
                     """#.utf8)
             }
-            guard let store = await poll({ SettingsDebugServices.shared.activeSettingsCategoryStore }) else { return }
+            DebugLogBuffer.shared.append(
+                .info, "screenshot", "settings-category-ai: fixtures registered, polling for store")
+            guard let store = await poll({ SettingsDebugServices.shared.activeSettingsCategoryStore }) else {
+                DebugLogBuffer.shared.append(.info, "screenshot", "settings-category-ai: store never appeared")
+                return
+            }
+            DebugLogBuffer.shared.append(.info, "screenshot", "settings-category-ai: store found, waiting for settle")
             await waitUntilSettled(
+                label: "settings-category-ai",
                 isLoading: { store.state.isLoading },
                 isFailed: {
                     if case .failed = store.state { return true }; return false
                 },
                 reload: { await store.load() })
+            DebugLogBuffer.shared.append(.info, "screenshot", "settings-category-ai: prepare end")
         }
 
         @MainActor
         private static func prepareUnifiedViews(_: AppEnvironment, _: AppEnvironment.Connection) async {
+            DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: prepare start")
             registerAccountsFixture()
             MVFixtureURLProtocol.register(method: "GET", path: "/api/unified/folders") {
                 Data(
@@ -92,13 +103,20 @@ import MailVerdictKit
             ) {
                 Data("[]".utf8)
             }
-            guard let store = await poll({ SettingsDebugServices.shared.activeUnifiedSetupStore }) else { return }
+            DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: fixtures registered, polling for store")
+            guard let store = await poll({ SettingsDebugServices.shared.activeUnifiedSetupStore }) else {
+                DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: store never appeared")
+                return
+            }
+            DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: store found, waiting for settle")
             await waitUntilSettled(
+                label: "unified-views",
                 isLoading: { store.state.isLoading },
                 isFailed: {
                     if case .failed = store.state { return true }; return false
                 },
                 reload: { await store.load() })
+            DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: prepare end")
         }
 
         /// Two accounts, shared by every entry here that lists accounts at all — kept as one
@@ -144,9 +162,12 @@ import MailVerdictKit
         /// Waits up to five seconds for `isLoading` to go false, then reloads once if the store
         /// settled into its failed state. Each probe runs through `MainActor.run` and reports a
         /// plain `Bool` rather than handing back the store's own load-state enum, since that enum
-        /// carries an `Error` and isn't `Sendable`.
+        /// carries an `Error` and isn't `Sendable`. `label` only feeds the temporary debug-log
+        /// markers around the one unbounded step here (`reload`), so a hung sweep shows exactly
+        /// which screen's reload never returned.
         @MainActor
         private static func waitUntilSettled(
+            label: String,
             isLoading: @MainActor @Sendable () -> Bool,
             isFailed: @MainActor @Sendable () -> Bool,
             reload: @MainActor @Sendable () async -> Void
@@ -156,7 +177,11 @@ import MailVerdictKit
                 try? await Task.sleep(for: .milliseconds(50))
             }
             if await MainActor.run(body: isFailed) {
+                DebugLogBuffer.shared.append(.info, "screenshot", "\(label): settled failed, reloading")
                 await reload()
+                DebugLogBuffer.shared.append(.info, "screenshot", "\(label): reload returned")
+            } else {
+                DebugLogBuffer.shared.append(.info, "screenshot", "\(label): settled loaded")
             }
         }
     }

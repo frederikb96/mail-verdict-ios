@@ -20,11 +20,20 @@ struct UnifiedViewsScreen: View {
                 .screenshotReady(route: .unifiedViews, environment: environment, connection: connection)
             #endif
             .task {
+                #if DEBUG
+                    DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: screen task start")
+                #endif
                 if store == nil { store = MVUnifiedSetupStore(apiClient: connection.apiClient) }
                 #if DEBUG
                     SettingsDebugServices.shared.activeUnifiedSetupStore = store
+                    DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: store created, loading")
                 #endif
                 await store?.load()
+                #if DEBUG
+                    DebugLogBuffer.shared.append(
+                        .info, "screenshot", "unified-views: load() returned, state=\(String(describing: store?.state))"
+                    )
+                #endif
             }
     }
 

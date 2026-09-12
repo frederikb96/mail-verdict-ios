@@ -19,14 +19,23 @@ struct SettingsCategoryScreen: View {
             if let resolvedCategory {
                 CategoryForm(category: resolvedCategory, store: store, environment: environment)
                     .task {
+                        #if DEBUG
+                            DebugLogBuffer.shared.append(.info, "screenshot", "settings-category-ai: screen task start")
+                        #endif
                         guard store == nil else { return }
                         let freshStore = MVSettingsCategoryStore(
                             category: resolvedCategory, apiClient: connection.apiClient)
                         store = freshStore
                         #if DEBUG
                             SettingsDebugServices.shared.activeSettingsCategoryStore = freshStore
+                            DebugLogBuffer.shared.append(
+                                .info, "screenshot", "settings-category-ai: store created, loading")
                         #endif
                         await freshStore.load()
+                        #if DEBUG
+                            DebugLogBuffer.shared.append(
+                                .info, "screenshot", "settings-category-ai: load() returned, state=\(freshStore.state)")
+                        #endif
                     }
             } else {
                 EmptyStateView(
