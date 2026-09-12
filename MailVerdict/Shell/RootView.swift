@@ -59,6 +59,7 @@ private struct ConnectedShell: View {
             // toast overlay, the one file it is allowed to add to Shell (systems design's own
             // slicing rule). Deliberately empty until then.
         }
+        .environment(\.mvImageLoader, connection.imageLoader)
         .sheet(item: Bindable(environment).presentedCompose) { intent in
             ComposerScreen(intent: intent, environment: environment, connection: connection)
         }
