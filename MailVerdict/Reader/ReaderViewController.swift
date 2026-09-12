@@ -407,9 +407,9 @@ final class ReaderViewController: UIViewController, UIScrollViewDelegate, Messag
             (currentPage?.isLoaded ?? false) && session.conversation(for: paging.currentId) != nil
         }
 
-        var hasInvitationCard: Bool {
-            guard let conversation = session.conversation(for: paging.currentId) else { return false }
-            return conversation.messages.contains { session.invitationStore(for: $0.id)?.model != nil }
+        /// Whether the current page's document actually shows an invitation card.
+        func showsInvitationCard() async -> Bool {
+            await currentPage?.debugContains(".mv-invite") ?? false
         }
 
         func zoomCurrentPage(to scale: CGFloat) {

@@ -38,11 +38,12 @@
         static weak var active: ReaderViewController?
 
         /// Waits until the current page shows its conversation (and, when asked, its invitation
-        /// card), so a screenshot never captures the loading placeholder.
+        /// card, read from the page's own document), so a screenshot never captures the loading
+        /// placeholder or a card still on its way.
         static func waitUntilLoaded(invitationCard: Bool = false) async {
             for _ in 0..<100 {
                 if let reader = active, reader.isCurrentPageLoaded,
-                    !invitationCard || reader.hasInvitationCard
+                    await !invitationCard || reader.showsInvitationCard()
                 {
                     // The page swaps a late block in on its next frame.
                     try? await Task.sleep(nanoseconds: 500_000_000)
