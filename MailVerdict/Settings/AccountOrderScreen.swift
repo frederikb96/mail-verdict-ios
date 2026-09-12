@@ -1,8 +1,8 @@
 import MailVerdictKit
 import SwiftUI
 
-/// Account display order — `.onMove` reorders and sends the new order after each move, per the
-/// UX design's "changes apply immediately".
+/// Account display order — `.onMove` reorders and sends the new order after each move. There is
+/// no separate Save step.
 struct AccountOrderScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection

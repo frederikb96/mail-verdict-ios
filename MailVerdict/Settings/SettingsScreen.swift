@@ -2,8 +2,8 @@ import MailVerdictKit
 import SwiftUI
 
 /// Settings — appearance, mail-wide preferences, server configuration, accounts, and the
-/// connection itself. Every row pushes its own screen; nothing here has a Save button, per the
-/// UX design's "changes apply immediately, per field".
+/// connection itself. Every row pushes its own screen; nothing here has a Save button, since each
+/// one commits its own change immediately.
 struct SettingsScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
@@ -56,6 +56,9 @@ struct SettingsScreen: View {
         .task {
             let store = accountOrderStore ?? MVAccountOrderStore(apiClient: connection.apiClient)
             accountOrderStore = store
+            #if DEBUG
+                SettingsDebugServices.shared.activeAccountOrderStore = store
+            #endif
             await store.load()
         }
     }

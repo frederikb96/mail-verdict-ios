@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// One account's remote-image allowlist — view and delete only; an exception is added from the
-/// reader, never from here (UX design §2.10's own footer note).
+/// reader, never from here.
 @Observable
 @MainActor
 public final class MVImageExceptionsStore {

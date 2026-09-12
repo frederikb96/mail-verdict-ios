@@ -3,7 +3,7 @@ import Observation
 
 /// One server settings category's generic form — `GET`s the category, orders and labels its
 /// fields (`MVSettingsLabels`), and commits each field's edit with its own `PUT` the instant it
-/// changes, per the UX design's "changes apply immediately, per field; there is no Save button".
+/// changes. There is no Save button.
 ///
 /// Every write is optimistic: the field updates locally before the request resolves, and
 /// `updateField` reverts it and rethrows on failure, so the caller's own catch is what turns that
