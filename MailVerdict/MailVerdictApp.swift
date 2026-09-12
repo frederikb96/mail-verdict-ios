@@ -31,6 +31,14 @@ struct MailVerdictApp: App {
     /// `curl 127.0.0.1:8765/health`.
     enum DebugRoutes {
 
+        /// Each feature block's own state routes (`/mailboxes/state`, `/list/state`,
+        /// `/reader/state`, `/composer/state`, `/search/state`, …) get one entry here — naming a
+        /// static registrar function the feature defines in its own directory
+        /// (`MailVerdict/MailList/MailListDebugRoutes.swift`, and so on), never the route logic
+        /// itself inline in this shared file. This is the one line a feature block adds to
+        /// `MailVerdictApp.swift`; `make()` below needs no other change to pick it up.
+        private static let featureRegistrars: [(inout DebugRouter) -> Void] = []
+
         static func make() -> DebugRouter {
             var router = DebugRouter()
 
@@ -52,6 +60,8 @@ struct MailVerdictApp: App {
                 let limit = request.query["limit"].flatMap(Int.init) ?? 100
                 return .encoding(DebugLogBuffer.shared.snapshot(minimumLevel: level, limit: limit))
             }
+
+            for registrar in featureRegistrars { registrar(&router) }
 
             routeNames = router.registeredRoutes
             return router
