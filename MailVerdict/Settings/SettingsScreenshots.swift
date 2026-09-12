@@ -11,14 +11,10 @@ import MailVerdictKit
     /// evaluate together the moment fixture mode looks up the target id, so registering routes
     /// there would answer another feature's request to the same path (`/api/accounts`, most
     /// concretely) in every single-screen launch, not only this one's. `prepare` runs only for
-    /// the matching entry, and only once the destination screen already exists.
-    ///
-    /// `prepare` is itself synchronous work plus a short `Task.sleep` — no real network inside
-    /// it, so the screen's own `.screenshotReady` task (declared ahead of its data-loading
-    /// `.task` in every screen here) runs to completion without yielding until that sleep, which
-    /// is the one genuine suspension point. That is what hands the main actor back to the
-    /// screen's own loading task and gives it time to finish before `report(entry.id)` tells the
-    /// sweep this screen is ready to capture.
+    /// the matching entry, and only once the destination screen already exists — which may
+    /// already have started loading against an empty route table, so `prepare` waits for
+    /// `SettingsDebugServices`' matching store to settle (one reload if the first attempt failed)
+    /// rather than guessing how long that takes.
     enum SettingsScreenshots {
         static let entries: [MVScreenshotEntry] = [
             MVScreenshotEntry(id: "settings-main", destination: .route(.settings), prepare: prepareSettingsMain),
@@ -33,7 +29,9 @@ import MailVerdictKit
         private static func prepareSettingsMain(_: AppEnvironment, _: AppEnvironment.Connection) async {
             registerAccountsFixture()
             registerAccountOrderFixture()
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard let store = await poll({ SettingsDebugServices.shared.activeAccountOrderStore }) else { return }
+            _ = await poll { store.state == .loading ? nil : true }
+            if case .failed = store.state { await store.load() }
         }
 
         private static func prepareSettingsCategoryAI(_: AppEnvironment, _: AppEnvironment.Connection) async {
@@ -46,7 +44,9 @@ import MailVerdictKit
                      "openai_api_key_configured":false,"openai_api_key_hint":null}
                     """#.utf8)
             }
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard let store = await poll({ SettingsDebugServices.shared.activeSettingsCategoryStore }) else { return }
+            _ = await poll { store.state == .loading ? nil : true }
+            if case .failed = store.state { await store.load() }
         }
 
         private static func prepareUnifiedViews(_: AppEnvironment, _: AppEnvironment.Connection) async {
@@ -81,7 +81,9 @@ import MailVerdictKit
             ) {
                 Data("[]".utf8)
             }
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard let store = await poll({ SettingsDebugServices.shared.activeUnifiedSetupStore }) else { return }
+            _ = await poll { store.state == .loading ? nil : true }
+            if case .failed = store.state { await store.load() }
         }
 
         /// Two accounts, shared by every entry here that lists accounts at all — kept as one
@@ -112,6 +114,16 @@ import MailVerdictKit
                     #"{"order":["11111111-1111-1111-1111-111111111111","22222222-2222-2222-2222-222222222222"]}"#
                         .utf8)
             }
+        }
+
+        /// Up to five seconds, checked every 50 ms.
+        @MainActor
+        private static func poll<Value>(_ probe: @MainActor () -> Value?) async -> Value? {
+            for _ in 0..<100 {
+                if let value = probe() { return value }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            return nil
         }
     }
 

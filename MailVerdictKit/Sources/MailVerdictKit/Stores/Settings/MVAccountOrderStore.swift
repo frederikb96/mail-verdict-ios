@@ -46,7 +46,7 @@ public final class MVAccountOrderStore {
     }
 
     /// Moves the account at `from` to `to` (both local `accounts` indices, as `.onMove` hands a
-    /// SwiftUI list) and saves immediately — there is no separate Save step, per the UX design.
+    /// SwiftUI list) and saves immediately — there is no separate Save step.
     public func move(fromOffsets: IndexSet, toOffset: Int) async throws {
         var reordered = accounts
         reordered.move(fromOffsets: fromOffsets, toOffset: toOffset)
