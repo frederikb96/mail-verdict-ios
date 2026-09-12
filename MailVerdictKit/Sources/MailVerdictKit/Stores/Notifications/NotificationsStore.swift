@@ -16,9 +16,23 @@ public final class NotificationsStore {
     public private(set) var errorMessage: String?
 
     private let apiClient: MVApiClient
+    private var liveSubscriptionToken: MVSubscriptionToken?
 
     public init(apiClient: MVApiClient) {
         self.apiClient = apiClient
+    }
+
+    // MARK: - Live updates
+
+    public func subscribeToLive(_ hub: LiveEventHub) {
+        guard liveSubscriptionToken == nil else { return }
+        liveSubscriptionToken = hub.subscribe(self)
+    }
+
+    public func unsubscribeFromLive(_ hub: LiveEventHub) {
+        guard let token = liveSubscriptionToken else { return }
+        hub.unsubscribe(token)
+        liveSubscriptionToken = nil
     }
 
     /// Sequential rather than `async let`-concurrent, deliberately: the two calls are
@@ -120,5 +134,20 @@ public final class NotificationsStore {
                 )
             )
         #endif
+    }
+}
+
+extension NotificationsStore: LiveEventSubscriber {
+    /// UX design §2.0's own rule: `alert.new`/`alert.dismissed` and `notification.new` refetch
+    /// this store — `resync` too, the same as every other store's live-update row.
+    public func apply(_ invalidations: [MVLiveInvalidation]) {
+        let shouldReload = invalidations.contains {
+            switch $0 {
+            case .resync, .alertsChanged, .notificationsChanged: return true
+            default: return false
+            }
+        }
+        guard shouldReload else { return }
+        Task { await self.load() }
     }
 }
