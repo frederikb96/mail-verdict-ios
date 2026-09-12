@@ -13,6 +13,13 @@ final class MVErrorTests: XCTestCase {
         XCTAssertTrue(error.userMessage.hasPrefix("HTTP 502:"))
     }
 
+    /// `.decoding`'s own associated text is a `DecodingError`'s raw, verbose description, built
+    /// from `"\(error)"` at every call site — never what a screen shows.
+    func testDecodingErrorNeverShowsTheRawDescriptionItCarries() {
+        let raw = #"Swift.DecodingError.typeMismatch(Swift.String, ...)"#
+        XCTAssertFalse(MVError.decoding(raw).userMessage.contains(raw))
+    }
+
     /// This is the one property every call site actually branches on — whether the credential,
     /// not the request, was the problem — so a future status code added here has to be
     /// classified correctly or a rejected token silently reads as an ordinary failure.

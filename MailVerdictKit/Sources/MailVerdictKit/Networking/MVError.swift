@@ -35,12 +35,17 @@ public enum MVError: Error, Equatable {
     }
 
     /// What the user should see. Always non-empty.
+    ///
+    /// `.decoding`'s own associated text is never this: every call site builds it from
+    /// `"\(error)"`, a `DecodingError`'s own verbose, not-for-screens description — it stays
+    /// available through `mvTechnicalDetail` (`Formatting/UserFacingError.swift`) for a
+    /// disclosure, never as the line shown by default.
     public var userMessage: String {
         switch self {
         case let .detail(text, _): return text
         case let .http(code, reason): return "HTTP \(code): \(reason)"
         case let .transport(text): return text
-        case let .decoding(text): return text
+        case .decoding: return "The server's response could not be read."
         case .proxyRequiresBrowserLogin:
             return "This server's login proxy wants a browser sign-in and does not accept an "
                 + "access token for API requests."
