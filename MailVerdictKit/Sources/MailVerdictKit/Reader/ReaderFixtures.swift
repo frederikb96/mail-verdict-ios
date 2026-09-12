@@ -46,13 +46,6 @@
             public let hasNewer = false
             public var readerTitle: String? { "\(rowIds.count) Messages" }
 
-            public func neighbours(of messageId: UUID) -> (older: UUID?, newer: UUID?) {
-                guard let index = rowIds.firstIndex(of: messageId) else { return (nil, nil) }
-                return (
-                    index + 1 < rowIds.count ? rowIds[index + 1] : nil, index > 0 ? rowIds[index - 1] : nil
-                )
-            }
-
             public func loadOlder() async {}
             public func loadNewer() async {}
         }
