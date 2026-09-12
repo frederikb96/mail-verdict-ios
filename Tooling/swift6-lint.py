@@ -272,6 +272,41 @@ def switch_after_guard_missing_return(lines: list[str]) -> list[tuple[int, str, 
     return findings
 
 
+#: A user-declared function returning `Never` (optionally `async`) — excludes stdlib idioms like
+#: `fatalError`/`preconditionFailure` by construction, since those are never declared locally.
+NEVER_RETURNING_FUNC = re.compile(r"\bfunc\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*(?:async\s+)?->\s*Never\b")
+#: A one-line guard whose else-branch returns a call, capturing the called name.
+GUARD_ELSE_RETURN_CALL = re.compile(r"^\s*guard\b.*\belse\s*\{\s*return\s+(?:await\s+)?([A-Za-z_]\w*)\(")
+
+
+def guard_else_returns_never_call(lines: list[str]) -> list[tuple[int, str, str]]:
+    """A one-line `guard ... else { return await name() }` where `name` is declared `-> Never`.
+
+    Inside an async closure whose result type is pinned externally to `Void` (a stored property's
+    closure type, say, rather than inferred from the closure's own body), Swift can reject
+    unifying `Never` with `Void` here — "cannot convert value of type 'Never' to closure result
+    type 'Void'" — even though the identical call works as the last statement of an ordinary
+    function (the blessed `return fatalError()` idiom). `parse-swift.sh` stops before type
+    checking and the package build never sees the app target, so neither catches this; only a Mac
+    run does. The fix: call it as its own statement followed by a plain `return`, and type the
+    function `-> Void` even though it never actually returns.
+    """
+    never_funcs = {match.group(1) for line in lines if (match := NEVER_RETURNING_FUNC.search(line))}
+    if not never_funcs:
+        return []
+    findings: list[tuple[int, str, str]] = []
+    for index, line in enumerate(lines):
+        match = GUARD_ELSE_RETURN_CALL.match(line)
+        if match and match.group(1) in never_funcs:
+            findings.append((
+                index + 1, line.strip(),
+                f"'{match.group(1)}' returns 'Never' — 'return await {match.group(1)}()' inside a "
+                "guard's else can fail to convert to an enclosing closure's 'Void' result; call it "
+                "as its own statement followed by 'return', and type it '-> Void' instead",
+            ))
+    return findings
+
+
 #: An `NSObjectProtocol?` stored property — the token `NotificationCenter.addObserver` hands
 #: back.
 OBSERVER_TOKEN_PROPERTY = re.compile(r"\bvar\s+([A-Za-z_]\w*)\s*:\s*NSObjectProtocol\?")
@@ -443,6 +478,7 @@ def check(path: Path) -> list[tuple[int, str, str]]:
     findings.extend(unmarked_observer_token_read_in_deinit(lines, isolated))
     findings.extend(stored_static_in_generic_type(lines))
     findings.extend(private_type_used_too_widely(lines))
+    findings.extend(guard_else_returns_never_call(lines))
 
     for index, line in enumerate(lines):
         if STORED_STATIC_VAR.match(line) and index not in isolated and "nonisolated(unsafe)" not in line:
