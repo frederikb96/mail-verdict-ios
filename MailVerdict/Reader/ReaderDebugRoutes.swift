@@ -42,12 +42,18 @@
         /// placeholder or a card still on its way.
         static func waitUntilLoaded(invitationCard: Bool = false) async {
             for _ in 0..<100 {
-                if let reader = active, reader.isCurrentPageLoaded,
-                    await !invitationCard || reader.showsInvitationCard()
-                {
-                    // The page swaps a late block in on its next frame.
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    return
+                if let reader = active, reader.isCurrentPageLoaded {
+                    // Awaited in its own statement: the right side of `||` is an autoclosure,
+                    // which cannot suspend.
+                    var cardShown = true
+                    if invitationCard {
+                        cardShown = await reader.showsInvitationCard()
+                    }
+                    if cardShown {
+                        // The page swaps a late block in on its next frame.
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        return
+                    }
                 }
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
