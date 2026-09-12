@@ -1,9 +1,8 @@
 import Foundation
 
-// This file mirrors the backend's own response shapes by hand, the same way pai-ios mirrors
-// pai-cloud's web/src/api/types.ts — see `GET /api/health` in `mail_verdict/server.py` for the
-// one this wraps. A dedicated route and shape added, removed or renamed there is parity work for
-// whichever block owns `Models/` from here.
+// This file mirrors the backend's own response shape by hand — see `GET /api/health` in
+// `mail_verdict/server.py` for the one this wraps. A route added, removed or renamed there is
+// parity work for whichever piece owns `Models/` from here.
 
 /// `GET /api/health`'s readiness body. `status` is `"ready"`/`"not_ready"`; `postimapContract`
 /// and `database` are short diagnostic strings (`"ok"`, `"unreachable"`, `"slow"`, …) rather than

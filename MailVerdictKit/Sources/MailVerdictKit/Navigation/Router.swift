@@ -6,7 +6,7 @@ public enum AppGate: Sendable, Equatable {
     case needsConfiguration
     /// A saved token was refused by the backend; `SignInView` shows why.
     case tokenRejected
-    /// Connected — whatever screen comes next belongs to a later block.
+    /// Connected — whatever screen comes next is not this type's concern.
     case ready
 }
 
@@ -17,8 +17,9 @@ public enum AppGate: Sendable, Equatable {
 /// an Apple SDK, so this compiles and is tested on Linux — the same reasoning that keeps every
 /// other store in this package platform-agnostic.
 ///
-/// Carries no navigation path yet: there are no destinations to push to. A later block adding the
-/// first screen is the place to grow one, the same shape pai-ios's own `Router` already is.
+/// Carries no navigation path yet: there are no destinations to push to. Whatever adds the first
+/// screen is the place to grow one, alongside a `Route` enum for `.navigationDestination(for:)`
+/// to switch over.
 @Observable
 public final class Router {
     public var gate: AppGate

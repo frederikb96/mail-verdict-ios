@@ -11,8 +11,8 @@
     /// working identically on Linux, where `UserDefaults` does not exist.
     ///
     /// Only the mode flag exists yet — there are no feature screens for a fixture run to seed a
-    /// route or a state into. A later block adding a screen to the fixture sweep is the place to
-    /// add the matching flag here, the same way pai-ios's equivalent grew one flag per screen.
+    /// route or a state into. Whatever adds the first screen to the fixture sweep is the place to
+    /// add the matching flag here, growing one per screen from there.
     public enum MVFixtureLaunch {
 
         static let modeFlag = "-MVFixtureMode"

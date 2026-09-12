@@ -19,7 +19,7 @@
     /// intercepted. `canInit` still gates on `MVFixtureLaunch`, so a registered-but-inactive
     /// protocol leaves an ordinary debug run talking to the real network.
     ///
-    /// The table below carries only `/api/health`, matching the one real call this block makes.
+    /// The table below carries only `/api/health`, matching the one real route this app calls.
     /// Extend `routes` alongside a new screen's own fetch call — the one place a fixture response
     /// is wired to the path that requests it.
     public final class MVFixtureURLProtocol: URLProtocol {
