@@ -10,92 +10,90 @@ struct AccountDetailScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
 
-    @State private var store: MVAccountDetailStore?
+    @State private var store: MVAccountDetailStore
     @State private var showingEditSheet = false
     @State private var confirmDelete = false
     @Environment(\.dismiss) private var dismiss
+
+    init(accountId: UUID, environment: AppEnvironment, connection: AppEnvironment.Connection) {
+        self.accountId = accountId
+        self.environment = environment
+        self.connection = connection
+        let freshStore = MVAccountDetailStore(accountId: accountId, apiClient: connection.apiClient)
+        _store = State(initialValue: freshStore)
+        #if DEBUG
+            AccountsDebugServices.shared.activeAccountDetailStore = freshStore
+        #endif
+    }
 
     var body: some View {
         #if DEBUG
             let _ = DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: body evaluated")
         #endif
-        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
-        // below is attached to a container that is there from the very first render, never to a
-        // view whose own presence depends on the state that same task is about to create. A
-        // modifier chain hung directly off `content` attaches to whatever `content` resolves to
-        // *this* render, which on the first render is nothing — and nothing never gets a task.
-        Group {
-            content
-        }
-        .navigationTitle(store?.account?.name ?? "Account")
-        .accessibilityIdentifier("account-detail-screen")
-        #if DEBUG
-            .screenshotReady(route: .account(accountId), environment: environment, connection: connection)
-            .onAppear { DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: onAppear") }
-        #endif
-        .sheet(isPresented: $showingEditSheet) {
-            if let account = store?.account {
-                AccountFormView(mode: .edit(account)) { input in
-                    try await store?.update(input)
+        // `content` is never empty — `store` exists from the first render, so there is no nil
+        // phase for a lifecycle modifier attached here to silently attach to nothing.
+        content
+            .navigationTitle(store.account?.name ?? "Account")
+            .accessibilityIdentifier("account-detail-screen")
+            #if DEBUG
+                .screenshotReady(route: .account(accountId), environment: environment, connection: connection)
+                .onAppear { DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: onAppear") }
+            #endif
+            .sheet(isPresented: $showingEditSheet) {
+                if let account = store.account {
+                    AccountFormView(mode: .edit(account)) { input in
+                        try await store.update(input)
+                    }
                 }
             }
-        }
-        .confirmationDialog(
-            "Delete \"\(store?.account?.name ?? "")\"?",
-            isPresented: $confirmDelete, titleVisibility: .visible
-        ) {
-            Button("Delete Account", role: .destructive) { Task { await delete() } }
-        } message: {
-            Text(
-                "This removes the account and its entire locally mirrored mailbox. It cannot "
-                    + "be undone. Nothing is touched on the mail server itself — re-adding the "
-                    + "account re-syncs everything from scratch.")
-        }
-        .task {
-            #if DEBUG
-                DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: screen task start")
-            #endif
-            if store == nil { store = MVAccountDetailStore(accountId: accountId, apiClient: connection.apiClient) }
-            #if DEBUG
-                AccountsDebugServices.shared.activeAccountDetailStore = store
-                DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: store created, loading")
-            #endif
-            await store?.load()
-            #if DEBUG
-                DebugLogBuffer.shared.append(
-                    .info, "screenshot",
-                    "account-detail: load() returned, state=\(String(describing: store?.state))")
-            #endif
-        }
+            .confirmationDialog(
+                "Delete \"\(store.account?.name ?? "")\"?",
+                isPresented: $confirmDelete, titleVisibility: .visible
+            ) {
+                Button("Delete Account", role: .destructive) { Task { await delete() } }
+            } message: {
+                Text(
+                    "This removes the account and its entire locally mirrored mailbox. It cannot "
+                        + "be undone. Nothing is touched on the mail server itself — re-adding the "
+                        + "account re-syncs everything from scratch.")
+            }
+            .task {
+                #if DEBUG
+                    DebugLogBuffer.shared.append(.info, "screenshot", "account-detail: screen task start")
+                #endif
+                await store.load()
+                #if DEBUG
+                    DebugLogBuffer.shared.append(
+                        .info, "screenshot", "account-detail: load() returned, state=\(store.state)")
+                #endif
+            }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let store {
-            switch store.state {
-            case .loading:
-                ProgressView()
-            case .failed(let error):
-                ErrorStateView(error: error) { Task { await store.load() } }
-            case .loaded:
-                if let account = store.account {
-                    Form {
-                        StatusSection(store: store, account: account)
-                        SyncToggleSection(store: store, environment: environment)
-                        DetailsSection(account: account)
-                        IconSection(store: store, environment: environment)
+        switch store.state {
+        case .loading:
+            ProgressView()
+        case .failed(let error):
+            ErrorStateView(error: error) { Task { await store.load() } }
+        case .loaded:
+            if let account = store.account {
+                Form {
+                    StatusSection(store: store, account: account)
+                    SyncToggleSection(store: store, environment: environment)
+                    DetailsSection(account: account)
+                    IconSection(store: store, environment: environment)
 
-                        Section {
-                            NavigationLink("Folder Order & Visibility", value: Route.folderOrder(accountId))
-                            NavigationLink("Image Exceptions", value: Route.imageExceptions(accountId))
-                            NavigationLink("Sending Identities", value: Route.identities(accountId))
-                        }
+                    Section {
+                        NavigationLink("Folder Order & Visibility", value: Route.folderOrder(accountId))
+                        NavigationLink("Image Exceptions", value: Route.imageExceptions(accountId))
+                        NavigationLink("Sending Identities", value: Route.identities(accountId))
+                    }
 
-                        Section {
-                            Button("Sync Now") { Task { try? await store.triggerSync() } }
-                            Button("Edit…") { showingEditSheet = true }
-                            Button("Delete Account…", role: .destructive) { confirmDelete = true }
-                        }
+                    Section {
+                        Button("Sync Now") { Task { try? await store.triggerSync() } }
+                        Button("Edit…") { showingEditSheet = true }
+                        Button("Delete Account…", role: .destructive) { confirmDelete = true }
                     }
                 }
             }
@@ -104,7 +102,7 @@ struct AccountDetailScreen: View {
 
     private func delete() async {
         do {
-            try await store?.delete()
+            try await store.delete()
             dismiss()
         } catch {
             environment.toasts.show(

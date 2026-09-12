@@ -8,95 +8,91 @@ struct UnifiedViewsScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
 
-    @State private var store: MVUnifiedSetupStore?
+    @State private var store: MVUnifiedSetupStore
     @State private var newViewName = ""
     @State private var createError: String?
+
+    init(environment: AppEnvironment, connection: AppEnvironment.Connection) {
+        self.environment = environment
+        self.connection = connection
+        let freshStore = MVUnifiedSetupStore(apiClient: connection.apiClient)
+        _store = State(initialValue: freshStore)
+        #if DEBUG
+            SettingsDebugServices.shared.activeUnifiedSetupStore = freshStore
+        #endif
+    }
 
     var body: some View {
         #if DEBUG
             let _ = DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: body evaluated")
         #endif
-        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
-        // below is attached to a container that is there from the very first render, never to a
-        // view whose own presence depends on the state that same task is about to create. A
-        // modifier chain hung directly off `content` attaches to whatever `content` resolves to
-        // *this* render, which on the first render is nothing — and nothing never gets a task.
-        Group {
-            content
-        }
-        .navigationTitle("Unified Views")
-        .accessibilityIdentifier("unifiedviews-screen")
-        #if DEBUG
-            .screenshotReady(route: .unifiedViews, environment: environment, connection: connection)
-            .onAppear { DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: onAppear") }
-        #endif
-        .task {
+        // `content` is never empty — `store` exists from the first render, so there is no nil
+        // phase for a lifecycle modifier attached here to silently attach to nothing.
+        content
+            .navigationTitle("Unified Views")
+            .accessibilityIdentifier("unifiedviews-screen")
             #if DEBUG
-                DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: screen task start")
+                .screenshotReady(route: .unifiedViews, environment: environment, connection: connection)
+                .onAppear { DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: onAppear") }
             #endif
-            if store == nil { store = MVUnifiedSetupStore(apiClient: connection.apiClient) }
-            #if DEBUG
-                SettingsDebugServices.shared.activeUnifiedSetupStore = store
-                DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: store created, loading")
-            #endif
-            await store?.load()
-            #if DEBUG
-                DebugLogBuffer.shared.append(
-                    .info, "screenshot", "unified-views: load() returned, state=\(String(describing: store?.state))"
-                )
-            #endif
-        }
+            .task {
+                #if DEBUG
+                    DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: screen task start")
+                #endif
+                await store.load()
+                #if DEBUG
+                    DebugLogBuffer.shared.append(
+                        .info, "screenshot", "unified-views: load() returned, state=\(store.state)")
+                #endif
+            }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let store {
-            switch store.state {
-            case .loading:
-                ProgressView()
-            case .failed(let error):
-                ErrorStateView(error: error) { Task { await store.load() } }
-            case .loaded:
-                List {
-                    Section {
-                        ForEach(store.views) { view in
-                            UnifiedViewRow(store: store, view: view, environment: environment)
-                        }
-                        .onMove { offsets, destination in
-                            var reordered = store.views
-                            reordered.move(fromOffsets: offsets, toOffset: destination)
-                            Task {
-                                try? await store.reorderViews(reordered)
-                            }
-                        }
+        switch store.state {
+        case .loading:
+            ProgressView()
+        case .failed(let error):
+            ErrorStateView(error: error) { Task { await store.load() } }
+        case .loaded:
+            List {
+                Section {
+                    ForEach(store.views) { view in
+                        UnifiedViewRow(store: store, view: view, environment: environment)
                     }
-
-                    Section {
-                        HStack {
-                            TextField("New view name", text: $newViewName)
-                            Button("Add") { Task { await createView() } }
-                                .disabled(newViewName.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                        if let createError {
-                            Text(createError).font(.footnote).foregroundStyle(.red)
-                        }
-                    }
-
-                    if !store.views.isEmpty {
-                        Section("Which views each folder belongs to") {
-                            ForEach(store.accounts) { account in
-                                AccountFolderViewsSection(store: store, account: account)
-                            }
+                    .onMove { offsets, destination in
+                        var reordered = store.views
+                        reordered.move(fromOffsets: offsets, toOffset: destination)
+                        Task {
+                            try? await store.reorderViews(reordered)
                         }
                     }
                 }
-                .toolbar { EditButton() }
+
+                Section {
+                    HStack {
+                        TextField("New view name", text: $newViewName)
+                        Button("Add") { Task { await createView() } }
+                            .disabled(newViewName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    if let createError {
+                        Text(createError).font(.footnote).foregroundStyle(.red)
+                    }
+                }
+
+                if !store.views.isEmpty {
+                    Section("Which views each folder belongs to") {
+                        ForEach(store.accounts) { account in
+                            AccountFolderViewsSection(store: store, account: account)
+                        }
+                    }
+                }
             }
+            .toolbar { EditButton() }
         }
     }
 
     private func createView() async {
-        guard let store else { return }
         let name = newViewName.trimmingCharacters(in: .whitespaces)
         do {
             _ = try await store.createView(name: name)

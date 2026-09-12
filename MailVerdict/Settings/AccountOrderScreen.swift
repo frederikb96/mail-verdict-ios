@@ -7,54 +7,52 @@ struct AccountOrderScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
 
-    @State private var store: MVAccountOrderStore?
+    @State private var store: MVAccountOrderStore
+
+    init(environment: AppEnvironment, connection: AppEnvironment.Connection) {
+        self.environment = environment
+        self.connection = connection
+        _store = State(initialValue: MVAccountOrderStore(apiClient: connection.apiClient))
+    }
 
     var body: some View {
-        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
-        // below is attached to a container that is there from the very first render, never to a
-        // view whose own presence depends on the state that same task is about to create.
-        Group {
-            content
-        }
-        .navigationTitle("Account Order")
-        .accessibilityIdentifier("accountorder-screen")
-        #if DEBUG
-            .screenshotReady(route: .accountOrder, environment: environment, connection: connection)
-        #endif
-        .task {
-            if store == nil { store = MVAccountOrderStore(apiClient: connection.apiClient) }
-            await store?.load()
-        }
+        // `content` is never empty — `store` exists from the first render, so there is no nil
+        // phase for a lifecycle modifier attached here to silently attach to nothing.
+        content
+            .navigationTitle("Account Order")
+            .accessibilityIdentifier("accountorder-screen")
+            #if DEBUG
+                .screenshotReady(route: .accountOrder, environment: environment, connection: connection)
+            #endif
+            .task { await store.load() }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let store {
-            switch store.state {
-            case .loading:
-                ProgressView()
-            case .failed(let error):
-                ErrorStateView(error: error) { Task { await store.load() } }
-            case .loaded:
-                List {
-                    ForEach(store.accounts) { account in
-                        AccountOrderRow(account: account)
-                    }
-                    .onMove { offsets, destination in
-                        Task {
-                            do {
-                                try await store.move(fromOffsets: offsets, toOffset: destination)
-                            } catch {
-                                environment.toasts.show(
-                                    .init(
-                                        variant: .error,
-                                        message: "Could not save the order: \(error.mvUserMessage)"))
-                            }
+        switch store.state {
+        case .loading:
+            ProgressView()
+        case .failed(let error):
+            ErrorStateView(error: error) { Task { await store.load() } }
+        case .loaded:
+            List {
+                ForEach(store.accounts) { account in
+                    AccountOrderRow(account: account)
+                }
+                .onMove { offsets, destination in
+                    Task {
+                        do {
+                            try await store.move(fromOffsets: offsets, toOffset: destination)
+                        } catch {
+                            environment.toasts.show(
+                                .init(
+                                    variant: .error,
+                                    message: "Could not save the order: \(error.mvUserMessage)"))
                         }
                     }
                 }
-                .environment(\.editMode, .constant(.active))
             }
+            .environment(\.editMode, .constant(.active))
         }
     }
 }

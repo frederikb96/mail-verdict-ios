@@ -7,63 +7,60 @@ struct AccountsScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
 
-    @State private var store: MVAccountsListStore?
+    @State private var store: MVAccountsListStore
     @State private var showingAddSheet = false
 
+    init(environment: AppEnvironment, connection: AppEnvironment.Connection) {
+        self.environment = environment
+        self.connection = connection
+        _store = State(initialValue: MVAccountsListStore(apiClient: connection.apiClient))
+    }
+
     var body: some View {
-        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
-        // below is attached to a container that is there from the very first render, never to a
-        // view whose own presence depends on the state that same task is about to create.
-        Group {
-            content
-        }
-        .navigationTitle("Accounts")
-        .accessibilityIdentifier("accounts-screen")
-        #if DEBUG
-            .screenshotReady(route: .accounts, environment: environment, connection: connection)
-        #endif
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAddSheet = true
-                } label: {
-                    Label("Add Account", systemImage: "plus")
+        // `content` is never empty — `store` exists from the first render, so there is no nil
+        // phase for a lifecycle modifier attached here to silently attach to nothing.
+        content
+            .navigationTitle("Accounts")
+            .accessibilityIdentifier("accounts-screen")
+            #if DEBUG
+                .screenshotReady(route: .accounts, environment: environment, connection: connection)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingAddSheet = true
+                    } label: {
+                        Label("Add Account", systemImage: "plus")
+                    }
                 }
             }
-        }
-        .sheet(isPresented: $showingAddSheet) {
-            AccountFormView(mode: .create) { input in
-                guard let store else { return }
-                try await store.createAccount(input)
+            .sheet(isPresented: $showingAddSheet) {
+                AccountFormView(mode: .create) { input in
+                    try await store.createAccount(input)
+                }
             }
-        }
-        .task {
-            if store == nil { store = MVAccountsListStore(apiClient: connection.apiClient) }
-            await store?.load()
-        }
+            .task { await store.load() }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let store {
-            switch store.state {
-            case .loading:
-                ProgressView()
-            case .failed(let error):
-                ErrorStateView(error: error) { Task { await store.load() } }
-            case .loaded:
-                if store.accounts.isEmpty {
-                    EmptyStateView(
-                        systemImage: "server.rack",
-                        message: "No accounts configured",
-                        actionTitle: "Add an email account to get started"
-                    ) { showingAddSheet = true }
-                } else {
-                    List {
-                        ForEach(store.accounts) { account in
-                            NavigationLink(value: Route.account(account.id)) {
-                                AccountRow(account: account, connectionState: store.connectionState(for: account))
-                            }
+        switch store.state {
+        case .loading:
+            ProgressView()
+        case .failed(let error):
+            ErrorStateView(error: error) { Task { await store.load() } }
+        case .loaded:
+            if store.accounts.isEmpty {
+                EmptyStateView(
+                    systemImage: "server.rack",
+                    message: "No accounts configured",
+                    actionTitle: "Add an email account to get started"
+                ) { showingAddSheet = true }
+            } else {
+                List {
+                    ForEach(store.accounts) { account in
+                        NavigationLink(value: Route.account(account.id)) {
+                            AccountRow(account: account, connectionState: store.connectionState(for: account))
                         }
                     }
                 }

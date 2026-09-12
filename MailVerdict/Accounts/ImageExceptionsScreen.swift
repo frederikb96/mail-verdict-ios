@@ -9,58 +9,55 @@ struct ImageExceptionsScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
 
-    @State private var store: MVImageExceptionsStore?
+    @State private var store: MVImageExceptionsStore
+
+    init(accountId: UUID, environment: AppEnvironment, connection: AppEnvironment.Connection) {
+        self.accountId = accountId
+        self.environment = environment
+        self.connection = connection
+        _store = State(initialValue: MVImageExceptionsStore(accountId: accountId, apiClient: connection.apiClient))
+    }
 
     var body: some View {
-        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
-        // below is attached to a container that is there from the very first render, never to a
-        // view whose own presence depends on the state that same task is about to create.
-        Group {
-            content
-        }
-        .navigationTitle("Image Exceptions")
-        .accessibilityIdentifier("imageexceptions-screen")
-        #if DEBUG
-            .screenshotReady(
-                route: .imageExceptions(accountId), environment: environment, connection: connection
-            )
-        #endif
-        .task {
-            if store == nil {
-                store = MVImageExceptionsStore(accountId: accountId, apiClient: connection.apiClient)
-            }
-            await store?.load()
-        }
+        // `content` is never empty — `store` exists from the first render, so there is no nil
+        // phase for a lifecycle modifier attached here to silently attach to nothing.
+        content
+            .navigationTitle("Image Exceptions")
+            .accessibilityIdentifier("imageexceptions-screen")
+            #if DEBUG
+                .screenshotReady(
+                    route: .imageExceptions(accountId), environment: environment, connection: connection
+                )
+            #endif
+            .task { await store.load() }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let store {
-            switch store.state {
-            case .loading:
-                ProgressView()
-            case .failed(let error):
-                ErrorStateView(error: error) { Task { await store.load() } }
-            case .loaded:
-                if store.exceptions.isEmpty {
-                    EmptyStateView(systemImage: "photo", message: "No image exceptions configured")
-                } else {
-                    List {
-                        Section {
-                            ForEach(store.exceptions) { exception in
-                                ImageExceptionRow(exception: exception)
-                            }
-                            .onDelete { offsets in
-                                for index in offsets {
-                                    let exception = store.exceptions[index]
-                                    Task {
-                                        try? await store.delete(id: exception.id)
-                                    }
+        switch store.state {
+        case .loading:
+            ProgressView()
+        case .failed(let error):
+            ErrorStateView(error: error) { Task { await store.load() } }
+        case .loaded:
+            if store.exceptions.isEmpty {
+                EmptyStateView(systemImage: "photo", message: "No image exceptions configured")
+            } else {
+                List {
+                    Section {
+                        ForEach(store.exceptions) { exception in
+                            ImageExceptionRow(exception: exception)
+                        }
+                        .onDelete { offsets in
+                            for index in offsets {
+                                let exception = store.exceptions[index]
+                                Task {
+                                    try? await store.delete(id: exception.id)
                                 }
                             }
-                        } footer: {
-                            Text("Senders and domains allowed to load remote images. Add exceptions from the reader.")
                         }
+                    } footer: {
+                        Text("Senders and domains allowed to load remote images. Add exceptions from the reader.")
                     }
                 }
             }

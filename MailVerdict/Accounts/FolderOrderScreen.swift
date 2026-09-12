@@ -9,46 +9,45 @@ struct FolderOrderScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
 
-    @State private var store: MVFolderOrderStore?
+    @State private var store: MVFolderOrderStore
+
+    init(accountId: UUID, environment: AppEnvironment, connection: AppEnvironment.Connection) {
+        self.accountId = accountId
+        self.environment = environment
+        self.connection = connection
+        _store = State(initialValue: MVFolderOrderStore(accountId: accountId, apiClient: connection.apiClient))
+    }
 
     var body: some View {
-        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
-        // below is attached to a container that is there from the very first render, never to a
-        // view whose own presence depends on the state that same task is about to create.
-        Group {
-            content
-        }
-        .navigationTitle("Folders")
-        .accessibilityIdentifier("folderorder-screen")
-        #if DEBUG
-            .screenshotReady(route: .folderOrder(accountId), environment: environment, connection: connection)
-        #endif
-        .toolbar { EditButton() }
-        .task {
-            if store == nil { store = MVFolderOrderStore(accountId: accountId, apiClient: connection.apiClient) }
-            await store?.load()
-        }
+        // `content` is never empty — `store` exists from the first render, so there is no nil
+        // phase for a lifecycle modifier attached here to silently attach to nothing.
+        content
+            .navigationTitle("Folders")
+            .accessibilityIdentifier("folderorder-screen")
+            #if DEBUG
+                .screenshotReady(route: .folderOrder(accountId), environment: environment, connection: connection)
+            #endif
+            .toolbar { EditButton() }
+            .task { await store.load() }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let store {
-            switch store.state {
-            case .loading:
-                ProgressView()
-            case .failed(let error):
-                ErrorStateView(error: error) { Task { await store.load() } }
-            case .loaded:
-                if store.folders.isEmpty {
-                    EmptyStateView(systemImage: "folder", message: "No folders available")
-                } else {
-                    List {
-                        ForEach(store.folders) { folder in
-                            FolderOrderRow(store: store, folder: folder, environment: environment)
-                        }
-                        .onMove { offsets, destination in
-                            Task { try? await store.move(fromOffsets: offsets, toOffset: destination) }
-                        }
+        switch store.state {
+        case .loading:
+            ProgressView()
+        case .failed(let error):
+            ErrorStateView(error: error) { Task { await store.load() } }
+        case .loaded:
+            if store.folders.isEmpty {
+                EmptyStateView(systemImage: "folder", message: "No folders available")
+            } else {
+                List {
+                    ForEach(store.folders) { folder in
+                        FolderOrderRow(store: store, folder: folder, environment: environment)
+                    }
+                    .onMove { offsets, destination in
+                        Task { try? await store.move(fromOffsets: offsets, toOffset: destination) }
                     }
                 }
             }

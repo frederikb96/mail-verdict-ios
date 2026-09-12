@@ -9,68 +9,67 @@ struct IdentitiesScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
 
-    @State private var store: MVIdentitiesStore?
+    @State private var store: MVIdentitiesStore
     @State private var newAddress = ""
     @State private var newDisplayName = ""
 
+    init(accountId: UUID, environment: AppEnvironment, connection: AppEnvironment.Connection) {
+        self.accountId = accountId
+        self.environment = environment
+        self.connection = connection
+        _store = State(initialValue: MVIdentitiesStore(accountId: accountId, apiClient: connection.apiClient))
+    }
+
     var body: some View {
-        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
-        // below is attached to a container that is there from the very first render, never to a
-        // view whose own presence depends on the state that same task is about to create.
-        Group {
-            content
-        }
-        .navigationTitle("Identities")
-        .accessibilityIdentifier("identities-screen")
-        #if DEBUG
-            .screenshotReady(route: .identities(accountId), environment: environment, connection: connection)
-        #endif
-        .task {
-            if store == nil { store = MVIdentitiesStore(accountId: accountId, apiClient: connection.apiClient) }
-            await store?.load()
-        }
+        // `content` is never empty — `store` exists from the first render, so there is no nil
+        // phase for a lifecycle modifier attached here to silently attach to nothing.
+        content
+            .navigationTitle("Identities")
+            .accessibilityIdentifier("identities-screen")
+            #if DEBUG
+                .screenshotReady(route: .identities(accountId), environment: environment, connection: connection)
+            #endif
+            .task { await store.load() }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let store {
-            switch store.state {
-            case .loading:
-                ProgressView()
-            case .failed(let error):
-                ErrorStateView(error: error) { Task { await store.load() } }
-            case .loaded:
-                List {
-                    Section {
-                        if store.identities.isEmpty {
-                            Text("No additional identities").foregroundStyle(.secondary)
-                        } else {
-                            ForEach(store.identities) { identity in
-                                IdentityRow(store: store, identity: identity)
-                            }
-                            .onDelete { offsets in
-                                for index in offsets {
-                                    let identity = store.identities[index]
-                                    Task { try? await store.delete(id: identity.id) }
-                                }
+        switch store.state {
+        case .loading:
+            ProgressView()
+        case .failed(let error):
+            ErrorStateView(error: error) { Task { await store.load() } }
+        case .loaded:
+            List {
+                Section {
+                    if store.identities.isEmpty {
+                        Text("No additional identities").foregroundStyle(.secondary)
+                    } else {
+                        ForEach(store.identities) { identity in
+                            IdentityRow(store: store, identity: identity)
+                        }
+                        .onDelete { offsets in
+                            for index in offsets {
+                                let identity = store.identities[index]
+                                Task { try? await store.delete(id: identity.id) }
                             }
                         }
                     }
+                }
 
-                    Section {
-                        TextField("Name", text: $newDisplayName)
-                        HStack {
-                            TextField("address@example.com", text: $newAddress)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .keyboardType(.emailAddress)
-                            Button {
-                                Task { await addIdentity(store) }
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                            }
-                            .disabled(newAddress.trimmingCharacters(in: .whitespaces).isEmpty)
+                Section {
+                    TextField("Name", text: $newDisplayName)
+                    HStack {
+                        TextField("address@example.com", text: $newAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.emailAddress)
+                        Button {
+                            Task { await addIdentity(store) }
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
                         }
+                        .disabled(newAddress.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
             }
