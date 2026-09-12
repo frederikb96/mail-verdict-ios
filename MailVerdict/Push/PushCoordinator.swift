@@ -138,7 +138,7 @@ final class PushCoordinator {
         do {
             record = try await service.register(apnsToken: token, serverOrigin: context.origin, record: record)
         } catch {
-            record.lastError = (error as? PushRegistrationFailure)?.userMessage ?? "\(error)"
+            record.lastError = (error as? PushRegistrationFailure)?.userMessage ?? error.mvUserMessage
         }
         // Turned off while the registration was in flight: that choice stands.
         guard records.load(serverOrigin: context.origin)?.isEnabled == true else { return }

@@ -122,7 +122,7 @@ public enum MVListLanding: Equatable, Sendable {
 public enum MVListPhase: Equatable, Sendable {
     case loading
     case loaded
-    case failed(String)
+    case failed(message: String, detail: String)
 }
 
 /// What the list knows about where it is — folder and account metadata for the title, subtitle,

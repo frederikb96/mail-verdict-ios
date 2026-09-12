@@ -281,8 +281,8 @@ struct MailListScreen: View {
             switch store.phase {
             case .loading:
                 if store.rows.isEmpty { skeleton }
-            case .failed(let message):
-                ErrorStateView(message: message) { Task { await store.retry() } }
+            case .failed(let message, let detail):
+                errorState(message: message, detail: detail)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(uiColor: .systemBackground))
             case .loaded:
@@ -485,6 +485,12 @@ struct MailListScreen: View {
         }
         return folderDisplayName(
             imapName: folder.imapName, displayName: folder.displayName, specialUse: folder.specialUse)
+    }
+
+    private func errorState(message: String, detail: String) -> some View {
+        var view = ErrorStateView(message: message) { Task { await store.retry() } }
+        view.technicalDetail = detail
+        return view
     }
 
     private func isPresented<T>(_ item: Binding<T?>) -> Binding<Bool> {
