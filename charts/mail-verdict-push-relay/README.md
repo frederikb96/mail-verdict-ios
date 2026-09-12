@@ -30,12 +30,11 @@ You need:
 
 ## Installing
 
-Add the repository and install with your own values:
+Pull straight from GHCR with your own values — no `helm repo add` needed:
 
 ```
-helm repo add mail-verdict-push-relay https://frederikb96.github.io/mail-verdict-ios/
-helm repo update
-helm install mail-verdict-push-relay mail-verdict-push-relay/mail-verdict-push-relay \
+helm install mail-verdict-push-relay oci://ghcr.io/frederikb96/charts/mail-verdict-push-relay \
+  --version 0.1.0 \
   --namespace mail-verdict-push-relay --create-namespace \
   -f my-values.yaml
 ```

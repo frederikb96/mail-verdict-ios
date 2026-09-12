@@ -1,9 +1,8 @@
 name: Relay release
 
-# Tag-triggered publish of the two things a chart install needs: the container image on GHCR
-# (public, so an install needs no pull secret) and the chart itself, published via
-# chart-releaser to this repo's own gh-pages branch — never vendored into any cluster repo that
-# consumes it.
+# Tag-triggered publish of the two things a chart install needs: the container image and the
+# chart itself, both on GHCR (public, so an install needs no pull secret or repo add) — never
+# vendored into any cluster repo that consumes it.
 #
 # Tag prefix is scoped to this component (`relay-v*.*.*`), distinct from the app's own `v*.*.*`
 # release tags, since the two are versioned and released independently in one repo.
@@ -13,7 +12,7 @@ on:
       - 'relay-v*.*.*'
 
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 jobs:
@@ -46,22 +45,19 @@ jobs:
     needs: [go, helm-lint]
     steps:
       - uses: actions/checkout@v6
-        with: { fetch-depth: 0 }
 
-      - name: Configure Git
+      - uses: azure/setup-helm@v4
+        with: { version: v3.17.0 }
+
+      - name: Log in to GHCR
         run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1.7.0
-        with:
-          skip_existing: true
-          charts_dir: charts
-        env:
-          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CR_RELEASE_NAME_TEMPLATE: "{{ .Name }}-{{ .Version }}"
-          CR_GENERATE_RELEASE_NOTES: true
+      - name: Package and push
+        run: |
+          helm package charts/mail-verdict-push-relay --destination dist
+          helm push dist/mail-verdict-push-relay-*.tgz oci://ghcr.io/frederikb96/charts
 
   build-image:
     runs-on: ubuntu-latest
