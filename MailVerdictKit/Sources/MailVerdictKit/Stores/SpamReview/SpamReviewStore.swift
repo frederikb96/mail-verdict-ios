@@ -110,13 +110,6 @@ extension SpamReviewStore: ReaderListSource {
     public var hasOlder: Bool { hasMore }
     public var hasNewer: Bool { false }
 
-    public func neighbours(of messageId: UUID) -> (older: UUID?, newer: UUID?) {
-        guard let index = items.firstIndex(where: { $0.messageId == messageId }) else { return (nil, nil) }
-        let older = index + 1 < items.count ? items[index + 1].messageId : nil
-        let newer = index > 0 ? items[index - 1].messageId : nil
-        return (older, newer)
-    }
-
     public func loadOlder() async { await loadMore() }
     public func loadNewer() async {}
 

@@ -15,11 +15,6 @@ final class ReaderTestSource: ReaderListSource {
         self.hasOlder = !olderPages.isEmpty
     }
 
-    func neighbours(of messageId: UUID) -> (older: UUID?, newer: UUID?) {
-        guard let index = rowIds.firstIndex(of: messageId) else { return (nil, nil) }
-        return (index + 1 < rowIds.count ? rowIds[index + 1] : nil, index > 0 ? rowIds[index - 1] : nil)
-    }
-
     func loadOlder() async {
         guard !olderPages.isEmpty else { return }
         rowIds += olderPages.removeFirst()
@@ -31,6 +26,15 @@ final class ReaderTestSource: ReaderListSource {
 
 final class ReaderNeighbourTests: XCTestCase {
     private let ids = (0..<5).map { _ in UUID() }
+
+    /// The plain case, nothing removed and the current row still present: older is the next row
+    /// down the list, newer the one above — every paging surface (swipe direction, chevrons,
+    /// auto-advance) is specified against this order.
+    func testPlainOrderWithNothingRemoved() {
+        let found = ReaderNeighbourResolver.neighbours(of: ids[2], rows: ids, previousRows: ids, removed: [])
+        XCTAssertEqual(found.older, ids[3])
+        XCTAssertEqual(found.newer, ids[1])
+    }
 
     func testRowsTheReaderRemovedAreSkipped() {
         let found = ReaderNeighbourResolver.neighbours(
@@ -104,11 +108,9 @@ final class ReaderPagingStoreTests: XCTestCase {
         XCTAssertFalse(store.move(.older))
     }
 
-    /// `ReaderTestSource` above hand-rolls both `rowIds` and `neighbours(of:)`, so it cannot
-    /// catch a regression in how the real store orders its own `rowIds` — paging walks that
-    /// array through `ReaderNeighbourResolver`, never `MVMailListStore.neighbours(of:)` itself,
-    /// which this feeds in as the source, the same object `ReaderSourceRegistry` hands a live
-    /// reader.
+    /// `ReaderTestSource` above hand-rolls its own `rowIds`, so it cannot catch a regression in
+    /// how the real store orders its own — this feeds `MVMailListStore` itself in as the source,
+    /// the same object `ReaderSourceRegistry` hands a live reader.
     func testPagesInTheOrderTheRealListStoreGives() async {
         let backend = FakeMailListBackend()
         backend.pageHandler = { _, _ in testPage(testRows(1...5)) }

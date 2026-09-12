@@ -77,7 +77,7 @@ final class SearchStoreTests: XCTestCase {
         XCTAssertEqual(store.context.query, "new")
     }
 
-    func testReaderListSourceNeighboursWalkResultOrder() async throws {
+    func testReaderListSourceRowIdsWalkResultOrder() async throws {
         let a = UUID(), b = UUID(), c = UUID()
         let json = """
             {"results":[
@@ -98,10 +98,6 @@ final class SearchStoreTests: XCTestCase {
         await store.updateContext(SearchContext(mode: .text, query: "xx"))
 
         XCTAssertEqual(store.rowIds, [a, b, c])
-        XCTAssertEqual(store.neighbours(of: b).older, c)
-        XCTAssertEqual(store.neighbours(of: b).newer, a)
-        XCTAssertEqual(store.neighbours(of: a).newer, nil)
-        XCTAssertEqual(store.neighbours(of: c).older, nil)
         XCTAssertFalse(store.hasNewer)
     }
 

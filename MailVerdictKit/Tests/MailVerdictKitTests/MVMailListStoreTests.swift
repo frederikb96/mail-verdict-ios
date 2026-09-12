@@ -259,21 +259,6 @@ final class MVMailListStoreTests: XCTestCase {
         }
     }
 
-    /// `rows` is newest-first (row `n+1` is older than row `n`, per `testRow`'s own convention) —
-    /// `neighbours(of:)` is the `ReaderListSource` contract every paging surface (swipe direction,
-    /// chevrons, auto-advance) is specified against, so a swapped pair here would point every one
-    /// of them backwards relative to the list.
-    func testNeighboursGiveReaderOrderOlderAfterNewerBefore() async {
-        let backend = FakeMailListBackend()
-        backend.pageHandler = { _, _ in testPage(testRows(1...5)) }
-        let store = makeStore(backend)
-        await store.start()
-
-        XCTAssertEqual(store.neighbours(of: testUUID(3)).older, testUUID(4))
-        XCTAssertEqual(store.neighbours(of: testUUID(3)).newer, testUUID(2))
-        XCTAssertNil(store.neighbours(of: testUUID(1)).newer)
-        XCTAssertNil(store.neighbours(of: testUUID(5)).older)
-    }
 }
 
 /// Counts calls from inside a `@Sendable` handler.

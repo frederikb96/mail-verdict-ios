@@ -109,7 +109,7 @@ final class SpamReviewStoreTests: XCTestCase {
         XCTAssertEqual(store.items, [])
     }
 
-    func testReaderListSourceNeighboursWalkLoadedOrder() async {
+    func testReaderListSourceRowIdsWalkLoadedOrder() async {
         let a = UUID(), b = UUID()
         let json = """
             {"items":[\(itemJSON(messageId: a)),\(itemJSON(messageId: b))],"has_more":false,"next_cursor":null}
@@ -119,8 +119,6 @@ final class SpamReviewStoreTests: XCTestCase {
         await store.load()
 
         XCTAssertEqual(store.rowIds, [a, b])
-        XCTAssertEqual(store.neighbours(of: a).older, b)
-        XCTAssertNil(store.neighbours(of: a).newer)
         XCTAssertFalse(store.hasNewer)
     }
 }
