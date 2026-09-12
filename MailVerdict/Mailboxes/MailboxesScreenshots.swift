@@ -10,18 +10,27 @@ import MailVerdictKit
     /// screenshot launch, not only this one's.
     enum MailboxesScreenshots {
         static let entries: [MVScreenshotEntry] = [
-            MVScreenshotEntry(
-                id: "mailboxes-fixture-row", destination: .root, prepare: { _, _ in await loadFixtures() })
+            MVScreenshotEntry(id: "mailboxes", destination: .root, prepare: { _, _ in await loadFixtures() })
         ]
 
         @MainActor
         private static func loadFixtures() async {
             MailboxesFixtures.registerIfNeeded()
-            guard let store = MailboxesFixtures.activeStore else { return }
-            // The screen's own `.task` may already have tried (and failed, with no fixture
-            // routes yet registered) by the time this runs — reload once now that they exist.
+            guard let store = await poll({ MailboxesFixtures.activeStore }) else { return }
             await store.load()
             if store.loadError != nil { await store.load() }
+        }
+
+        /// Up to five seconds, checked every 50 ms — Mailboxes is the root screen, mounted before
+        /// any navigation, so its own `.task` (which sets `MailboxesFixtures.activeStore`) races
+        /// this entry's `prepare` with no ordering guarantee between them.
+        @MainActor
+        private static func poll<Value>(_ probe: @MainActor () -> Value?) async -> Value? {
+            for _ in 0..<100 {
+                if let value = probe() { return value }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            return nil
         }
     }
 
