@@ -325,15 +325,17 @@ final class PushFolderScopeTests: XCTestCase {
         XCTAssertNil(PushFolderScope.toggling(boxes.customA, on: true, scope: without, groups: boxes.groups))
     }
 
+    /// Inbox, Sent and Trash lead the account's own checklist order (`leadOrderedFolders`); the
+    /// plain custom folder, which carries no `specialUse`, follows alphabetically.
     func testTickingAnOutgoingFolderIsAnExplicitChoice() {
         XCTAssertEqual(
             PushFolderScope.toggling(boxes.sentA, on: true, scope: nil, groups: boxes.groups),
-            [boxes.inboxA, boxes.customA, boxes.sentA, boxes.inboxB])
+            [boxes.inboxA, boxes.sentA, boxes.customA, boxes.inboxB])
     }
 
     func testSelectAllThenDeselectAll() {
         let all = PushFolderScope.togglingAll(scope: nil, groups: boxes.groups)
-        XCTAssertEqual(all, [boxes.inboxA, boxes.customA, boxes.sentA, boxes.trashA, boxes.inboxB])
+        XCTAssertEqual(all, [boxes.inboxA, boxes.sentA, boxes.trashA, boxes.customA, boxes.inboxB])
         XCTAssertEqual(PushFolderScope.togglingAll(scope: all, groups: boxes.groups), [])
     }
 
@@ -424,7 +426,7 @@ final class NotificationSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.status, .registering)
         XCTAssertEqual(record?.isEnabled, true)
         XCTAssertEqual(record?.pendingLabel, "Work phone")
-        XCTAssertEqual(record?.pendingFolderIds, [boxes.inboxA, boxes.customA, boxes.sentA, boxes.inboxB])
+        XCTAssertEqual(record?.pendingFolderIds, [boxes.inboxA, boxes.sentA, boxes.customA, boxes.inboxB])
     }
 }
 

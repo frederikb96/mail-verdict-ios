@@ -1,19 +1,60 @@
 import Foundation
 
+/// Inbox, Drafts, Sent, Archive, Junk, Trash, in that fixed order — the web's own
+/// `SPECIAL_USE_ORDER` (`app-sidebar.tsx`).
+private let folderLeadOrder = ["inbox", "drafts", "sent", "archive", "junk", "trash"]
+
+/// The two shapes `MailboxesSupport.leadOrderedFolders` sorts — `/folder-order`'s
+/// `FolderOrderItem` and the plain `/folders` list's `FolderResponse` — conformed here rather
+/// than alongside the models themselves, which the CLAUDE.md layering keeps behaviour-free.
+public protocol MVFolderLeadSortable {
+    var specialUse: String? { get }
+    var imapName: String { get }
+}
+
+extension FolderOrderItem: MVFolderLeadSortable {}
+extension FolderResponse: MVFolderLeadSortable {}
+
 public enum MailboxesSupport {
 
-    /// Visible folders in the order `GET /folder-order` already resolved (a saved custom order, or
-    /// alphabetical when none was ever saved — the server's own fallback), with INBOX forced to
-    /// lead regardless: that alphabetical fallback buries INBOX behind anything starting with a
-    /// letter before "I". Port of the web's own `orderedFolders` in `app-sidebar.tsx`.
-    public static func orderFolders(_ items: [FolderOrderItem]) -> [FolderOrderItem] {
+    /// Visible folders in the order `GET /folder-order` resolved, with INBOX forced to lead
+    /// regardless of a saved order — the web's own `orderedFolders` does this unconditionally
+    /// because a saved order rarely moves INBOX far from the top, and it buries INBOX when there
+    /// is no saved order to move it at all.
+    ///
+    /// When no order was ever saved, the backend's own fallback is plain alphabetical with no
+    /// other special-use treatment at all (`get_folder_order` in `folder_management.py`) —
+    /// `hasCustomOrder` (a non-empty `AccountResponse.folderOrder`) tells that case apart from a
+    /// real saved order, so it gets the web's full lead sequence (`leadOrderedFolders`) instead of
+    /// just the INBOX promotion, without overriding a folder the account holder genuinely dragged
+    /// elsewhere.
+    public static func orderFolders(_ items: [FolderOrderItem], hasCustomOrder: Bool) -> [FolderOrderItem] {
         let visible = items.filter(\.isVisible)
+        guard hasCustomOrder else { return leadOrderedFolders(visible) }
         guard let inboxIndex = visible.firstIndex(where: { $0.specialUse == "inbox" }), inboxIndex > 0
         else { return visible }
         var reordered = visible
         let inbox = reordered.remove(at: inboxIndex)
         reordered.insert(inbox, at: 0)
         return reordered
+    }
+
+    /// Port of the web's `sortFolders` (`app-sidebar.tsx`): every special-use folder leads, in
+    /// `folderLeadOrder`'s sequence (an unrecognised `specialUse` sorts after the six named ones,
+    /// same as the web's `indexOf` fallback of 99); everything else follows, alphabetically by
+    /// IMAP name. Reused wherever a folder list carries no saved-order concept at all — the plain
+    /// `/folders` list (`PushFolderScope.groups`) — as well as `orderFolders`'s own no-saved-order
+    /// case above.
+    public static func leadOrderedFolders<F: MVFolderLeadSortable>(_ folders: [F]) -> [F] {
+        let special = folders.filter { $0.specialUse != nil }
+            .sorted { leadIndex($0) < leadIndex($1) }
+        let regular = folders.filter { $0.specialUse == nil }
+            .sorted { $0.imapName.localizedStandardCompare($1.imapName) == .orderedAscending }
+        return special + regular
+    }
+
+    private static func leadIndex<F: MVFolderLeadSortable>(_ folder: F) -> Int {
+        folder.specialUse.flatMap { folderLeadOrder.firstIndex(of: $0) } ?? Int.max
     }
 
     /// The badge a folder row shows — Drafts never carries an unread state, so the total stands in
