@@ -48,6 +48,9 @@ public final class ReaderSession {
 
     @ObservationIgnored public let api: MVApiClient
     @ObservationIgnored public let lookups: ReaderLookups
+    /// The app's one \"where is this message now\" resolver — shared, so Show in Folder answers from
+    /// the same unified-view membership the rest of the app uses.
+    @ObservationIgnored private let placeResolver: MVMessagePlaceResolver
     @ObservationIgnored private weak var source: (any ReaderListSource)?
     @ObservationIgnored private let registry: ReaderSourceRegistry
     @ObservationIgnored private let tracker: MVExplicitUnreadTracker
@@ -63,12 +66,14 @@ public final class ReaderSession {
     @ObservationIgnored private let cacheDirectory: URL
 
     public init(
-        context: ReaderContext, api: MVApiClient, theme: MVCanvas, registry: ReaderSourceRegistry = .shared,
+        context: ReaderContext, api: MVApiClient, placeResolver: MVMessagePlaceResolver, theme: MVCanvas,
+        registry: ReaderSourceRegistry = .shared,
         tracker: MVExplicitUnreadTracker = .shared, canvasStore: MVCanvasPreferenceStore = MVCanvasPreferenceStore(),
         cacheDirectory: URL = FileManager.default.temporaryDirectory
     ) {
         self.context = context
         self.api = api
+        self.placeResolver = placeResolver
         self.theme = theme
         self.registry = registry
         self.tracker = tracker
@@ -511,7 +516,7 @@ public final class ReaderSession {
     /// "Show in Folder": the list the message lives in now, opened around it.
     public func showInFolderRoute() async -> Route? {
         guard let message = currentPrimary else { return nil }
-        switch await MVMessagePlaceResolver(apiClient: api).resolve(messageId: message.id) {
+        switch await placeResolver.resolve(messageId: message.id) {
         case .route(let routes): return routes.first
         case .notFound(let text):
             onToast?(MVToast(variant: .info, message: text))

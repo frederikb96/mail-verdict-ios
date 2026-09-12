@@ -98,7 +98,8 @@ final class ReaderSessionTests: XCTestCase {
             urlSession: ReaderRouteStub.makeSession())
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "reader-session-\(UUID())"))
         let session = ReaderSession(
-            context: context, api: client, theme: .light, registry: registry, tracker: tracker,
+            context: context, api: client, placeResolver: MVMessagePlaceResolver(apiClient: client), theme: .light,
+            registry: registry, tracker: tracker,
             canvasStore: MVCanvasPreferenceStore(defaults: defaults),
             cacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
         return (session, source)
