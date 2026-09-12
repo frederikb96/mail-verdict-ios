@@ -12,7 +12,7 @@ struct MailListScreen: View {
 
     @State private var store: MVMailListStore
     @State private var proxy = MailListControllerProxy()
-    @State private var liveHub: LiveEventHub?
+    @State private var liveToken: MVSubscriptionToken?
     @State private var now = Date()
     @State private var searchText = ""
     @State private var optionsRow: MessageSummary?
@@ -43,7 +43,10 @@ struct MailListScreen: View {
             .overlay(alignment: .top) { newMessagesCapsule }
             .animation(.default, value: store.newMessagesCapsuleCount)
             .navigationTitle(store.isSelecting ? store.selectionTitle : store.title)
-            .navigationSubtitle(store.isSelecting ? (store.selectionScopeNote ?? "") : store.subtitle(now: now))
+            .navigationSubtitle(
+                store.isSelecting
+                    ? (store.selectionScopeNote ?? "") : store.subtitle(now: now, connection: liveConnectionState)
+            )
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(store.isSelecting)
             .toolbar { toolbarContent }
@@ -430,35 +433,34 @@ struct MailListScreen: View {
         #if DEBUG
             if MVFixtureLaunch.isEnabled() { MVMailListFixtures.register() }
         #endif
-        startLiveUpdates()
+        #if DEBUG
+            MailListScreenshotStage.shared.store = store
+        #endif
+        subscribeToLiveUpdates()
         await store.start()
     }
 
     /// Kept for as long as the list is on the navigation stack — including while the reader
     /// covers it, since the list stays mounted there and must stay current for Back.
-    private func startLiveUpdates() {
-        guard liveHub == nil else { return }
-        #if DEBUG
-            // Fixture mode has no event stream; a failing one would read as "Connecting…".
-            if MVFixtureLaunch.isEnabled() { return }
-        #endif
-        let store = self.store
-        let hub = LiveEventHub(
-            requestFactory: connection.requestFactory,
-            callbacks: LiveEventHub.Callbacks(
-                onBufferedInvalidations: { [weak store] batch in store?.apply(batch) },
-                onInvalidation: { [weak store] invalidation in store?.apply([invalidation]) },
-                onConnectionStateChanged: { [weak store] connected in store?.setLiveConnected(connected) }
-            )
-        )
-        liveHub = hub
-        hub.connect()
+    private func subscribeToLiveUpdates() {
+        guard liveToken == nil else { return }
+        liveToken = connection.liveEventHub.subscribe(store)
     }
 
     private func stopLiveUpdatesIfPopped() {
-        guard !environment.navigationPath.contains(.list(scope, aroundMessageId: aroundMessageId)) else { return }
-        liveHub?.disconnect()
-        liveHub = nil
+        guard !environment.navigationPath.contains(.list(scope, aroundMessageId: aroundMessageId)),
+            let liveToken
+        else { return }
+        connection.liveEventHub.unsubscribe(liveToken)
+        self.liveToken = nil
+    }
+
+    private var liveConnectionState: MVConnectionState {
+        #if DEBUG
+            // Fixture mode has no event stream; its failing one would read as "Connecting…".
+            if MVFixtureLaunch.isEnabled() { return .connected }
+        #endif
+        return connection.liveEventHub.connectionState
     }
 
     // MARK: - Helpers

@@ -36,10 +36,10 @@
         @MainActor
         private static func loadedStore() async -> MVMailListStore? {
             let applied = await waitFor {
-                MVMailListRegistry.shared.store(for: MVMailListFixtures.scope)?.phase == .loaded
+                MailListScreenshotStage.shared.store?.phase == .loaded
                     && (MailListDebugState.shared.current?.loadedCount ?? 0) > 0
             }
-            return applied ? MVMailListRegistry.shared.store(for: MVMailListFixtures.scope) : nil
+            return applied ? MailListScreenshotStage.shared.store : nil
         }
 
         @MainActor
@@ -59,6 +59,7 @@
     final class MailListScreenshotStage {
         static let shared = MailListScreenshotStage()
 
+        @ObservationIgnored weak var store: MVMailListStore?
         var optionsRowId: UUID?
         var isOptionsSheetVisible = false
     }

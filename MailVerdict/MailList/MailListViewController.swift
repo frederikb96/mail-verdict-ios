@@ -724,7 +724,7 @@ struct MailContextPreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
-                AvatarView(identity: data.avatarIdentity, displayName: data.senderName)
+                AvatarView(identity: data.avatarIdentity, displayName: data.senderName, photo: data.avatarPhoto)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(data.senderName).font(.headline).lineLimit(1)
                     Text(fullDate).font(.subheadline).foregroundStyle(.secondary)

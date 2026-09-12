@@ -2,8 +2,8 @@ import MailVerdictKit
 
 #if DEBUG
 
-    /// Settings' own screenshot entries: the top-level screen, and one generic category form
-    /// (`ai`, since it is also the one carrying the provider-key section).
+    /// Settings' own screenshot entries: the top-level screen, one generic category form (`ai`,
+    /// since it is also the one carrying the provider-key section), and Unified Views setup.
     ///
     /// `entries`' own initializer is where the fixture routes these screens call get registered —
     /// `ScreenshotRegistry.all` forces every feature's `entries` to evaluate the moment fixture
@@ -18,6 +18,7 @@ import MailVerdictKit
                 MVScreenshotEntry(
                     id: "settings-category-ai",
                     destination: .route(.settingsCategory(MVSettingsCategory.ai.rawValue))),
+                MVScreenshotEntry(id: "unified-views", destination: .route(.unifiedViews)),
             ]
         }()
 
@@ -52,6 +53,36 @@ import MailVerdictKit
                      "anthropic_api_key_configured":true,"anthropic_api_key_hint":"abcd",
                      "openai_api_key_configured":false,"openai_api_key_hint":null}
                     """#.utf8)
+            }
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/unified/folders") {
+                Data(
+                    #"""
+                    [{"id":"33333333-3333-3333-3333-333333333333","unified_name":"Everything","emoji":"📥",
+                      "folders":[{"account_id":"11111111-1111-1111-1111-111111111111","account_name":"Posteo",
+                                  "account_emoji":"📧","folder_id":"44444444-4444-4444-4444-444444444444",
+                                  "imap_name":"INBOX","special_use":"inbox"}],
+                      "unread_count":3,"total_count":120}]
+                    """#.utf8)
+            }
+            MVFixtureURLProtocol.register(
+                method: "GET", path: "/api/accounts/11111111-1111-1111-1111-111111111111/folders"
+            ) {
+                Data(
+                    #"""
+                    [{"id":"44444444-4444-4444-4444-444444444444",
+                      "account_id":"11111111-1111-1111-1111-111111111111","imap_name":"INBOX",
+                      "display_name":null,"special_use":"inbox","mailbox_id":null,
+                      "initial_sync_done":true,"backfill_total":null,"idle_requested":true,
+                      "idle_status":"idle","last_synced_at":"2026-01-15T10:29:00+00:00",
+                      "sync_error":null,"created_at":"2025-01-10T08:00:00+00:00","unread_count":3,
+                      "total_count":120,"is_visible":true,
+                      "unified_view_ids":["33333333-3333-3333-3333-333333333333"]}]
+                    """#.utf8)
+            }
+            MVFixtureURLProtocol.register(
+                method: "GET", path: "/api/accounts/22222222-2222-2222-2222-222222222222/folders"
+            ) {
+                Data("[]".utf8)
             }
         }
     }
