@@ -6,21 +6,18 @@ import SwiftUI
 struct AvatarView: View {
     let identity: String
     let displayName: String
-    var photoURL: URL? = nil
+    var photo: MVAvatarPhotoSource? = nil
     var unifiedAccountEmoji: String? = nil
     var diameter: CGFloat = 40
+
+    @Environment(\.mvImageLoader) private var imageLoader
+    @State private var loadedImage: Image?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             Group {
-                if let photoURL {
-                    AsyncImage(url: photoURL) { phase in
-                        if case .success(let image) = phase {
-                            image.resizable().scaledToFill()
-                        } else {
-                            initialsCircle
-                        }
-                    }
+                if let loadedImage {
+                    loadedImage.resizable().scaledToFill()
                 } else {
                     initialsCircle
                 }
@@ -36,6 +33,11 @@ struct AvatarView: View {
             }
         }
         .accessibilityHidden(true)
+        .task(id: photo) {
+            loadedImage = nil
+            guard let photo, let imageLoader else { return }
+            loadedImage = await imageLoader.image(for: photo)
+        }
     }
 
     private var initialsCircle: some View {

@@ -59,6 +59,10 @@ final class AppEnvironment {
         /// rather than opening its own, since the backend's event ring has no notion of "this
         /// stream is for screen X".
         let liveEventHub: LiveEventHub
+
+        /// Shared so every `AvatarView` reads from the same in-memory cache rather than each
+        /// re-fetching the same sender's photo.
+        let imageLoader: MVAuthenticatedImageLoader
     }
 
     private static let backendURLKey = "backendURL"
@@ -144,7 +148,9 @@ final class AppEnvironment {
         let liveEventHub = LiveEventHub(requestFactory: factory)
         liveEventHub.connect()
 
-        connection = Connection(requestFactory: factory, apiClient: client, liveEventHub: liveEventHub)
+        connection = Connection(
+            requestFactory: factory, apiClient: client, liveEventHub: liveEventHub,
+            imageLoader: MVAuthenticatedImageLoader(apiClient: client))
         lastAuthFailure = nil
         router.gate = .ready
         return true
