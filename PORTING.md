@@ -214,3 +214,27 @@ repeated taps (rather than dismissing after the first) needs a live menu interac
 ### Confirmation dialog wording fits at a real device width — web anchor: ui/src/components/settings, ui/src/components/accounts (delete/confirm dialogs)
 Needs a device because: text wrapping in a system alert is a rendering question only a real (or
 simulator) screen width settles, and none of these were given more than a glance so far.
+
+### Reader screenshots actually paint before being captured, and a plain message opens dark — web anchor: n/a (fixture-mode screenshot)
+Needs a device because: the paint gate and the dark-canvas rule are covered by package tests and
+by the sweep's own pass/fail, but nobody has looked at a resulting screenshot yet to confirm
+reader-default no longer shows black and that a plain message's body is genuinely dark.
+
+### The zoomed reader screenshot is genuinely pinched, not merely requested — web anchor: n/a (fixture-mode screenshot)
+Needs a device because: a WKWebView's `setZoomScale` reportedly does not take; the entry now fails
+the sweep instead of publishing a false positive, but whether it passes, or needs reading real
+pinch-gesture zoom as its own device-only check instead, is unknown until that run happens.
+
+### The quoted-text pill renders correctly in the reader and the composer — web anchor: n/a (fixture-mode screenshot)
+Needs a device because: the CSS and SwiftUI changes compile but have not been seen; reader-default
+and composer-reply are both fixture screenshots that would show it.
+
+### tel:/sms: links and detected phone numbers actually hand off — web anchor: n/a (no equivalent web behavior)
+Needs a device because: the confirmation alert and the `UIApplication.open` call are untestable
+from the package, and a simulator's own telephony support may limit what the handoff looks like
+there versus a real device.
+
+### The native loading placeholder is visible and looks right on a cold launch — web anchor: n/a (no equivalent web behavior)
+Needs a device because: the fixture sweep's own paint gate means no screenshot it takes will ever
+show the placeholder; only watching a real cold launch confirms it replaces the black flash rather
+than adding a visible flicker of its own.
