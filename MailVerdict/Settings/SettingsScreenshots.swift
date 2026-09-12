@@ -31,8 +31,12 @@ import MailVerdictKit
             registerAccountsFixture()
             registerAccountOrderFixture()
             guard let store = await poll({ SettingsDebugServices.shared.activeAccountOrderStore }) else { return }
-            _ = await poll { store.state.isLoading ? nil : true }
-            if case .failed = store.state { await store.load() }
+            await waitUntilSettled(
+                isLoading: { store.state.isLoading },
+                isFailed: {
+                    if case .failed = store.state { return true }; return false
+                },
+                reload: { await store.load() })
         }
 
         @MainActor
@@ -47,8 +51,12 @@ import MailVerdictKit
                     """#.utf8)
             }
             guard let store = await poll({ SettingsDebugServices.shared.activeSettingsCategoryStore }) else { return }
-            _ = await poll { store.state.isLoading ? nil : true }
-            if case .failed = store.state { await store.load() }
+            await waitUntilSettled(
+                isLoading: { store.state.isLoading },
+                isFailed: {
+                    if case .failed = store.state { return true }; return false
+                },
+                reload: { await store.load() })
         }
 
         @MainActor
@@ -85,8 +93,12 @@ import MailVerdictKit
                 Data("[]".utf8)
             }
             guard let store = await poll({ SettingsDebugServices.shared.activeUnifiedSetupStore }) else { return }
-            _ = await poll { store.state.isLoading ? nil : true }
-            if case .failed = store.state { await store.load() }
+            await waitUntilSettled(
+                isLoading: { store.state.isLoading },
+                isFailed: {
+                    if case .failed = store.state { return true }; return false
+                },
+                reload: { await store.load() })
         }
 
         /// Two accounts, shared by every entry here that lists accounts at all — kept as one
@@ -127,6 +139,25 @@ import MailVerdictKit
                 try? await Task.sleep(for: .milliseconds(50))
             }
             return nil
+        }
+
+        /// Waits up to five seconds for `isLoading` to go false, then reloads once if the store
+        /// settled into its failed state. Each probe runs through `MainActor.run` and reports a
+        /// plain `Bool` rather than handing back the store's own load-state enum, since that enum
+        /// carries an `Error` and isn't `Sendable`.
+        @MainActor
+        private static func waitUntilSettled(
+            isLoading: @MainActor @Sendable () -> Bool,
+            isFailed: @MainActor @Sendable () -> Bool,
+            reload: @MainActor @Sendable () async -> Void
+        ) async {
+            for _ in 0..<100 {
+                guard await MainActor.run(body: isLoading) else { break }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            if await MainActor.run(body: isFailed) {
+                await reload()
+            }
         }
     }
 
