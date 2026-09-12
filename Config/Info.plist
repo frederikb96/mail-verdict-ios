@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Nothing here yet: every key this app currently declares (ITSAppUsesNonExemptEncryption)
+         is a scalar, which `INFOPLIST_KEY_` build settings express on their own, merged in via
+         `GENERATE_INFOPLIST_FILE`. This file exists for the keys that mechanism cannot reach —
+         array- or dict-valued ones, `UIBackgroundModes` and `CFBundleURLTypes` among them — so it
+         is already wired into `INFOPLIST_FILE` for whichever block needs one first. -->
+</dict>
+</plist>
