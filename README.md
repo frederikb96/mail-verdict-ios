@@ -11,8 +11,10 @@ truth for what this app ports.
 
 ## Connecting
 
-On first launch, enter the backend's URL and an access token. Both are held on the device: the
-token in the Keychain, everything else in `UserDefaults`.
+On first launch, enter the backend's URL and, if the proxy in front of it needs one, a
+credential: a bearer token, or a username and password for basic auth. A LAN, Tailscale or VPN
+install with no proxy needs neither. Both are held on the device: the credential in the Keychain,
+everything else in `UserDefaults`.
 
 ## How it is arranged
 

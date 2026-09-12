@@ -2,10 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Nothing here yet: every key this app currently declares (ITSAppUsesNonExemptEncryption)
-         is a scalar, which `INFOPLIST_KEY_` build settings express on their own, merged in via
-         `GENERATE_INFOPLIST_FILE`. This file exists for the keys that mechanism cannot reach —
-         array- or dict-valued ones, `UIBackgroundModes` and `CFBundleURLTypes` among them — so it
-         is already wired into `INFOPLIST_FILE` for whichever block needs one first. -->
+    <!-- A bare IP or unqualified hostname on a LAN is exactly what a self-hoster's own backend is
+         reached by, and ATS otherwise requires HTTPS for every connection regardless of locality.
+         `NSAllowsLocalNetworking` lifts the HTTPS requirement for local-network destinations
+         specifically (loopback, bare IPs, `.local` names) without the blanket
+         `NSAllowsArbitraryLoads` exception — it does not relax certificate trust, so HTTPS to a
+         Tailscale host still needs a certificate the device trusts (`tailscale cert` gives one). -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
 </dict>
 </plist>
