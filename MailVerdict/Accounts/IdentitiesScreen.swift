@@ -16,6 +16,9 @@ struct IdentitiesScreen: View {
         content
             .navigationTitle("Identities")
             .accessibilityIdentifier("identities-screen")
+            #if DEBUG
+                .screenshotReady(route: .identities(accountId), environment: environment, connection: connection)
+            #endif
             .task {
                 if store == nil { store = MVIdentitiesStore(accountId: accountId, apiClient: connection.apiClient) }
                 await store?.load()

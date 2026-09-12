@@ -16,5 +16,8 @@ struct ReaderScreen: View {
         }
         .navigationTitle("Message")
         .accessibilityIdentifier("reader-stub")
+        #if DEBUG
+            .screenshotReady(route: .reader(context), environment: environment, connection: connection)
+        #endif
     }
 }

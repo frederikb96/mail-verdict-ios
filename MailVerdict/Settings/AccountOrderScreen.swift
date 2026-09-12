@@ -13,6 +13,9 @@ struct AccountOrderScreen: View {
         content
             .navigationTitle("Account Order")
             .accessibilityIdentifier("accountorder-screen")
+            #if DEBUG
+                .screenshotReady(route: .accountOrder, environment: environment, connection: connection)
+            #endif
             .task {
                 if store == nil { store = MVAccountOrderStore(apiClient: connection.apiClient) }
                 await store?.load()

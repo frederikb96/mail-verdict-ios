@@ -14,6 +14,9 @@ struct AccountsScreen: View {
         content
             .navigationTitle("Accounts")
             .accessibilityIdentifier("accounts-screen")
+            #if DEBUG
+                .screenshotReady(route: .accounts, environment: environment, connection: connection)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {

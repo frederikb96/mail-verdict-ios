@@ -33,6 +33,9 @@ struct SettingsCategoryScreen: View {
         }
         .navigationTitle(resolvedCategory?.displayTitle ?? category.capitalized)
         .accessibilityIdentifier("settings-category-\(category)")
+        #if DEBUG
+            .screenshotReady(route: .settingsCategory(category), environment: environment, connection: connection)
+        #endif
     }
 }
 

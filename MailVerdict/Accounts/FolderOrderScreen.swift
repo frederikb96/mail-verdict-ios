@@ -14,6 +14,9 @@ struct FolderOrderScreen: View {
         content
             .navigationTitle("Folders")
             .accessibilityIdentifier("folderorder-screen")
+            #if DEBUG
+                .screenshotReady(route: .folderOrder(accountId), environment: environment, connection: connection)
+            #endif
             .toolbar { EditButton() }
             .task {
                 if store == nil { store = MVFolderOrderStore(accountId: accountId, apiClient: connection.apiClient) }

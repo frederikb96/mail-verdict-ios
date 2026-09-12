@@ -10,5 +10,8 @@ struct SpamReviewScreen: View {
         Text("Spam Review")
             .navigationTitle("Spam Review")
             .accessibilityIdentifier("spamreview-stub")
+            #if DEBUG
+                .screenshotReady(route: .spamReview, environment: environment, connection: connection)
+            #endif
     }
 }

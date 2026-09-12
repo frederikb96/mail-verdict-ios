@@ -49,6 +49,10 @@ struct SettingsScreen: View {
             }
         }
         .navigationTitle("Settings")
+        .accessibilityIdentifier("settings-screen")
+        #if DEBUG
+            .screenshotReady(route: .settings, environment: environment, connection: connection)
+        #endif
         .task {
             let store = accountOrderStore ?? MVAccountOrderStore(apiClient: connection.apiClient)
             accountOrderStore = store

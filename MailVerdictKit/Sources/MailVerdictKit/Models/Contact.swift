@@ -56,3 +56,26 @@ public struct ContactPhotoIndexResponse: ContractModel, Codable, Sendable, Equat
         self.partial = partial
     }
 }
+
+/// Where `AvatarView` loads a photo from — `ContactPhotoIndexEntry.photoUrl` is never ambiguous
+/// (the backend only ever sends one of these two shapes), so a caller derives this once per entry
+/// rather than re-parsing the string at every row.
+public enum MVAvatarPhotoSource: Hashable, Sendable {
+    /// This backend's own `/contacts/:id/photo` — fetched with the app's own credential.
+    case embedded(contactId: UUID)
+    /// A third party's own address — already checked against the requesting account's
+    /// image-allowlist by the photo-index request itself, so the loader fetches it directly, but
+    /// deliberately never attaches this backend's credential to someone else's server.
+    case remote(URL)
+}
+
+extension ContactPhotoIndexEntry {
+    /// `nil` only for a malformed `photoUrl`, which the backend never sends.
+    public var avatarSource: MVAvatarPhotoSource? {
+        if photoUrl.hasPrefix("/") {
+            return .embedded(contactId: contactId)
+        }
+        guard let url = URL(string: photoUrl), url.scheme != nil else { return nil }
+        return .remote(url)
+    }
+}

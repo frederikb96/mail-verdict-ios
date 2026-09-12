@@ -15,6 +15,9 @@ struct UnifiedViewsScreen: View {
         content
             .navigationTitle("Unified Views")
             .accessibilityIdentifier("unifiedviews-screen")
+            #if DEBUG
+                .screenshotReady(route: .unifiedViews, environment: environment, connection: connection)
+            #endif
             .task {
                 if store == nil { store = MVUnifiedSetupStore(apiClient: connection.apiClient) }
                 await store?.load()

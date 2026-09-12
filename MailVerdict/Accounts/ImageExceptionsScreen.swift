@@ -14,6 +14,11 @@ struct ImageExceptionsScreen: View {
         content
             .navigationTitle("Image Exceptions")
             .accessibilityIdentifier("imageexceptions-screen")
+            #if DEBUG
+                .screenshotReady(
+                    route: .imageExceptions(accountId), environment: environment, connection: connection
+                )
+            #endif
             .task {
                 if store == nil {
                     store = MVImageExceptionsStore(accountId: accountId, apiClient: connection.apiClient)

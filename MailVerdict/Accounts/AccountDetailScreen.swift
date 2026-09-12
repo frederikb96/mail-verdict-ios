@@ -18,6 +18,9 @@ struct AccountDetailScreen: View {
         content
             .navigationTitle(store?.account?.name ?? "Account")
             .accessibilityIdentifier("account-detail-screen")
+            #if DEBUG
+                .screenshotReady(route: .account(accountId), environment: environment, connection: connection)
+            #endif
             .sheet(isPresented: $showingEditSheet) {
                 if let account = store?.account {
                     AccountFormView(mode: .edit(account)) { input in
