@@ -20,6 +20,7 @@ import MailVerdictKit
                 prepare: prepareAccountDetail)
         ]
 
+        @MainActor
         private static func prepareAccountDetail(_: AppEnvironment, _: AppEnvironment.Connection) async {
             MVFixtureURLProtocol.register(
                 method: "GET", path: "/api/accounts/11111111-1111-1111-1111-111111111111"
