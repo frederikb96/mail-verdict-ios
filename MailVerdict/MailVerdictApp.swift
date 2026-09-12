@@ -80,6 +80,13 @@ struct MailVerdictApp: App {
                 .encoding(["id": ScreenshotReporter.shared.currentId])
             }
 
+            // Every request fixture mode answered 404 because no route matched — a screen that
+            // silently fell back to an error state instead of its fixture still "succeeds" its
+            // own screenshot, so this is what lets the Mac sweep fail the run instead.
+            router.register("GET", "/fixtures/misses") { _ in
+                .encoding(["misses": MVFixtureURLProtocol.misses])
+            }
+
             for registrar in featureRegistrars { registrar(&router) }
 
             routeNames = router.registeredRoutes

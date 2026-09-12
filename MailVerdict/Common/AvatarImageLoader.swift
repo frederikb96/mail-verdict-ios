@@ -17,6 +17,18 @@ final class MVAuthenticatedImageLoader {
     private var cache: [MVAvatarPhotoSource: Image] = [:]
     private var inFlight: [MVAvatarPhotoSource: Task<Image?, Never>] = [:]
 
+    /// A `.remote` source never carries this backend's credential, but still goes through a
+    /// session of its own rather than `URLSession.shared` — `MVFixtureURLProtocol` is only ever
+    /// installed into a configuration explicitly, never picked up by a session it wasn't asked
+    /// into, so fixture mode needs this one named the same way every other session is.
+    private static let remoteSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        #if DEBUG
+            MVFixtureURLProtocol.installIfEnabled(in: configuration)
+        #endif
+        return URLSession(configuration: configuration)
+    }()
+
     init(apiClient: MVApiClient) {
         self.apiClient = apiClient
     }
@@ -32,7 +44,7 @@ final class MVAuthenticatedImageLoader {
             case .embedded(let contactId):
                 data = try? await apiClient.getContactPhoto(contactId: contactId).data
             case .remote(let url):
-                data = try? await URLSession.shared.data(from: url).0
+                data = try? await Self.remoteSession.data(from: url).0
             }
             guard let data, let uiImage = UIImage(data: data) else { return nil }
             return Image(uiImage: uiImage)

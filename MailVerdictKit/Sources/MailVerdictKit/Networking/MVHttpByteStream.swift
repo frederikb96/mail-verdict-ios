@@ -50,6 +50,9 @@ final class MVHttpByteStream: NSObject, URLSessionDataDelegate, @unchecked Senda
     func start(request: URLRequest, configuration: URLSessionConfiguration = .default) -> AsyncThrowingStream<
         Event, Error
     > {
+        #if DEBUG
+            MVFixtureURLProtocol.installIfEnabled(in: configuration)
+        #endif
         let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         self.session = session
         return AsyncThrowingStream { continuation in
