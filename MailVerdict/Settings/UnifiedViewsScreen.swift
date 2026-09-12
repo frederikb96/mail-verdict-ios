@@ -13,28 +13,39 @@ struct UnifiedViewsScreen: View {
     @State private var createError: String?
 
     var body: some View {
-        content
-            .navigationTitle("Unified Views")
-            .accessibilityIdentifier("unifiedviews-screen")
+        #if DEBUG
+            let _ = DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: body evaluated")
+        #endif
+        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
+        // below is attached to a container that is there from the very first render, never to a
+        // view whose own presence depends on the state that same task is about to create. A
+        // modifier chain hung directly off `content` attaches to whatever `content` resolves to
+        // *this* render, which on the first render is nothing — and nothing never gets a task.
+        Group {
+            content
+        }
+        .navigationTitle("Unified Views")
+        .accessibilityIdentifier("unifiedviews-screen")
+        #if DEBUG
+            .screenshotReady(route: .unifiedViews, environment: environment, connection: connection)
+            .onAppear { DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: onAppear") }
+        #endif
+        .task {
             #if DEBUG
-                .screenshotReady(route: .unifiedViews, environment: environment, connection: connection)
+                DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: screen task start")
             #endif
-            .task {
-                #if DEBUG
-                    DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: screen task start")
-                #endif
-                if store == nil { store = MVUnifiedSetupStore(apiClient: connection.apiClient) }
-                #if DEBUG
-                    SettingsDebugServices.shared.activeUnifiedSetupStore = store
-                    DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: store created, loading")
-                #endif
-                await store?.load()
-                #if DEBUG
-                    DebugLogBuffer.shared.append(
-                        .info, "screenshot", "unified-views: load() returned, state=\(String(describing: store?.state))"
-                    )
-                #endif
-            }
+            if store == nil { store = MVUnifiedSetupStore(apiClient: connection.apiClient) }
+            #if DEBUG
+                SettingsDebugServices.shared.activeUnifiedSetupStore = store
+                DebugLogBuffer.shared.append(.info, "screenshot", "unified-views: store created, loading")
+            #endif
+            await store?.load()
+            #if DEBUG
+                DebugLogBuffer.shared.append(
+                    .info, "screenshot", "unified-views: load() returned, state=\(String(describing: store?.state))"
+                )
+            #endif
+        }
     }
 
     @ViewBuilder
