@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   signing lanes, and the debug bridge.
 - The message list: swipe right to archive; swipe left to delete, or a short swipe for Options
   and Delete (in Trash, Delete Forever asks first); long-press for the Options menu with a
-  preview.
+  preview — built, not yet confirmed by hand on a device.
 - Select mode: Select, Select All over the whole folder, a two-finger swipe to tick rows, and
   bulk Mark, Move, Junk, Archive and Trash with Undo.
 - An unread filter, an in-folder quick filter with "Search all mail for …", and a Group by
@@ -23,8 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Mark All as Read and Empty Folder… in the list's ••• menu.
 - New mail arriving while you read further down never moves the list; a "N New Messages" button
   takes you to it.
-- Going back from a message returns the list to exactly where you were, and the app reopens where
-  you left each list.
+- Going back from a message returns you to your place in the list, and the app reopens where you
+  left each list — built and unit-tested, not yet confirmed by hand on a device.
 - Move to… lists your recently used folders first.
 - Reader: swipe between messages like Photos, pinch to zoom, and a bottom bar of Archive, Delete
   and Options.
