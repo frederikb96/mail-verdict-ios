@@ -40,7 +40,7 @@ struct EventDetailsSheet: View {
         do {
             event = try await api.getEvent(objectId: objectId)
         } catch {
-            failure = (error as? MVError)?.userMessage ?? error.localizedDescription
+            failure = error.mvUserMessage
         }
     }
 
