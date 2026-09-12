@@ -50,7 +50,12 @@ struct MailListScreen: View {
             .searchable(text: $searchText, prompt: "Search")
             .searchSuggestions { searchSuggestions }
             .onChange(of: searchText) { _, text in store.setFilterText(text) }
-            .sheet(item: $optionsRow, onDismiss: runPendingOptionsAction) { row in optionsSheet(for: row) }
+            .sheet(item: $optionsRow, onDismiss: runPendingOptionsAction) { row in
+                optionsSheet(for: row)
+                    #if DEBUG
+                        .onAppear { MailListScreenshotStage.shared.isOptionsSheetVisible = true }
+                    #endif
+            }
             .sheet(item: $movePicker, onDismiss: runPendingMove) { request in
                 MovePickerSheet(source: request.source, backend: connection.apiClient) { target in
                     pendingMove = PendingMove(request: request, target: target)
@@ -95,6 +100,15 @@ struct MailListScreen: View {
                 }
             }
             .onDisappear { stopLiveUpdatesIfPopped() }
+            #if DEBUG
+                .onChange(of: MailListScreenshotStage.shared.optionsRowId) { _, rowId in
+                    if let rowId, let row = store.row(id: rowId) { optionsRow = row }
+                }
+                .screenshotReady(
+                    route: .list(scope, aroundMessageId: aroundMessageId), environment: environment,
+                    connection: connection
+                )
+            #endif
     }
 
     // MARK: - Bars

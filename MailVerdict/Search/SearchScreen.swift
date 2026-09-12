@@ -11,5 +11,11 @@ struct SearchScreen: View {
         Text(initialQuery ?? "Search")
             .navigationTitle("Search")
             .accessibilityIdentifier("search-stub")
+            #if DEBUG
+                .screenshotReady(
+                    route: .search(initialQuery: initialQuery), environment: environment,
+                    connection: connection
+                )
+            #endif
     }
 }

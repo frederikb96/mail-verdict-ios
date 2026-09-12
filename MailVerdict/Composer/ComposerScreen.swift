@@ -22,6 +22,9 @@ struct ComposerScreen: View {
                 }
         }
         .accessibilityIdentifier("composer-stub")
+        #if DEBUG
+            .screenshotReady(compose: intent, environment: environment, connection: connection)
+        #endif
     }
 
     private var title: String {

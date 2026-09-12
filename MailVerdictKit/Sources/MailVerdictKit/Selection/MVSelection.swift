@@ -151,8 +151,8 @@ public struct MVSelection: Equatable, Sendable {
     }
 }
 
-/// The select-mode title and scope line — the count in the words the UX design uses, including
-/// what "all" means once rows are conversations.
+/// The select-mode title and scope line — the count in words, including what "all" means once
+/// rows are conversations.
 public enum MVSelectionText {
     public static func title(for selection: MVSelection, threaded: Bool) -> String {
         let count = selection.count

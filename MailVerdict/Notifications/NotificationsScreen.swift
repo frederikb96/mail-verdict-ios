@@ -10,5 +10,8 @@ struct NotificationsScreen: View {
         Text("Notifications")
             .navigationTitle("Notifications")
             .accessibilityIdentifier("notifications-stub")
+            #if DEBUG
+                .screenshotReady(route: .notifications, environment: environment, connection: connection)
+            #endif
     }
 }

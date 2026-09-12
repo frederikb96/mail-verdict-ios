@@ -4,6 +4,9 @@ import SwiftUI
 @main
 struct MailVerdictApp: App {
 
+    /// The APNs token and silent pushes reach an app delegate or nothing; see `PushAppDelegate`.
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
+
     #if DEBUG
         /// Held for the app's lifetime; a listener that goes out of scope stops listening.
         private static let debugBridge = DebugBridge(router: DebugRoutes.make())
@@ -37,7 +40,10 @@ struct MailVerdictApp: App {
         /// (`MailVerdict/MailList/MailListDebugRoutes.swift`, and so on), never the route logic
         /// itself inline in this shared file. This is the one line a feature block adds to
         /// `MailVerdictApp.swift`; `make()` below needs no other change to pick it up.
-        private static let featureRegistrars: [@Sendable (inout DebugRouter) -> Void] = [MailListDebugRoutes.register]
+        private static let featureRegistrars: [@Sendable (inout DebugRouter) -> Void] = [
+            PushDebugRoutes.register,
+            MailListDebugRoutes.register,
+        ]
 
         static func make() -> DebugRouter {
             var router = DebugRouter()
@@ -59,6 +65,18 @@ struct MailVerdictApp: App {
                 let level = request.query["level"].flatMap(DebugLogBuffer.Level.init(rawValue:)) ?? .debug
                 let limit = request.query["limit"].flatMap(Int.init) ?? 100
                 return .encoding(DebugLogBuffer.shared.snapshot(minimumLevel: level, limit: limit))
+            }
+
+            // Every registered screenshot id, and the id the screen actually on top reported —
+            // see ScreenshotRegistry.swift. `/screen/current` answers `{"id": null}` until some
+            // screen calls `ScreenshotReporter.shared.report`, which only the destination screen
+            // itself does once it has truly appeared, never the launcher that navigated to it.
+            router.register("GET", "/screens") { _ in
+                .encoding(["screens": ScreenshotRegistry.all.map(\.id)])
+            }
+
+            router.register("GET", "/screen/current") { _ in
+                .encoding(["id": ScreenshotReporter.shared.currentId])
             }
 
             for registrar in featureRegistrars { registrar(&router) }

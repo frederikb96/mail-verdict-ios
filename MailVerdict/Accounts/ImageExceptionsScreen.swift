@@ -11,5 +11,10 @@ struct ImageExceptionsScreen: View {
         Text("Image Exceptions")
             .navigationTitle("Image Exceptions")
             .accessibilityIdentifier("imageexceptions-stub")
+            #if DEBUG
+                .screenshotReady(
+                    route: .imageExceptions(accountId), environment: environment, connection: connection
+                )
+            #endif
     }
 }

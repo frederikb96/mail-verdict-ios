@@ -54,6 +54,15 @@ final class AppEnvironment {
     struct Connection {
         let requestFactory: MVRequestFactory
         let apiClient: MVApiClient
+
+        /// The one SSE connection for the whole app — every store subscribes to this instance
+        /// rather than opening its own, since the backend's event ring has no notion of "this
+        /// stream is for screen X".
+        let liveEventHub: LiveEventHub
+
+        /// Shared so every `AvatarView` reads from the same in-memory cache rather than each
+        /// re-fetching the same sender's photo.
+        let imageLoader: MVAuthenticatedImageLoader
     }
 
     private static let backendURLKey = "backendURL"
@@ -88,6 +97,7 @@ final class AppEnvironment {
     /// different failure — the credential may be fine, the proxy in front of it just cannot take
     /// one — so it surfaces to whichever screen made the call instead of wiping the Keychain.
     func handleAuthenticationFailure(detail: String?) {
+        connection?.liveEventHub.disconnect()
         credentials.write(nil)
         connection = nil
         lastAuthFailure = detail
@@ -95,6 +105,7 @@ final class AppEnvironment {
     }
 
     func signOut() {
+        connection?.liveEventHub.disconnect()
         credentials.write(nil)
         connection = nil
         lastAuthFailure = nil
@@ -134,7 +145,12 @@ final class AppEnvironment {
             }
         }
 
-        connection = Connection(requestFactory: factory, apiClient: client)
+        let liveEventHub = LiveEventHub(requestFactory: factory)
+        liveEventHub.connect()
+
+        connection = Connection(
+            requestFactory: factory, apiClient: client, liveEventHub: liveEventHub,
+            imageLoader: MVAuthenticatedImageLoader(apiClient: client))
         lastAuthFailure = nil
         router.gate = .ready
         return true

@@ -9,17 +9,28 @@
     /// scheme, no `UserDefaults` argument-domain magic, just the array every launch already has.
     /// Parsing that array directly keeps this testable with a plain `[String]` and keeps it
     /// working identically on Linux, where `UserDefaults` does not exist.
-    ///
-    /// Only the mode flag exists yet — there are no feature screens for a fixture run to seed a
-    /// route or a state into. Whatever adds the first screen to the fixture sweep is the place to
-    /// add the matching flag here, growing one per screen from there.
     public enum MVFixtureLaunch {
 
         static let modeFlag = "-MVFixtureMode"
+        static let screenFlag = "-MVFixtureScreen"
 
-        /// Whether the process was launched with `-MVFixtureMode`.
+        /// Whether the process was launched with `-MVFixtureMode`. The Mac workflow passes
+        /// `-MVFixtureMode YES`; the trailing value is never read, only the flag's presence — the
+        /// same "YES" Xcode's own launch-argument UI conventionally appends to a boolean flag.
         public static func isEnabled(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
             arguments.contains(modeFlag)
+        }
+
+        /// The id immediately following `-MVFixtureScreen`, if the launch named one — which
+        /// `ScreenshotRegistry` entry (`MailVerdict/Shell/ScreenshotRegistry.swift`) the app
+        /// should navigate to and report ready on, for the Mac workflow's per-screen sweep.
+        /// `nil` when fixture mode is merely on with no specific screen asked for (the bridge's
+        /// own `/screens` listing call, most concretely).
+        public static func targetScreenId(arguments: [String] = ProcessInfo.processInfo.arguments) -> String? {
+            guard let flagIndex = arguments.firstIndex(of: screenFlag), flagIndex + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[flagIndex + 1]
         }
     }
 
