@@ -1,0 +1,22 @@
+mail-verdict-push-relay is installed.
+
+{{- if .Values.ingress.enabled }}
+Relay base URL: https://{{ .Values.ingress.host }}
+{{- else }}
+Ingress is disabled — reach the Service ({{ include "mail-verdict-push-relay.fullname" . }}, port
+{{ .Values.service.port }}) however your cluster routes internal traffic, or enable ingress.
+{{- end }}
+
+Check it is healthy:
+  kubectl -n {{ .Release.Namespace }} get pods -l {{ include "mail-verdict-push-relay.selectorLabels" . | replace "\n" "," }}
+  curl https://{{ .Values.ingress.host }}/healthz
+
+Put the relay base URL above wherever MailVerdict's own configuration expects a push relay URL
+(`push.apns_relay_urls`), and wherever the app build you ship points its own relay setting —
+see ../../relay/README.md for the API the two sides speak.
+{{- if .Values.serviceMonitor.enabled }}
+Metrics are scraped by whatever Prometheus selects ServiceMonitors with the labels you set in
+serviceMonitor.labels.
+{{- else }}
+Set serviceMonitor.enabled to have this cluster's Prometheus scrape /metrics for you.
+{{- end }}

@@ -1,0 +1,29 @@
+{{- if not .Values.apns.authKey.existingSecret }}
+{{- fail "Set apns.authKey.existingSecret — the relay never creates its own Secret for an APNs private key." }}
+{{- end }}
+{{- if not .Values.tickets.existingSecret }}
+{{- fail "Set tickets.existingSecret — the relay never creates its own Secret for the ticket-signing keys." }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mail-verdict-push-relay.fullname" . }}-config
+  labels:
+    {{- include "mail-verdict-push-relay.labels" . | nindent 4 }}
+data:
+  APNS_KEY_ID: {{ required "apns.keyId is required" .Values.apns.keyId | quote }}
+  APNS_TEAM_ID: {{ required "apns.teamId is required" .Values.apns.teamId | quote }}
+  APNS_TOPIC: {{ required "apns.bundleId is required" .Values.apns.bundleId | quote }}
+  APNS_AUTH_KEY_PATH: "/secrets/apns/{{ .Values.apns.authKey.existingSecretKey }}"
+  TICKET_TTL_DAYS: {{ .Values.tickets.ttlDays | quote }}
+  FALLBACK_ALERT_TITLE: {{ .Values.fallbackAlert.title | quote }}
+  FALLBACK_ALERT_BODY: {{ .Values.fallbackAlert.body | quote }}
+  RATE_ALERT_PER_TICKET_PER_HOUR: {{ .Values.rateLimits.alertPerTicketPerHour | quote }}
+  RATE_ALERT_PER_TICKET_BURST: {{ .Values.rateLimits.alertPerTicketBurst | quote }}
+  RATE_ALERT_PER_TICKET_PER_DAY: {{ .Values.rateLimits.alertPerTicketPerDay | quote }}
+  RATE_BACKGROUND_PER_TICKET_PER_HOUR: {{ .Values.rateLimits.backgroundPerTicketPerHour | quote }}
+  RATE_IP_PUSHES_PER_HOUR: {{ .Values.rateLimits.ipPushesPerHour | quote }}
+  RATE_IP_REGISTRATIONS_PER_HOUR: {{ .Values.rateLimits.ipRegistrationsPerHour | quote }}
+  MAX_BODY_BYTES: {{ .Values.rateLimits.maxBodyBytes | quote }}
+  MAX_BLOB_CHARS: {{ .Values.rateLimits.maxBlobChars | quote }}
+  LISTEN_ADDR: ":{{ .Values.service.port }}"

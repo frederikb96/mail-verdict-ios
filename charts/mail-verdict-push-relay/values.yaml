@@ -1,0 +1,119 @@
+# Default configuration for mail-verdict-push-relay.
+#
+# Every value an installer must actually supply is an empty string below, with a comment saying
+# so — nothing here assumes a particular cluster, hostname or APNs identity. See README.md for
+# the full walkthrough and ../../relay/README.md for what the service itself does.
+
+image:
+  repository: ghcr.io/frederikb96/mail-verdict-push-relay
+  # Empty: defaults to .Chart.AppVersion. Set explicitly to pin a different tag.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+apns:
+  # APNs auth key id and Apple Developer team id — from App Store Connect. Not secret.
+  keyId: ""
+  teamId: ""
+  # The bundle id of the app this relay pushes for. Becomes the APNs topic, so a wrong value
+  # here fails loud (APNs rejects with DeviceTokenNotForTopic) rather than silently reaching
+  # no one. Every MailVerdict install using a given relay deployment shares this one value,
+  # because only the app's publisher can hold a credential that signs for this bundle id.
+  bundleId: ""
+  authKey:
+    # Name of a Secret holding the .p8 key content, managed however you prefer (SOPS,
+    # sealed-secrets, Vault, or a plain `kubectl create secret`). This chart never creates or
+    # touches this Secret itself — an APNs private key has no business passing through Helm
+    # values or a rendered template.
+    existingSecret: ""
+    existingSecretKey: "AuthKey.p8"
+
+tickets:
+  # Name of a Secret holding the ticket-signing keys, in the "<id>:<64 hex>,<id>:<64 hex>,..."
+  # format the relay itself parses (see ../../relay/README.md). The same existingSecret-only
+  # shape as apns.authKey above, for the same reason.
+  existingSecret: ""
+  existingSecretKey: "ticket-keys"
+  # How long a sealed ticket stays valid from the moment it was issued. A device re-registers
+  # well before this — see the registration handshake in ../../relay/README.md.
+  ttlDays: 90
+
+# What APNs actually shows before a phone's own notification extension decrypts the real
+# banner — fixed relay configuration, since the relay never knows what an alert is about.
+fallbackAlert:
+  title: "MailVerdict"
+  body: "New notification"
+
+# In-memory rate limits, reset on a restart — see ../../relay/README.md's "Rate limits" table
+# for what each one protects against. Burst values not listed here default to the hourly rate
+# itself (a full hour of budget available at once); only the alert-per-ticket bucket needs a
+# distinct, smaller burst.
+rateLimits:
+  alertPerTicketPerHour: 60
+  alertPerTicketBurst: 30
+  alertPerTicketPerDay: 500
+  backgroundPerTicketPerHour: 12
+  ipPushesPerHour: 1200
+  ipRegistrationsPerHour: 30
+  # Caps independent of any per-key bucket above: the whole request body, and the blob field
+  # specifically (a request can be under the body cap and still carry an oversized blob).
+  maxBodyBytes: 8192
+  maxBlobChars: 3072
+
+service:
+  port: 8080
+
+ingress:
+  enabled: true
+  # Empty uses the cluster's default IngressClass. Set explicitly (e.g. "traefik", "nginx")
+  # when the cluster has more than one or defines none as default.
+  className: ""
+  # Required when ingress.enabled — the hostname this service is reachable at. Left empty on
+  # purpose so an install cannot silently inherit a hostname that means nothing to a stranger's
+  # cluster. Every MailVerdict server and every copy of the app that use this relay deployment
+  # have this value baked in, so changing it later strands them.
+  host: ""
+  annotations: {}
+  tls:
+    enabled: true
+    # Name of the Secret holding the TLS cert. If certManager.enabled below, cert-manager
+    # creates and populates this Secret; otherwise you must provide it yourself.
+    secretName: ""
+    certManager:
+      # A generic chart cannot assume cert-manager exists on every cluster it's installed to,
+      # so this is opt-in rather than assumed.
+      enabled: false
+      issuerName: ""
+      issuerKind: ClusterIssuer
+
+serviceMonitor:
+  # Opt-in Prometheus Operator ServiceMonitor — a generic chart installer may run no
+  # Prometheus at all.
+  enabled: false
+  interval: 1m
+  # Extra labels the ServiceMonitor needs to be picked up by a given Prometheus instance —
+  # e.g. `release: kube-prometheus-stack` is that chart's own convention for how its
+  # Prometheus CR selects ServiceMonitors by label.
+  labels: {}
+
+# The image's own uid/gid (65532, distroless/static's built-in "nonroot" user). No fsGroup:
+# this service writes nothing to disk, so there is no volume whose ownership needs fixing.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# No default requests: a generic chart cannot guess the right floor for a cluster it has never
+# run on.
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
