@@ -265,7 +265,7 @@ final class PushCoordinator {
             environment.navigationPath = [.notifications]
         case .message(let messageId):
             Task {
-                switch await MVMessagePlaceResolver(apiClient: connection.apiClient).resolve(messageId: messageId) {
+                switch await connection.placeResolver.resolve(messageId: messageId) {
                 case .route(let path):
                     environment.navigationPath = path
                 case .notFound(let message):
