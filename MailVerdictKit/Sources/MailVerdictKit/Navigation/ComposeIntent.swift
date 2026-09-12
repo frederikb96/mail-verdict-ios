@@ -126,4 +126,16 @@ public struct ComposeIntent: Identifiable, Hashable, Sendable {
         self.id = id
         self.kind = kind
     }
+
+    /// Where the composer should place focus the moment it opens, the way Mail does: an entirely
+    /// new message has nothing to address yet, so it starts in the recipient field; anything that
+    /// already names one — a reply, a forward, a reopened draft, a restored send, a `mailto:`
+    /// link that already carries a `to` — starts in the body instead.
+    public var focusesRecipientsOnOpen: Bool {
+        switch kind {
+        case .new: return true
+        case .mailto(let link): return link.to.isEmpty
+        case .reply, .replyAll, .forward, .draft, .undoRestore: return false
+        }
+    }
 }

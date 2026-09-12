@@ -14,6 +14,7 @@ enum ComposerAttachSource {
 struct RichTextEditorView: UIViewRepresentable {
     let store: ComposerStore
     @Binding var height: CGFloat
+    var autofocus: Bool = false
     let onAttach: (ComposerAttachSource) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -36,6 +37,11 @@ struct RichTextEditorView: UIViewRepresentable {
         // out of the storage holds only what was typed.
         (textView.textLayoutManager?.textContentManager as? NSTextContentStorage)?.includesTextListMarkers = false
         context.coordinator.attach(textView)
+        if autofocus {
+            // Deferred a turn: right after `makeUIView` returns, this view is not yet in a
+            // window, and `becomeFirstResponder()` on one that is not is a silent no-op.
+            DispatchQueue.main.async { [weak textView] in textView?.becomeFirstResponder() }
+        }
         return textView
     }
 

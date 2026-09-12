@@ -10,6 +10,7 @@ struct RecipientTokenField: View {
     let store: ComposerStore
     @Binding var activeField: ComposeRecipientField?
     let onQueryChange: (String) -> Void
+    var autofocus: Bool = false
 
     @State private var selected: String?
 
@@ -44,7 +45,7 @@ struct RecipientTokenField: View {
                                 if activeField == field { activeField = nil }
                                 selected = nil
                             }
-                        })
+                        }, autofocus: autofocus)
                 }
             }
             if let note = store.recipientNotes[field] {
@@ -153,6 +154,7 @@ private struct RecipientTextField: UIViewRepresentable {
     let onReturn: () -> Void
     let onBackspaceWhenEmpty: () -> Void
     let onFocusChange: (Bool) -> Void
+    var autofocus: Bool = false
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -172,6 +174,11 @@ private struct RecipientTextField: UIViewRepresentable {
             context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
         textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        if autofocus {
+            // Deferred a turn: right after `makeUIView` returns, this field is not yet in a
+            // window, and `becomeFirstResponder()` on one that is not is a silent no-op.
+            DispatchQueue.main.async { [weak textField] in textField?.becomeFirstResponder() }
+        }
         return textField
     }
 
