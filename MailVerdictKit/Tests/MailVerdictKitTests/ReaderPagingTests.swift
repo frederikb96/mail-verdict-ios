@@ -103,6 +103,25 @@ final class ReaderPagingStoreTests: XCTestCase {
         XCTAssertNil(store.newer)
         XCTAssertFalse(store.move(.older))
     }
+
+    /// `ReaderTestSource` above hand-rolls both `rowIds` and `neighbours(of:)`, so it cannot
+    /// catch a regression in how the real store orders its own `rowIds` — paging walks that
+    /// array through `ReaderNeighbourResolver`, never `MVMailListStore.neighbours(of:)` itself,
+    /// which this feeds in as the source, the same object `ReaderSourceRegistry` hands a live
+    /// reader.
+    func testPagesInTheOrderTheRealListStoreGives() async {
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...5)) }
+        let listStore = MVMailListStore(
+            scope: .folder(accountId: testAccount, folderId: testFolder), aroundMessageId: nil, backend: backend,
+            toasts: nil, defaults: testDefaults(threaded: false), session: MVListSession()
+        )
+        await listStore.start()
+
+        let store = ReaderPagingStore(openedId: testUUID(3), source: listStore)
+        XCTAssertEqual(store.olderId, testUUID(4))
+        XCTAssertEqual(store.newerId, testUUID(2))
+    }
 }
 
 final class ZoomEdgeHandoffTests: XCTestCase {

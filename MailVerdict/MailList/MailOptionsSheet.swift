@@ -13,6 +13,7 @@ struct MailOptionsSheet: View {
     let onAction: (MVMessageUIAction) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var detent: PresentationDetent = .large
 
     var body: some View {
         NavigationStack {
@@ -40,7 +41,10 @@ struct MailOptionsSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        // Respond/Verdict are a couple of icon buttons; Mark, Star, Move, Junk, Archive and
+        // Delete are the rows someone actually came here for — opening at `.medium` left every
+        // one of those below the fold. Starting at `.large` still lets a drag down to `.medium`.
+        .presentationDetents([.medium, .large], selection: $detent)
         .accessibilityIdentifier("mail-options-sheet")
     }
 

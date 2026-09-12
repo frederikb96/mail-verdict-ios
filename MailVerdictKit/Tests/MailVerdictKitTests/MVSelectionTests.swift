@@ -58,14 +58,17 @@ final class MVSelectionTests: XCTestCase {
         XCTAssertEqual(toggled.count, 1)
     }
 
-    func testTitlesSayWhatAllMeansOnceRowsAreConversations() {
+    /// The title stays "N Selected" whatever rows are — long enough already that a nav bar
+    /// truncates "N Conversations Selected" — and the conversation wording moves to the subtitle.
+    func testTitleStaysShortAndTheConversationWordingMovesToTheSubtitle() {
         let explicit = MVSelection.explicit([selectable(1), selectable(2)], in: folderScope)
         let unreadAll = MVSelection.all(predicate(.unread, count: 5), in: folderScope)
 
-        XCTAssertEqual(MVSelectionText.title(for: explicit, threaded: true), "2 Conversations Selected")
+        XCTAssertEqual(MVSelectionText.title(for: explicit, threaded: true), "2 Selected")
         XCTAssertEqual(MVSelectionText.title(for: unreadAll, threaded: false), "All 5 Unread")
+        XCTAssertEqual(MVSelectionText.scopeNote(for: explicit, threaded: true), "2 Conversations")
+        XCTAssertNil(MVSelectionText.scopeNote(for: explicit, threaded: false))
         XCTAssertNotNil(MVSelectionText.scopeNote(for: unreadAll, threaded: true))
-        XCTAssertNil(MVSelectionText.scopeNote(for: explicit, threaded: true))
     }
 }
 

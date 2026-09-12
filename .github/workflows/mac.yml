@@ -403,7 +403,7 @@ jobs:
           count=$(find artifacts/crashes -type f 2>/dev/null | wc -l | tr -d ' ')
           echo "collected ${count} crash report file(s)"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: mac-artifacts

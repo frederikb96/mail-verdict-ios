@@ -15,26 +15,87 @@ final class MailboxesSupportOrderFoldersTests: XCTestCase {
         )
     }
 
-    func testForcesInboxFirstEvenWhenTheServerSortedItElsewhere() {
+    func testWithASavedOrderOnlyInboxMovesToTheFront() {
         let archive = folder("Archive", specialUse: "archive")
         let inbox = folder("INBOX", specialUse: "inbox")
         let sent = folder("Sent", specialUse: "sent")
-        let ordered = MailboxesSupport.orderFolders([archive, inbox, sent])
+        let ordered = MailboxesSupport.orderFolders([archive, inbox, sent], hasCustomOrder: true)
         XCTAssertEqual(ordered.map(\.imapName), ["INBOX", "Archive", "Sent"])
+    }
+
+    func testWithoutASavedOrderTheFullWebLeadSequenceApplies() {
+        let archive = folder("Archive", specialUse: "archive")
+        let inbox = folder("INBOX", specialUse: "inbox")
+        let sent = folder("Sent", specialUse: "sent")
+        let ordered = MailboxesSupport.orderFolders([archive, inbox, sent], hasCustomOrder: false)
+        XCTAssertEqual(ordered.map(\.imapName), ["INBOX", "Sent", "Archive"])
     }
 
     func testLeavesAnAlreadyLeadingInboxAlone() {
         let inbox = folder("INBOX", specialUse: "inbox")
         let archive = folder("Archive", specialUse: "archive")
-        let ordered = MailboxesSupport.orderFolders([inbox, archive])
+        let ordered = MailboxesSupport.orderFolders([inbox, archive], hasCustomOrder: true)
         XCTAssertEqual(ordered.map(\.imapName), ["INBOX", "Archive"])
     }
 
     func testDropsHiddenFolders() {
         let inbox = folder("INBOX", specialUse: "inbox")
         let hidden = folder("Hidden", isVisible: false)
-        let ordered = MailboxesSupport.orderFolders([inbox, hidden])
+        let ordered = MailboxesSupport.orderFolders([inbox, hidden], hasCustomOrder: true)
         XCTAssertEqual(ordered.map(\.imapName), ["INBOX"])
+    }
+}
+
+final class MailboxesSupportLeadOrderedFoldersTests: XCTestCase {
+
+    private func folder(_ name: String, specialUse: String? = nil) -> FolderOrderItem {
+        FolderOrderItem(folderId: UUID(), imapName: name, displayName: name, specialUse: specialUse)
+    }
+
+    /// Port of the web's `sortFolders` — Inbox, Drafts, Sent, Archive, Junk, Trash, in that order,
+    /// whatever order they arrived in.
+    func testSpecialUseFoldersLeadInTheWebsFixedSequence() {
+        let trash = folder("Trash", specialUse: "trash")
+        let archive = folder("Archive", specialUse: "archive")
+        let sent = folder("Sent", specialUse: "sent")
+        let inbox = folder("INBOX", specialUse: "inbox")
+        let junk = folder("Junk", specialUse: "junk")
+        let drafts = folder("Drafts", specialUse: "drafts")
+        let ordered = MailboxesSupport.leadOrderedFolders([trash, archive, sent, inbox, junk, drafts])
+        XCTAssertEqual(ordered.map(\.imapName), ["INBOX", "Drafts", "Sent", "Archive", "Junk", "Trash"])
+    }
+
+    func testRegularFoldersFollowTheLeadSequenceAlphabeticallyByImapName() {
+        let inbox = folder("INBOX", specialUse: "inbox")
+        let zebra = folder("Zebra")
+        let apple = folder("Apple")
+        let ordered = MailboxesSupport.leadOrderedFolders([zebra, inbox, apple])
+        XCTAssertEqual(ordered.map(\.imapName), ["INBOX", "Apple", "Zebra"])
+    }
+
+    func testAnUnrecognisedSpecialUseStillLeadsAheadOfRegularFolders() {
+        let inbox = folder("INBOX", specialUse: "inbox")
+        let weird = folder("Weird", specialUse: "custom-role")
+        let apple = folder("Apple")
+        let ordered = MailboxesSupport.leadOrderedFolders([apple, weird, inbox])
+        XCTAssertEqual(ordered.map(\.imapName), ["INBOX", "Weird", "Apple"])
+    }
+
+    /// The same function sorts `FolderResponse` too — the plain `/folders` list the notification
+    /// folder picker reads, which carries no saved-order concept for `orderFolders` to fall back
+    /// from in the first place.
+    func testAlsoSortsThePlainFolderResponseShape() {
+        func response(_ name: String, specialUse: String?) -> FolderResponse {
+            FolderResponse(
+                id: UUID(), accountId: UUID(), imapName: name, displayName: nil, specialUse: specialUse,
+                mailboxId: nil, backfillTotal: nil, idleStatus: nil, lastSyncedAt: nil, syncError: nil,
+                createdAt: nil)
+        }
+        let sent = response("Sent", specialUse: "sent")
+        let inbox = response("INBOX", specialUse: "inbox")
+        let projects = response("Projects", specialUse: nil)
+        let ordered = MailboxesSupport.leadOrderedFolders([projects, sent, inbox])
+        XCTAssertEqual(ordered.map(\.imapName), ["INBOX", "Sent", "Projects"])
     }
 }
 

@@ -161,17 +161,19 @@ public enum MVSelectionText {
             return "All \(count.formatted()) \(noun)"
         }
         if count == 0 { return "Select Messages" }
-        if threaded {
-            return "\(count.formatted()) \(count == 1 ? "Conversation" : "Conversations") Selected"
-        }
         return "\(count.formatted()) Selected"
     }
 
     /// A predicate matches raw messages even while rows are conversations, so a threaded
     /// select-all acts on every message of every matching conversation — said out loud rather
-    /// than left for someone about to archive thousands of messages to infer.
+    /// than left for someone about to archive thousands of messages to infer. An explicit
+    /// threaded selection carries the same "Conversations" wording the title used to, moved here
+    /// to keep the title itself short enough never to truncate.
     public static func scopeNote(for selection: MVSelection, threaded: Bool) -> String? {
-        guard selection.predicate != nil, threaded else { return nil }
-        return "Every message in every matching conversation"
+        guard threaded else { return nil }
+        if selection.predicate != nil { return "Every message in every matching conversation" }
+        let count = selection.count
+        guard count > 0 else { return nil }
+        return "\(count.formatted()) \(count == 1 ? "Conversation" : "Conversations")"
     }
 }

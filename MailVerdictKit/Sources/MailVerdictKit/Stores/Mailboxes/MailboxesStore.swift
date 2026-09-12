@@ -192,7 +192,8 @@ public final class MailboxesStore {
         var folders: [MailboxesFolderRow] = []
         if connectionState != .neverConnected {
             let order = try? await apiClient.getFolderOrder(accountId: account.id)
-            let ordered = MailboxesSupport.orderFolders(order?.folders ?? [])
+            let ordered = MailboxesSupport.orderFolders(
+                order?.folders ?? [], hasCustomOrder: !(account.folderOrder ?? []).isEmpty)
             folders = ordered.map { item in
                 MailboxesFolderRow(
                     id: item.folderId, accountId: account.id,

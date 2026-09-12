@@ -220,7 +220,7 @@ struct SearchScreen: View {
                                     }
                                 }
                             }
-                            .foregroundStyle(.primary)
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -332,6 +332,7 @@ struct SearchScreen: View {
                         MailRowView(
                             data: result.toMailRowData(showAccountChip: accounts.count > 1, accounts: accounts))
                     }
+                    .buttonStyle(.plain)
                     .id("result:\(result.id)")
                 }
                 if store.hasOlder {

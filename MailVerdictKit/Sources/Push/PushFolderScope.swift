@@ -26,13 +26,16 @@ public enum PushFolderScope {
         specialUse == nil || specialUse == "inbox"
     }
 
-    /// Visible folders only, grouped by account in the accounts' own order. A folder hidden from
-    /// the mail view is not one anyone means to pick here either.
+    /// Visible folders only, grouped by account in the accounts' own order, Inbox-through-Trash
+    /// leading within each account (`MailboxesSupport.leadOrderedFolders`) — the plain `/folders`
+    /// list this reads from carries no saved-order concept at all, so that lead sequence always
+    /// applies, unconditionally. A folder hidden from the mail view is not one anyone means to
+    /// pick here either.
     public static func groups(accounts: [AccountResponse], foldersByAccount: [UUID: [FolderResponse]])
         -> [PushFolderGroup]
     {
         accounts.compactMap { account in
-            let folders = (foldersByAccount[account.id] ?? []).filter(\.isVisible)
+            let folders = MailboxesSupport.leadOrderedFolders((foldersByAccount[account.id] ?? []).filter(\.isVisible))
             return folders.isEmpty
                 ? nil : PushFolderGroup(accountId: account.id, accountName: account.name, folders: folders)
         }
