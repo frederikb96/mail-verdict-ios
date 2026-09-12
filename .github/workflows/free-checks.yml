@@ -16,6 +16,13 @@ name: Free checks
 # runner is a machine inside the cluster; a GitHub-hosted one is a throwaway VM that can reach
 # nothing. Standard Linux and macOS runners are unmetered for public repositories, so there is
 # nothing to buy back by hosting this ourselves.
+#
+# Both jobs run in the official Swift image, pinned to an exact release. Swift 6.2.1 — the newest
+# release `swift-actions/setup-swift` knows — ships a `libswiftObservation.so` with an undefined
+# reference to `swift::threading::fatal`, and a test binary that links both Observation and C++
+# (swift-crypto's vendored BoringSSL) fails to link against it. 6.2.4's does not carry that
+# reference. Bump the tag deliberately; a floating one would pick up the next such regression
+# unannounced.
 on:
   push:
     branches: [main]
@@ -33,39 +40,47 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Inside a `container:` job `run:` defaults to `sh`, which has no `pipefail`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   checks:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    container: swift:6.2.4-noble
     timeout-minutes: 30
 
     steps:
+      # The image carries the toolchain and everything it needs at run time. These are what the
+      # steps below use on top of that: git for the checkout and SwiftPM's dependency clones,
+      # python3 for the Swift 6 scan, zstd for the cache.
+      - name: Install job tools
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends ca-certificates curl git python3 zstd
+
       - uses: actions/checkout@v6
 
-      # Swift's own documented Ubuntu dependency list, plus curl/file/ca-certificates for the
-      # setup action itself — it downloads a toolchain, verifies its signature, and identifies
-      # the archive with `file`. Installed explicitly rather than assumed from the runner image,
-      # because a missing package surfaces late and unhelpfully: as "Unable to locate executable
-      # file", or as the freshly unpacked toolchain failing to load a shared library.
-      - name: Install Swift toolchain dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            binutils ca-certificates curl file gnupg2 libc6-dev libcurl4-openssl-dev libedit2 \
-            libgcc-13-dev libncurses-dev libpython3-dev libsqlite3-0 libstdc++-13-dev \
-            libxml2-dev libz3-dev pkg-config tzdata unzip zlib1g-dev
+      # The workspace belongs to the runner's user and the container runs as root, so git refuses
+      # it as unsafe in every later step; checkout only marks it safe for its own commands.
+      - name: Mark the workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '6.2'
+      # Part of the cache key, so a `.build` produced by a different compiler is never restored
+      # into this one — its module files would be rejected, or worse, half-reused.
+      - name: Read the toolchain version
+        id: toolchain
+        run: echo "version=$(swift --version 2>/dev/null | head -1 | tr -c 'A-Za-z0-9.\n' '-')" >> "$GITHUB_OUTPUT"
 
       # Dependencies are fetched and rebuilt on every run otherwise, which is most of the wall
       # time here. Keyed on the manifest so a dependency change invalidates it.
       - uses: actions/cache@v4
         with:
           path: MailVerdictKit/.build
-          key: spm-${{ runner.os }}-${{ hashFiles('MailVerdictKit/Package.swift') }}
-          restore-keys: spm-${{ runner.os }}-
+          key: spm-${{ runner.os }}-${{ steps.toolchain.outputs.version }}-${{ hashFiles('MailVerdictKit/Package.swift') }}
+          restore-keys: spm-${{ runner.os }}-${{ steps.toolchain.outputs.version }}-
 
       - name: Build and test the package
         run: |
@@ -120,22 +135,21 @@ jobs:
   contract-drift:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    container: swift:6.2.4-noble
     timeout-minutes: 15
 
     steps:
+      - name: Install job tools
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends ca-certificates curl git
+
       - uses: actions/checkout@v6
 
-      - name: Install Swift toolchain dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            binutils ca-certificates curl file gnupg2 libc6-dev libcurl4-openssl-dev libedit2 \
-            libgcc-13-dev libncurses-dev libpython3-dev libsqlite3-0 libstdc++-13-dev \
-            libxml2-dev libz3-dev pkg-config tzdata unzip zlib1g-dev
-
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '6.2'
+      # The workspace belongs to the runner's user and the container runs as root, so git refuses
+      # it as unsafe in every later step; checkout only marks it safe for its own commands.
+      - name: Mark the workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Fetch mail-verdict main's own contract snapshot over the vendored one
         run: |

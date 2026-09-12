@@ -68,40 +68,21 @@ public enum MVAccountFormModel {
         )
     }
 
-    /// `PATCH /accounts/{id}` reads its body with Pydantic's `exclude_unset`, so a field absent
-    /// from the JSON means "leave it", while an explicit `null` clears it — a distinction Swift's
-    /// synthesized `Encodable` cannot express (see `MVJSONLiteral`'s own doc comment). This builds
-    /// the body by hand so retention can be cleared back to "Off", which a typed
-    /// `AccountUpdateRequest` with a `nil` property could never do: that field would simply be
-    /// missing from the request, leaving the old value in place. `imapHost`/`imapPort`/`imapUser`
-    /// are never part of this body at all — they are insert-only regardless of what the disabled
-    /// fields show.
-    public static func buildUpdateBody(_ input: MVAccountFormInput) throws -> Data {
+    /// `imapHost`/`imapPort`/`imapUser` are never part of this request at all — they are
+    /// insert-only regardless of what the disabled fields show. Retention is always sent
+    /// explicitly, never omitted — `.some(nil)` when the field is blank is what actually clears
+    /// it back to "Off" (`AccountUpdateRequest.trashRetentionDays`'s own doc comment).
+    public static func buildUpdateRequest(_ input: MVAccountFormInput) throws -> AccountUpdateRequest {
         let name = try trimmedOrThrow(input.name, .missingName)
         let smtpPort = try optionalPort(input.smtpPort)
         let trashRetentionDays = try optionalRetention(input.trashRetentionDays, error: .invalidTrashRetention)
         let junkRetentionDays = try optionalRetention(input.junkRetentionDays, error: .invalidJunkRetention)
-
-        var fields = ["\"name\":\(MVJSONLiteral.string(name))"]
-        if let password = emptyToNil(input.imapPassword) {
-            fields.append("\"imap_password\":\(MVJSONLiteral.string(password))")
-        }
-        if let host = emptyToNil(input.smtpHost) {
-            fields.append("\"smtp_host\":\(MVJSONLiteral.string(host))")
-        }
-        if let smtpPort {
-            fields.append("\"smtp_port\":\(MVJSONLiteral.int(smtpPort))")
-        }
-        if let user = emptyToNil(input.smtpUser) {
-            fields.append("\"smtp_user\":\(MVJSONLiteral.string(user))")
-        }
-        if let password = emptyToNil(input.smtpPassword) {
-            fields.append("\"smtp_password\":\(MVJSONLiteral.string(password))")
-        }
-        fields.append("\"spam_enabled\":\(MVJSONLiteral.bool(input.spamEnabled))")
-        fields.append("\"trash_retention_days\":\(MVJSONLiteral.optionalInt(trashRetentionDays))")
-        fields.append("\"junk_retention_days\":\(MVJSONLiteral.optionalInt(junkRetentionDays))")
-        return Data("{\(fields.joined(separator: ","))}".utf8)
+        return AccountUpdateRequest(
+            name: name, imapPassword: emptyToNil(input.imapPassword), smtpHost: emptyToNil(input.smtpHost),
+            smtpPort: smtpPort, smtpUser: emptyToNil(input.smtpUser),
+            smtpPassword: emptyToNil(input.smtpPassword), spamEnabled: input.spamEnabled,
+            trashRetentionDays: .some(trashRetentionDays), junkRetentionDays: .some(junkRetentionDays)
+        )
     }
 
     // MARK: - Field parsing

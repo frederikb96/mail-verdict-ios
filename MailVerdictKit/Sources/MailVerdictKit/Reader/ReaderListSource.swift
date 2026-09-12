@@ -1,7 +1,7 @@
 import Foundation
 
 /// What the reader pager needs from whichever list it is paging through — implemented by the
-/// mail list, search results and spam-review stores alike (S1, S5, S6), so `ReaderPagingStore`
+/// mail list, search results and spam-review stores alike, so `ReaderPagingStore`
 /// pages through any of them identically rather than special-casing each.
 ///
 /// `@MainActor`: every implementation is a UI-facing store, and the pager reads these properties
@@ -24,7 +24,7 @@ public protocol ReaderListSource: AnyObject {
     func loadNewer() async
 
     /// The reader's own nav title for this source — "{N} Messages" for a folder or unified view,
-    /// "{total} Results" for search, "{n} to Review" for spam review (UX design §2.4). `nil`
+    /// "{total} Results" for search, "{n} to Review" for spam review. `nil`
     /// while the count this is built from has not loaded yet.
     ///
     /// A protocol requirement, not only an extension member with a default: a call through `any

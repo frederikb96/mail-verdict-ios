@@ -348,7 +348,7 @@ struct MailListScreen: View {
             perform: { action, row in route(action, row) },
             showOptions: { row in optionsRow = row },
             openAccounts: { environment.navigationPath.append(.accounts) },
-            lastSettledMessageId: { nil }
+            lastSettledMessageId: { ReaderSourceRegistry.shared.lastSettledMessageId(for: .list(scope)) }
         )
     }
 
@@ -437,6 +437,9 @@ struct MailListScreen: View {
         #if DEBUG
             MailListScreenshotStage.shared.store = store
         #endif
+        // Before any row can push the reader, which finds this store here; held weakly, so
+        // the screen keeps owning it.
+        ReaderSourceRegistry.shared.register(store, for: .list(scope))
         subscribeToLiveUpdates()
         await store.start()
     }
