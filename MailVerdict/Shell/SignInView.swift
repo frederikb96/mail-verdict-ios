@@ -193,10 +193,8 @@ struct SignInView: View {
                 health.isReady
                 ? "Reachable and ready\(versionSuffix)."
                 : "Reachable, but not ready yet\(versionSuffix)."
-        } catch let error as MVError {
-            testResult = error.userMessage
         } catch {
-            testResult = "\(error)"
+            testResult = error.mvUserMessage
         }
     }
 }
