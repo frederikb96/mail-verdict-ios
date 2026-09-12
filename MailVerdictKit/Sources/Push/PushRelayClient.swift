@@ -68,7 +68,7 @@ public struct PushRelayClient: PushRelayRegistering {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw PushRelayError.transport(error.localizedDescription)
+            throw PushRelayError.transport(error.mvUserMessage)
         }
         guard let http = response as? HTTPURLResponse else { throw PushRelayError.malformedResponse }
 

@@ -60,9 +60,9 @@ public struct PushRegistrationService: Sendable {
         let config: NativePushConfigResponse
         do {
             config = try await backend.nativePushConfig()
-        } catch let error as MVError {
-            if error.statusCode == 404 { throw PushRegistrationFailure.serverTooOld }
-            throw PushRegistrationFailure.server(error.userMessage)
+        } catch {
+            if (error as? MVError)?.statusCode == 404 { throw PushRegistrationFailure.serverTooOld }
+            throw PushRegistrationFailure.server(error.mvUserMessage)
         }
         guard config.available else { throw PushRegistrationFailure.unavailable(reason: config.reason) }
         guard config.relayUrls.contains(relayURL) else { throw PushRegistrationFailure.relayNotAllowed }
@@ -96,7 +96,7 @@ public struct PushRegistrationService: Sendable {
                 try installations.save(installation, serverOrigin: serverOrigin)
             }
         } catch {
-            throw PushRegistrationFailure.keychain("\(error)")
+            throw PushRegistrationFailure.keychain(error.mvUserMessage)
         }
 
         let isFirst = record.subscriptionId == nil
@@ -108,8 +108,8 @@ public struct PushRegistrationService: Sendable {
         let subscription: PushSubscriptionResponse
         do {
             subscription = try await backend.registerNative(request)
-        } catch let error as MVError {
-            throw PushRegistrationFailure.server(error.userMessage)
+        } catch {
+            throw PushRegistrationFailure.server(error.mvUserMessage)
         }
 
         var updated = record
