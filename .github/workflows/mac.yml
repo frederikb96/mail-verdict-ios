@@ -218,6 +218,16 @@ jobs:
                 echo "::warning::screenshot for '$id' suspiciously small — the screen may be blank"
                 fail=1
               fi
+
+              # A screen that silently fell back to an error state instead of its fixture still
+              # "succeeds" the two checks above — this is what actually proves every request it
+              # made was answered by the table rather than reaching the real network.
+              misses=$(curl -sS --max-time 3 "http://127.0.0.1:8765/fixtures/misses" 2>/dev/null \
+                | python3 -c "import json,sys; print(','.join(json.load(sys.stdin).get('misses') or []))" 2>/dev/null || echo "")
+              if [ -n "$misses" ]; then
+                echo "::error::screen '$id' hit request(s) no fixture route answered: $misses"
+                fail=1
+              fi
             fi
             xcrun simctl terminate "$udid" "$bundle" || true
           done <<< "$ids_list"

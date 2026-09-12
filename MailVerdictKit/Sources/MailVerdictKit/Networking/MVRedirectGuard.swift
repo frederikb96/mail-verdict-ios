@@ -27,7 +27,11 @@ extension URLSession {
     /// The session every real `MVApiClient` should be built with — `.shared` cannot carry a
     /// delegate, so redirect refusal needs a session of its own. Tests pass their own session
     /// (backed by a stub `URLProtocol`) and never see this one.
-    public static let mvDefault: URLSession = URLSession(
-        configuration: .default, delegate: MVRedirectGuard(), delegateQueue: nil
-    )
+    public static let mvDefault: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        #if DEBUG
+            MVFixtureURLProtocol.installIfEnabled(in: configuration)
+        #endif
+        return URLSession(configuration: configuration, delegate: MVRedirectGuard(), delegateQueue: nil)
+    }()
 }
