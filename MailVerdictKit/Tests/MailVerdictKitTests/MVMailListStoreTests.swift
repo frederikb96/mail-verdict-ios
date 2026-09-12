@@ -226,6 +226,54 @@ final class MVMailListStoreTests: XCTestCase {
         XCTAssertEqual(store.rowIds, [testUUID(3), testUUID(4)])
         XCTAssertFalse(store.isSelecting)
     }
+
+    /// `perform` maps each UI action to the exact wire action the backend receives — the swipe
+    /// sheet and Options menu both funnel through this one call, so a mistake here sends the
+    /// wrong IMAP-side effect for every surface at once (an Archive swipe landing in Trash, say).
+    func testPerformSendsTheRightWireActionForEachUIAction() async {
+        let targetFolder = testUUID(42)
+        let moveTarget = MVMoveTarget(
+            folder: FolderOrderItem(folderId: targetFolder, imapName: "Projects", displayName: nil, specialUse: nil),
+            accountId: testAccount
+        )
+        let cases: [(action: MVMessageUIAction, target: MVMoveTarget?, wire: MVMessageAction, folder: UUID?)] = [
+            (.archive, nil, .archive, nil),
+            (.delete, nil, .trash, nil),
+            (.moveToJunk, nil, .spam, nil),
+            (.star, nil, .flag, nil),
+            (.markUnread, nil, .markUnread, nil),
+            (.moveTo, moveTarget, .move, targetFolder),
+        ]
+        for testCase in cases {
+            let backend = FakeMailListBackend()
+            backend.pageHandler = { _, _ in testPage(testRows(1...3)) }
+            let store = makeStore(backend)
+            await store.start()
+
+            store.perform(testCase.action, on: testUUID(2), target: testCase.target)
+            await waitUntil { backend.messageActions.count == 1 }
+
+            XCTAssertEqual(backend.messageActions.map(\.0), [testUUID(2)], "\(testCase.action)")
+            XCTAssertEqual(backend.messageActions.map(\.1), [testCase.wire], "\(testCase.action)")
+            XCTAssertEqual(backend.messageActions.map(\.2), [testCase.folder], "\(testCase.action)")
+        }
+    }
+
+    /// `rows` is newest-first (row `n+1` is older than row `n`, per `testRow`'s own convention) —
+    /// `neighbours(of:)` is the `ReaderListSource` contract every paging surface (swipe direction,
+    /// chevrons, auto-advance) is specified against, so a swapped pair here would point every one
+    /// of them backwards relative to the list.
+    func testNeighboursGiveReaderOrderOlderAfterNewerBefore() async {
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...5)) }
+        let store = makeStore(backend)
+        await store.start()
+
+        XCTAssertEqual(store.neighbours(of: testUUID(3)).older, testUUID(4))
+        XCTAssertEqual(store.neighbours(of: testUUID(3)).newer, testUUID(2))
+        XCTAssertNil(store.neighbours(of: testUUID(1)).newer)
+        XCTAssertNil(store.neighbours(of: testUUID(5)).older)
+    }
 }
 
 /// Counts calls from inside a `@Sendable` handler.
