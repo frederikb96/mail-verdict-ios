@@ -21,6 +21,16 @@ on:
         type: choice
         options: [Debug, Release]
         default: Debug
+      appearance:
+        description: 'Simulator appearance for the fixture screenshot sweep'
+        type: choice
+        options: [dark, light]
+        default: dark
+      content_size:
+        description: 'Dynamic Type size for the fixture screenshot sweep'
+        type: choice
+        options: [default, accessibility-large]
+        default: default
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -152,7 +162,7 @@ jobs:
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b
-          xcrun simctl ui "$udid" appearance dark
+          xcrun simctl ui "$udid" appearance "${{ inputs.appearance || 'dark' }}"
 
           # The keyboard's one-time "slide to type" introduction covers the bottom third of the
           # screen the first time a text field is focused — exactly where search-with-results'
@@ -280,13 +290,21 @@ jobs:
             echo "no registered screenshot ids yet — nothing to sweep"
           fi
 
+          # Dynamic Type is a per-process launch argument, not a simulator-wide setting like
+          # appearance above — every relaunch in the sweep below needs it repeated.
+          content_size_args=()
+          if [ "${{ inputs.content_size || 'default' }}" = "accessibility-large" ]; then
+            content_size_args=(-UIPreferredContentSizeCategoryName UICTContentSizeCategoryAccessibilityL)
+          fi
+
           while IFS= read -r id; do
             [ -n "$id" ] || continue
             # A fresh process starts this ring empty anyway, but `since` is what keeps this
             # screen's own dump from also carrying the previous screen's entries if its process
             # (and bridge) were not entirely gone by the time this one launched.
             since=$(date -u +%s)
-            xcrun simctl launch "$udid" "$bundle" -MVFixtureMode YES -MVFixtureScreen "$id" > /dev/null
+            xcrun simctl launch "$udid" "$bundle" -MVFixtureMode YES -MVFixtureScreen "$id" \
+              "${content_size_args[@]}" > /dev/null
 
             reached=0
             for attempt in $(seq 1 15); do
