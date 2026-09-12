@@ -65,7 +65,9 @@ final class AppEnvironment {
         let imageLoader: MVAuthenticatedImageLoader
     }
 
-    private static let backendURLKey = "backendURL"
+    /// Internal, not private — `FixtureBootstrap` seeds this default too, so a fixture-mode
+    /// launch has a base URL to build `MVRequestFactory` from without restating the key.
+    static let backendURLKey = "backendURL"
     private static let colorSchemeKey = "colorScheme"
 
     init(
