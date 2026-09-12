@@ -7,9 +7,17 @@ default_platform(:ios)
 # lane that drifts from the CI lane turns "works on my machine" into a class of release failure,
 # and with a build box that is destroyed after every burst that drift would go unnoticed.
 
-SCHEME       = "MailVerdict"
-PROFILE_NAME = "MailVerdict App Store"
-OUTPUT_DIR   = "build"
+SCHEME     = "MailVerdict"
+OUTPUT_DIR = "build"
+
+# Bundle id -> provisioning profile name. Both profiles are signed against the SAME distribution
+# certificate (Apple caps certificates per account, not per bundle id, and one already exists —
+# see the ios skill's signing reference). The notification service extension has no target in the
+# Xcode project yet; its entry here is unused until that target exists, and then needs no change.
+PROFILE_NAMES = {
+  "com.frederikberg.mailverdict" => "MailVerdict App Store",
+  "com.frederikberg.mailverdict.notify" => "MailVerdict Notify App Store",
+}
 
 # The bundle id lives in the Appfile; fastlane reads it from there. Repeating it as a constant
 # would be a second source of truth for the same value.
@@ -86,6 +94,9 @@ platform :ios do
     install_provisioning_profile(
       path: decode_secret("IOS_PROVISIONING_PROFILE_BASE64", "profile.mobileprovision")
     )
+    install_provisioning_profile(
+      path: decode_secret("IOS_PROVISIONING_PROFILE_NOTIFY_BASE64", "profile-notify.mobileprovision")
+    )
 
     build_app(
       scheme: SCHEME,
@@ -98,7 +109,7 @@ platform :ios do
       export_options: {
         signingStyle: "manual",
         teamID: ENV.fetch("IOS_TEAM_ID"),
-        provisioningProfiles: { APP_IDENTIFIER => PROFILE_NAME }
+        provisioningProfiles: PROFILE_NAMES
       },
       # The git tag is the single source of truth for the marketing version; the build number is
       # the CI run number. Overriding on the command line keeps the checked-in project file

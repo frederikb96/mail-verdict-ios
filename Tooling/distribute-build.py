@@ -3,7 +3,8 @@
 # requires-python = ">=3.10"
 # dependencies = ["pyjwt[crypto]"]
 # ///
-"""Attach the newest processed build to a TestFlight beta group.
+"""Attach the newest processed build to a TestFlight beta group, and invite any tester who isn't
+yet invited.
 
 Uploading a build and distributing it are different acts, and only the first is automated by
 fastlane here: the upload lane sets `skip_waiting_for_build_processing` because waiting costs
@@ -11,6 +12,11 @@ ten to thirty minutes on a runner billed at ten times, which also means Apple ha
 processing when that job ends and fastlane cannot attach anything. A build left unattached is
 `VALID` in App Store Connect, listed by every query, and installable by nobody — a state that
 looks exactly like a successful release from the outside.
+
+A tester added to the group before any build existed sits at `NOT_INVITED` forever: sending an
+explicit invitation (`POST /v1/betaTesterInvitations`) 409s with `NO_INSTALLABLE_BUILDS` until the
+group has one. So the invite can only ever succeed here, after the attach above it — which is
+also why it is folded into this per-build step rather than done once at setup time.
 
 Needs no Apple hardware: it is authenticated HTTPS and nothing else.
 
@@ -86,6 +92,28 @@ def group_id(app: str) -> str:
     raise SystemExit(f"no beta group named {GROUP_NAME!r}")
 
 
+def invite_pending_testers(group: str, app: str) -> None:
+    """Invite every tester in the group who isn't yet — safe to call on every run, since an
+    already-invited tester is simply skipped."""
+    for tester in call("GET", f"betaGroups/{group}/betaTesters").get("data", []):
+        if tester["attributes"].get("state") != "NOT_INVITED":
+            continue
+        call(
+            "POST",
+            "betaTesterInvitations",
+            {
+                "data": {
+                    "type": "betaTesterInvitations",
+                    "relationships": {
+                        "app": {"data": {"type": "apps", "id": app}},
+                        "betaTester": {"data": {"type": "betaTesters", "id": tester["id"]}},
+                    },
+                }
+            },
+        )
+        print(f"invited {tester['attributes'].get('email')}")
+
+
 def main() -> None:
     wanted = sys.argv[1] if len(sys.argv) > 1 else None
     app = app_id()
@@ -106,20 +134,24 @@ def main() -> None:
             build = candidates[0]
             state = build["attributes"].get("processingState")
             version = build["attributes"].get("version")
-            if build["id"] in attached:
+            if build["id"] not in attached:
+                if state == "VALID":
+                    call(
+                        "POST",
+                        f"betaGroups/{group}/relationships/builds",
+                        {"data": [{"type": "builds", "id": build["id"]}]},
+                    )
+                    print(f"build {version} attached to {GROUP_NAME}")
+                elif state in {"FAILED", "INVALID"}:
+                    raise SystemExit(f"build {version} finished processing as {state}; nothing to distribute")
+                else:
+                    print(f"build {version} is {state}; waiting ({attempt + 1}/{POLL_ATTEMPTS})")
+                    time.sleep(POLL_SECONDS)
+                    continue
+            else:
                 print(f"build {version} is already distributed to {GROUP_NAME}")
-                return
-            if state == "VALID":
-                call(
-                    "POST",
-                    f"betaGroups/{group}/relationships/builds",
-                    {"data": [{"type": "builds", "id": build["id"]}]},
-                )
-                print(f"build {version} attached to {GROUP_NAME}")
-                return
-            if state in {"FAILED", "INVALID"}:
-                raise SystemExit(f"build {version} finished processing as {state}; nothing to distribute")
-            print(f"build {version} is {state}; waiting ({attempt + 1}/{POLL_ATTEMPTS})")
+            invite_pending_testers(group, app)
+            return
         else:
             print(f"no build{' ' + wanted if wanted else ''} visible yet ({attempt + 1}/{POLL_ATTEMPTS})")
         time.sleep(POLL_SECONDS)
