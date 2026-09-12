@@ -11,31 +11,36 @@ struct AccountsScreen: View {
     @State private var showingAddSheet = false
 
     var body: some View {
-        content
-            .navigationTitle("Accounts")
-            .accessibilityIdentifier("accounts-screen")
-            #if DEBUG
-                .screenshotReady(route: .accounts, environment: environment, connection: connection)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingAddSheet = true
-                    } label: {
-                        Label("Add Account", systemImage: "plus")
-                    }
+        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
+        // below is attached to a container that is there from the very first render, never to a
+        // view whose own presence depends on the state that same task is about to create.
+        Group {
+            content
+        }
+        .navigationTitle("Accounts")
+        .accessibilityIdentifier("accounts-screen")
+        #if DEBUG
+            .screenshotReady(route: .accounts, environment: environment, connection: connection)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingAddSheet = true
+                } label: {
+                    Label("Add Account", systemImage: "plus")
                 }
             }
-            .sheet(isPresented: $showingAddSheet) {
-                AccountFormView(mode: .create) { input in
-                    guard let store else { return }
-                    try await store.createAccount(input)
-                }
+        }
+        .sheet(isPresented: $showingAddSheet) {
+            AccountFormView(mode: .create) { input in
+                guard let store else { return }
+                try await store.createAccount(input)
             }
-            .task {
-                if store == nil { store = MVAccountsListStore(apiClient: connection.apiClient) }
-                await store?.load()
-            }
+        }
+        .task {
+            if store == nil { store = MVAccountsListStore(apiClient: connection.apiClient) }
+            await store?.load()
+        }
     }
 
     @ViewBuilder

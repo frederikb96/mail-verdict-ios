@@ -10,16 +10,21 @@ struct AccountOrderScreen: View {
     @State private var store: MVAccountOrderStore?
 
     var body: some View {
-        content
-            .navigationTitle("Account Order")
-            .accessibilityIdentifier("accountorder-screen")
-            #if DEBUG
-                .screenshotReady(route: .accountOrder, environment: environment, connection: connection)
-            #endif
-            .task {
-                if store == nil { store = MVAccountOrderStore(apiClient: connection.apiClient) }
-                await store?.load()
-            }
+        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
+        // below is attached to a container that is there from the very first render, never to a
+        // view whose own presence depends on the state that same task is about to create.
+        Group {
+            content
+        }
+        .navigationTitle("Account Order")
+        .accessibilityIdentifier("accountorder-screen")
+        #if DEBUG
+            .screenshotReady(route: .accountOrder, environment: environment, connection: connection)
+        #endif
+        .task {
+            if store == nil { store = MVAccountOrderStore(apiClient: connection.apiClient) }
+            await store?.load()
+        }
     }
 
     @ViewBuilder

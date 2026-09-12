@@ -14,16 +14,21 @@ struct IdentitiesScreen: View {
     @State private var newDisplayName = ""
 
     var body: some View {
-        content
-            .navigationTitle("Identities")
-            .accessibilityIdentifier("identities-screen")
-            #if DEBUG
-                .screenshotReady(route: .identities(accountId), environment: environment, connection: connection)
-            #endif
-            .task {
-                if store == nil { store = MVIdentitiesStore(accountId: accountId, apiClient: connection.apiClient) }
-                await store?.load()
-            }
+        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
+        // below is attached to a container that is there from the very first render, never to a
+        // view whose own presence depends on the state that same task is about to create.
+        Group {
+            content
+        }
+        .navigationTitle("Identities")
+        .accessibilityIdentifier("identities-screen")
+        #if DEBUG
+            .screenshotReady(route: .identities(accountId), environment: environment, connection: connection)
+        #endif
+        .task {
+            if store == nil { store = MVIdentitiesStore(accountId: accountId, apiClient: connection.apiClient) }
+            await store?.load()
+        }
     }
 
     @ViewBuilder

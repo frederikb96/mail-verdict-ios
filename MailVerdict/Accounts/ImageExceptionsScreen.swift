@@ -12,20 +12,25 @@ struct ImageExceptionsScreen: View {
     @State private var store: MVImageExceptionsStore?
 
     var body: some View {
-        content
-            .navigationTitle("Image Exceptions")
-            .accessibilityIdentifier("imageexceptions-screen")
-            #if DEBUG
-                .screenshotReady(
-                    route: .imageExceptions(accountId), environment: environment, connection: connection
-                )
-            #endif
-            .task {
-                if store == nil {
-                    store = MVImageExceptionsStore(accountId: accountId, apiClient: connection.apiClient)
-                }
-                await store?.load()
+        // `content` renders nothing at all before `store` exists — wrapped in `Group` so `.task`
+        // below is attached to a container that is there from the very first render, never to a
+        // view whose own presence depends on the state that same task is about to create.
+        Group {
+            content
+        }
+        .navigationTitle("Image Exceptions")
+        .accessibilityIdentifier("imageexceptions-screen")
+        #if DEBUG
+            .screenshotReady(
+                route: .imageExceptions(accountId), environment: environment, connection: connection
+            )
+        #endif
+        .task {
+            if store == nil {
+                store = MVImageExceptionsStore(accountId: accountId, apiClient: connection.apiClient)
             }
+            await store?.load()
+        }
     }
 
     @ViewBuilder
