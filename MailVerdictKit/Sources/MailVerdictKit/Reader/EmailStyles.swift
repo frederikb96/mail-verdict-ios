@@ -3,8 +3,11 @@ import Foundation
 /// The stylesheet injected into every message body's shadow root — `getEmailStyles` in
 /// `email-renderer.tsx`, whose comments explain each rule. Differences from the web are only
 /// where the reader works without page script: the quote toggle is a `<details>` summary
-/// (`QuoteCollapser`), and find paints through the Custom Highlight API (`reader.js`), with the
-/// web's `<mark>` classes kept for the fallback path.
+/// (`QuoteCollapser`), find paints through the Custom Highlight API (`reader.js`), with the web's
+/// `<mark>` classes kept for the fallback path, and the base text size is the `-apple-system-body`
+/// keyword rather than a fixed pixel value, since this reader only ever runs on Apple platforms —
+/// the same mechanism `ConversationDocumentBuilder`'s chrome stylesheet already uses, which is
+/// what keeps the body's size tied to Dynamic Type, live, the way the header around it already is.
 public enum EmailStyles {
 
     public static func css(for canvas: MVCanvas) -> String {
@@ -13,8 +16,7 @@ public enum EmailStyles {
             :host {
               display: block;
               contain: layout paint;
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-              font-size: 14px;
+              font: -apple-system-body;
               line-height: 1.6;
               word-wrap: break-word;
               overflow-wrap: break-word;
