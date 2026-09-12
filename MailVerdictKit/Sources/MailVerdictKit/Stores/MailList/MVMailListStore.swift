@@ -37,6 +37,10 @@ public final class MVMailListStore: ReaderListSource {
     /// The row the reader last settled on — set on open and on every page settle, so Back can
     /// bring the row the reader ended on into view.
     public private(set) var lastViewedMessageId: UUID?
+    /// The row last opened from this list. Back only scrolls to reveal `lastViewedMessageId`
+    /// when the reader paged away from it — returning from the row that was opened leaves the
+    /// position exactly as it was.
+    public private(set) var openedMessageId: UUID?
     public private(set) var filterText = ""
     public private(set) var isFilterLoading = false
     public private(set) var isSelecting = false
@@ -113,6 +117,7 @@ public final class MVMailListStore: ReaderListSource {
 
     /// A row was opened from this list.
     public func didOpen(_ messageId: UUID) {
+        openedMessageId = messageId
         lastViewedMessageId = messageId
     }
 
@@ -716,7 +721,7 @@ public final class MVMailListStore: ReaderListSource {
         case .archive where isInArchive(row):
             toasts?.show(MVToast(variant: .info, message: "Already in Archive", duration: 3))
             return
-        case .markRead where identity.threaded && (row.unreadInThread ?? 0) - (row.isSeen ? 0 : 1) > 0:
+        case .markRead where identity.threaded && Self.hasOtherUnreadInConversation(row):
             markConversationRead(row)
             return
         default:
@@ -799,6 +804,12 @@ public final class MVMailListStore: ReaderListSource {
             // A ruling can move the message.
             self.requestRefresh()
         }
+    }
+
+    /// A conversation row counting unread messages besides its own.
+    static func hasOtherUnreadInConversation(_ row: MessageSummary) -> Bool {
+        let ownUnread = row.isSeen ? 0 : 1
+        return (row.unreadInThread ?? 0) - ownUnread > 0
     }
 
     static func applying(_ action: MVBulkAction, to row: MessageSummary, threaded: Bool) -> MessageSummary {
