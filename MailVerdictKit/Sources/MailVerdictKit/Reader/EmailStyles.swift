@@ -57,15 +57,29 @@ public enum EmailStyles {
             }
             details.mv-quote > summary {
               list-style: none;
-              display: inline-block;
-              font-size: 0.75rem;
-              color: \(isDark ? "#60a5fa" : "#2563eb");
-              text-decoration: underline;
-              margin: 0.25em 0;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              min-width: 2.75em;
+              padding: 0.2em 0.9em;
+              border-radius: 999px;
+              font-size: 0.8rem;
+              letter-spacing: 0.05em;
+              background: \(isDark ? "#3f3f46" : "#e4e4e7");
+              color: \(isDark ? "#e4e4e7" : "#3f3f46");
+              margin: 0.4em 0;
             }
             details.mv-quote > summary::-webkit-details-marker { display: none; }
             details.mv-quote[open] .mv-quote-show,
             details.mv-quote:not([open]) .mv-quote-hide { display: none; }
+            .mv-sr-only {
+              position: absolute;
+              width: 1px;
+              height: 1px;
+              overflow: hidden;
+              clip: rect(0, 0, 0, 0);
+              white-space: nowrap;
+            }
             ::highlight(mv-find), mark.search-match {
               background-color: \(isDark ? "#78350f" : "#fef08a");
               color: inherit;

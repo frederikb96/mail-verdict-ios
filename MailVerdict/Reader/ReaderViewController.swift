@@ -407,10 +407,19 @@ final class ReaderViewController: UIViewController, UIScrollViewDelegate, Messag
             (currentPage?.isLoaded ?? false) && session.conversation(for: paging.currentId) != nil
         }
 
+        /// Whether the current page has actually put a frame on screen — `isCurrentPageLoaded`
+        /// only answers "navigation finished," which is well before a freshly spawned WebContent
+        /// process paints anything.
+        func currentPagePainted() async -> Bool {
+            await currentPage?.debugIsPainted() ?? false
+        }
+
         /// Whether the current page's document actually shows an invitation card.
         func showsInvitationCard() async -> Bool {
             await currentPage?.debugContains(".mv-invite") ?? false
         }
+
+        var currentZoomScale: CGFloat { currentPage?.zoomScale ?? 1 }
 
         func zoomCurrentPage(to scale: CGFloat) {
             currentPage?.webView.scrollView.setZoomScale(scale, animated: false)

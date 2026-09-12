@@ -113,6 +113,9 @@ public enum MVReaderNavigation: Sendable, Equatable {
     case control(MVReaderLink)
     case web(URL)
     case mailto(URL)
+    /// A tapped `tel:`/`sms:` link, or a phone number the web view's own data detector found in
+    /// plain text — the web hands both to the OS the same way.
+    case phone(URL)
     /// An in-page `#fragment` link, typically a newsletter's own table of contents.
     case anchor(String)
     case ignore
@@ -126,6 +129,8 @@ public enum MVReaderNavigation: Sendable, Equatable {
             return isUserAction ? .web(url) : .ignore
         case "mailto":
             return isUserAction ? .mailto(url) : .ignore
+        case "tel", "sms":
+            return isUserAction ? .phone(url) : .ignore
         case "about":
             if let fragment = url.fragment, !fragment.isEmpty, isUserAction { return .anchor(fragment) }
             return isUserAction ? .ignore : .allow

@@ -26,10 +26,18 @@ struct QuoteCard: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Remove Quoted Text")
             }
-            Button(expanded ? "Hide quoted text" : "Show quoted text") {
+            Button {
                 withAnimation { expanded.toggle() }
+            } label: {
+                Text("•••")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(.tertiarySystemFill), in: Capsule())
             }
-            .font(.footnote.weight(.semibold))
+            .buttonStyle(.plain)
+            .accessibilityLabel(expanded ? "Hide quoted text" : "Show quoted text")
             .accessibilityIdentifier("composer-quote-toggle")
             if expanded {
                 QuoteWebView(html: quote.html, height: $contentHeight)

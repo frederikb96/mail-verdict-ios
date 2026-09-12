@@ -37,14 +37,14 @@
     enum ReaderDebugHook {
         static weak var active: ReaderViewController?
 
-        /// Waits until the current page shows its conversation (and, when asked, its invitation
-        /// card, read from the page's own document), so a screenshot never captures the loading
-        /// placeholder or a card still on its way.
-        static func waitUntilLoaded(invitationCard: Bool = false) async {
+        /// Waits until the current page shows its conversation, has actually painted a frame
+        /// (not merely finished navigation — see `MessagePageView.debugIsPainted`), and, when
+        /// asked, its invitation card, read from the page's own document. `false` means the
+        /// budget ran out with the page still not genuinely ready; the caller must not report
+        /// readiness in that case; see `ReaderScreenshots`.
+        static func waitUntilLoaded(invitationCard: Bool = false) async -> Bool {
             for _ in 0..<100 {
-                if let reader = active, reader.isCurrentPageLoaded {
-                    // Awaited in its own statement: the right side of `||` is an autoclosure,
-                    // which cannot suspend.
+                if let reader = active, reader.isCurrentPageLoaded, await reader.currentPagePainted() {
                     var cardShown = true
                     if invitationCard {
                         cardShown = await reader.showsInvitationCard()
@@ -52,11 +52,12 @@
                     if cardShown {
                         // The page swaps a late block in on its next frame.
                         try? await Task.sleep(nanoseconds: 500_000_000)
-                        return
+                        return true
                     }
                 }
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
+            return false
         }
     }
 

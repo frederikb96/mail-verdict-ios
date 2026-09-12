@@ -147,7 +147,17 @@
     return false;
   }
 
-  window.mvReader = { fit: fitAll, find, highlight, clearFind, replaceBlock, messageOffsets, openMessageIds, scrollToAnchor };
+  // Whether the browser has actually put a frame on screen since this script ran — `didFinish`
+  // on the native side fires once navigation completes, which is well before the first paint of
+  // a freshly spawned web content process. Two animation frames (one to schedule a paint, one to
+  // know that paint landed) is what tells the two apart.
+  let painted = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => { painted = true; }));
+  function isPainted() {
+    return painted;
+  }
+
+  window.mvReader = { fit: fitAll, find, highlight, clearFind, replaceBlock, messageOffsets, openMessageIds, scrollToAnchor, isPainted };
 
   bodyHosts().forEach(watch);
   fitAll();

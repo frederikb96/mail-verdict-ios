@@ -27,6 +27,11 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
     let webView: WKWebView
     weak var delegate: MessagePageViewDelegate?
 
+    /// Sits behind the web view until its first real paint — a freshly spawned WebContent
+    /// process can show solid black for a moment despite `isOpaque`/`backgroundColor` being set,
+    /// since neither takes effect before the compositor's first frame.
+    private let placeholder = UIActivityIndicatorView(style: .medium)
+
     /// The row this page shows; `nil` while it shows the "more rows loading" placeholder.
     private(set) var rowId: UUID?
     private(set) var isLoaded = false
@@ -63,6 +68,9 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
         // forwards to this one, and the pinch's own end is observed as well.
         scrollView.pinchGestureRecognizer?.addTarget(self, action: #selector(handlePinch(_:)))
 
+        placeholder.hidesWhenStopped = true
+        placeholder.startAnimating()
+        addSubview(placeholder)
         addSubview(webView)
         addInteraction(findInteraction)
     }
@@ -75,6 +83,7 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
     override func layoutSubviews() {
         super.layoutSubviews()
         webView.frame = bounds
+        placeholder.center = CGPoint(x: bounds.midX, y: bounds.midY)
     }
 
     var zoomScale: CGFloat { webView.scrollView.zoomScale }
@@ -124,6 +133,7 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
         loadGeneration += 1
         let generation = loadGeneration
         isLoaded = false
+        placeholder.startAnimating()
         // The new document is built from the latest state, so held blocks are already in it.
         pendingBlocks = []
         self.revealsOpened = revealsOpened
@@ -241,7 +251,7 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
             _ = try? await call(.scrollToAnchor, ["name": name])
         case .ignore:
             break
-        case .control, .web, .mailto:
+        case .control, .web, .mailto, .phone:
             delegate?.page(self, didRequest: decision)
         }
         return .cancel
@@ -262,6 +272,7 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
                 await revealOpenedMessage()
             }
             isLoaded = true
+            placeholder.stopAnimating()
             let held = pendingBlocks
             pendingBlocks = []
             for block in held {
@@ -375,6 +386,13 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
                 "return document.querySelector(selector) !== null;", arguments: ["selector": selector], in: nil,
                 contentWorld: .defaultClient)
             return (found as? NSNumber)?.boolValue ?? false
+        }
+
+        /// Whether `reader.js` has actually put a frame on screen since this load — `isLoaded`
+        /// answers "navigation finished", which is well before a freshly spawned WebContent
+        /// process paints anything.
+        func debugIsPainted() async -> Bool {
+            ((try? await call(.isPainted)) as? NSNumber)?.boolValue ?? false
         }
     #endif
 }
