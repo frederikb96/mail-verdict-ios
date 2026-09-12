@@ -99,12 +99,22 @@ struct MailboxesScreen: View {
             )
         }
         .task {
+            #if DEBUG
+                MailboxesFixtures.registerIfNeeded()
+            #endif
             scrollTarget = store.topVisibleRowId
+            store.subscribeToLive(connection.liveEventHub)
             await store.load()
             store.startSyncStatusPolling()
         }
-        .onDisappear { store.stopSyncStatusPolling() }
+        .onDisappear {
+            store.stopSyncStatusPolling()
+            store.unsubscribeFromLive(connection.liveEventHub)
+        }
         .onChange(of: scrollTarget) { _, newValue in store.topVisibleRowId = newValue }
+        #if DEBUG
+            .screenshotReadyRoot(environment: environment, connection: connection)
+        #endif
     }
 
     // MARK: - Unified section
@@ -243,9 +253,6 @@ struct MailboxesScreen: View {
                 )
             }
         }
-        #if DEBUG
-            .screenshotReadyRoot(environment: environment, connection: connection)
-        #endif
     }
 
     // MARK: - MailVerdict section

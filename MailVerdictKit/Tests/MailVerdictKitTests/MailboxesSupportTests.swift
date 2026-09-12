@@ -165,6 +165,29 @@ final class MailboxesSupportDeadOutboxBannerTests: XCTestCase {
     }
 }
 
+final class MailboxesSupportShouldReloadTests: XCTestCase {
+
+    func testReloadsOnFoldersChanged() {
+        XCTAssertTrue(MailboxesSupport.shouldReload(for: [.foldersChanged]))
+    }
+
+    func testReloadsOnAccountsChanged() {
+        XCTAssertTrue(MailboxesSupport.shouldReload(for: [.accountsChanged]))
+    }
+
+    func testReloadsOnResync() {
+        XCTAssertTrue(MailboxesSupport.shouldReload(for: [.resync]))
+    }
+
+    func testIgnoresAnUnrelatedInvalidation() {
+        XCTAssertFalse(MailboxesSupport.shouldReload(for: [.settingsChanged(category: "mail")]))
+    }
+
+    func testIgnoresAnEmptyBatch() {
+        XCTAssertFalse(MailboxesSupport.shouldReload(for: []))
+    }
+}
+
 final class MailboxesUIStateTests: XCTestCase {
 
     private func makeDefaults() -> UserDefaults {

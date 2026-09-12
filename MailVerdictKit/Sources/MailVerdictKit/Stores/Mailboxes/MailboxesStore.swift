@@ -69,6 +69,7 @@ public final class MailboxesStore {
     /// actually feed the resolver's own next lookup.
     private let recentViews: MVRecentViewRecord
     private var syncPollingTask: Task<Void, Never>?
+    private var liveSubscriptionToken: MVSubscriptionToken?
 
     public init(
         apiClient: MVApiClient, uiState: MailboxesUIState = MailboxesUIState(),
@@ -89,13 +90,33 @@ public final class MailboxesStore {
 
     public func toggleCollapsed(_ key: String) {
         uiState.setCollapsed(!uiState.isCollapsed(key), forKey: key)
+        reportDebugState()
     }
 
     // MARK: - Scroll anchor
 
     public var topVisibleRowId: String? {
         get { uiState.topVisibleRowId() }
-        set { uiState.setTopVisibleRowId(newValue) }
+        set {
+            uiState.setTopVisibleRowId(newValue)
+            reportDebugState()
+        }
+    }
+
+    /// `/mailboxes/state`'s own data — reported here, on the main actor, rather than read
+    /// directly from that route's synchronous, non-isolated handler.
+    private func reportDebugState() {
+        #if DEBUG
+            MailboxesDebugReporter.shared.report(
+                MVMailboxesDebugSnapshot(
+                    unifiedCollapsed: isCollapsed(MailboxesUIState.unifiedKey()),
+                    accountCollapsed: accountSections.map { isCollapsed($0.collapseKey) },
+                    topVisibleRowId: topVisibleRowId ?? "", unifiedRowCount: unifiedRows.count,
+                    accountSectionCount: accountSections.count, bellBadgeCount: bellBadgeCount,
+                    hasDeadOutboxBanner: deadOutboxBannerText != nil
+                )
+            )
+        #endif
     }
 
     // MARK: - Loading
@@ -139,6 +160,7 @@ public final class MailboxesStore {
             loadError = (error as? MVError)?.userMessage ?? "\(error)"
         }
         isLoading = false
+        reportDebugState()
     }
 
     private func loadAccountSections(accounts: [AccountResponse]) async throws -> [MailboxesAccountSection] {
@@ -252,6 +274,7 @@ public final class MailboxesStore {
             accountSections.append(section)
         }
         saveSnapshotToDiskCache()
+        reportDebugState()
     }
 
     // MARK: - Sync-status polling
@@ -356,5 +379,25 @@ public final class MailboxesStore {
         case .unified(let viewId, let name):
             recentViews.recordUnifiedView(MVUnifiedViewRef(id: viewId, name: name))
         }
+    }
+
+    // MARK: - Live updates
+
+    public func subscribeToLive(_ hub: LiveEventHub) {
+        guard liveSubscriptionToken == nil else { return }
+        liveSubscriptionToken = hub.subscribe(self)
+    }
+
+    public func unsubscribeFromLive(_ hub: LiveEventHub) {
+        guard let token = liveSubscriptionToken else { return }
+        hub.unsubscribe(token)
+        liveSubscriptionToken = nil
+    }
+}
+
+extension MailboxesStore: LiveEventSubscriber {
+    public func apply(_ invalidations: [MVLiveInvalidation]) {
+        guard MailboxesSupport.shouldReload(for: invalidations) else { return }
+        Task { await self.load() }
     }
 }
