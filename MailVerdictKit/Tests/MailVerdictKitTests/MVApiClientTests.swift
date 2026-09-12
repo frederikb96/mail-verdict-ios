@@ -9,7 +9,7 @@ final class MVApiClientTests: XCTestCase {
     }
 
     private func makeClient(onAuthenticationFailure: (@Sendable (MVError) -> Void)? = nil) throws -> MVApiClient {
-        let factory = try MVRequestFactory(baseURL: "https://mail.example.com", tokenProvider: { nil })
+        let factory = try MVRequestFactory(baseURL: "https://mail.example.com", authProvider: { .none })
         return MVApiClient(
             requestFactory: factory,
             urlSession: MVStubURLProtocol.makeSession(),
@@ -58,6 +58,32 @@ final class MVApiClientTests: XCTestCase {
         MVStubURLProtocol.stub = .init(statusCode: 404, headers: [:], body: Data(#"{"detail":"gone"}"#.utf8))
         await assertThrowsErrorAsync(try await client.send(path: "/api/whatever") as EmptyBody)
         XCTAssertEqual(capture.errors.count, 1, "a 404 is not a credential failure and must not fire the hook")
+    }
+
+    /// The redirect itself — `MVRedirectGuard` refuses to follow it, so the 3xx response reaches
+    /// `send()` exactly as the server sent it, never a followed 200.
+    func testRedirectStatusBecomesProxyRequiresBrowserLogin() async throws {
+        MVStubURLProtocol.stub = .init(statusCode: 302, headers: [:], body: Data())
+        do {
+            _ = try await makeClient().send(path: "/api/whatever") as EmptyBody
+            XCTFail("expected proxyRequiresBrowserLogin")
+        } catch let error as MVError {
+            XCTAssertEqual(error, .proxyRequiresBrowserLogin)
+        }
+    }
+
+    /// A cookie-only SSO answering 200 with its own login page, no redirect at all.
+    func testHtmlBodyOn200BecomesProxyRequiresBrowserLogin() async throws {
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: ["Content-Type": "text/html; charset=utf-8"],
+            body: Data("<html><body>sign in</body></html>".utf8)
+        )
+        do {
+            _ = try await makeClient().send(path: "/api/whatever") as EmptyBody
+            XCTFail("expected proxyRequiresBrowserLogin")
+        } catch let error as MVError {
+            XCTAssertEqual(error, .proxyRequiresBrowserLogin)
+        }
     }
 }
 

@@ -40,7 +40,8 @@ final class MVSseClientConnectionTests: XCTestCase {
         let raw = "id: a1b2-9\r\nevent: verdict_issued\r\ndata: {\"mail_id\":\"7\"}\r\n\r\n"
         MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(raw.utf8))
 
-        let factory = try! MVRequestFactory(baseURL: "https://stub.example.com", tokenProvider: { "jwt" })
+        let factory = try! MVRequestFactory(
+            baseURL: "https://stub.example.com", authProvider: { .bearer(token: "jwt") })
         let signal = MVStreamConnectionSignal()
         var received: MVSseRecord?
 
@@ -70,7 +71,7 @@ final class MVSseClientConnectionTests: XCTestCase {
     /// misread as "filter to the account named the empty string" rather than "no filter".
     func testAccountScopedClientSendsTheAccountIdQueryParameter() async {
         MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data())
-        let factory = try! MVRequestFactory(baseURL: "https://stub.example.com", tokenProvider: { nil })
+        let factory = try! MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none })
         let signal = MVStreamConnectionSignal()
         let client = MVSseClient(
             accountId: "acct-123", requestFactory: factory,

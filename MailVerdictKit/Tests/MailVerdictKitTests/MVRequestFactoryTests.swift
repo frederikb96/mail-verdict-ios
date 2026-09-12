@@ -8,7 +8,7 @@ final class MVRequestFactoryTests: XCTestCase {
 
     func testRejectsNonHttpScheme() {
         XCTAssertThrowsError(
-            try MVRequestFactory(baseURL: "ftp://example.com", tokenProvider: { nil })
+            try MVRequestFactory(baseURL: "ftp://example.com", authProvider: { .none })
         ) { error in
             XCTAssertEqual(
                 error as? MVRequestFactory.ConfigurationError,
@@ -19,7 +19,7 @@ final class MVRequestFactoryTests: XCTestCase {
 
     func testRejectsEmptyBaseURL() {
         XCTAssertThrowsError(
-            try MVRequestFactory(baseURL: "   ", tokenProvider: { nil })
+            try MVRequestFactory(baseURL: "   ", authProvider: { .none })
         ) { error in
             XCTAssertEqual(error as? MVRequestFactory.ConfigurationError, .emptyBaseURL)
         }
@@ -28,36 +28,47 @@ final class MVRequestFactoryTests: XCTestCase {
     func testTrailingSlashDoesNotDoubleUp() throws {
         let factory = try MVRequestFactory(
             baseURL: "https://mail.example.com/",
-            tokenProvider: { nil }
+            authProvider: { .none }
         )
         let request = try factory.makeRequest(path: "/api/health")
         XCTAssertEqual(request.url?.absoluteString, "https://mail.example.com/api/health")
     }
 
-    /// The token is read per request, so entering one in the connection screen takes effect
+    /// The credential is read per request, so entering one in the connection screen takes effect
     /// immediately rather than on the next launch.
     func testTokenIsReadAtSendTimeNotConstructionTime() throws {
-        let token = TokenBox()
+        let mode = AuthModeBox()
         let factory = try MVRequestFactory(
             baseURL: "https://mail.example.com",
-            tokenProvider: { token.value }
+            authProvider: { mode.value }
         )
 
         let before = try factory.makeRequest(path: "/api/health")
         XCTAssertNil(before.value(forHTTPHeaderField: "Authorization"))
 
-        token.value = "jwt-value"
+        mode.value = .bearer(token: "jwt-value")
         let after = try factory.makeRequest(path: "/api/health")
         XCTAssertEqual(after.value(forHTTPHeaderField: "Authorization"), "Bearer jwt-value")
     }
 
-    func testEmptyTokenSendsNoAuthorizationHeader() throws {
+    func testEmptyBearerTokenSendsNoAuthorizationHeader() throws {
         let factory = try MVRequestFactory(
             baseURL: "https://mail.example.com",
-            tokenProvider: { "" }
+            authProvider: { .bearer(token: "") }
         )
         let request = try factory.makeRequest(path: "/api/health")
         XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    /// `echo -n user:pass | base64` — a fixed reference value, not re-derived from the same
+    /// base64 call the implementation makes.
+    func testBasicAuthSendsBase64EncodedCredentials() throws {
+        let factory = try MVRequestFactory(
+            baseURL: "https://mail.example.com",
+            authProvider: { .basic(username: "user", password: "pass") }
+        )
+        let request = try factory.makeRequest(path: "/api/health")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")
     }
 
     /// `URLComponents` leaves a literal `+` in a query value alone — it is a legal query
@@ -66,7 +77,7 @@ final class MVRequestFactoryTests: XCTestCase {
     /// containing `+` must round-trip as itself, not as a space.
     func testQueryValueEscapesLiteralPlusRatherThanLeavingItAsASpace() throws {
         let factory = try MVRequestFactory(
-            baseURL: "https://mail.example.com", tokenProvider: { nil }
+            baseURL: "https://mail.example.com", authProvider: { .none }
         )
         let request = try factory.makeRequest(
             path: "/api/search",
@@ -83,7 +94,7 @@ final class MVRequestFactoryTests: XCTestCase {
     /// `%252F`).
     func testPreEncodedPathSegmentSurvivesWithoutBeingReEncoded() throws {
         let factory = try MVRequestFactory(
-            baseURL: "https://mail.example.com", tokenProvider: { nil }
+            baseURL: "https://mail.example.com", authProvider: { .none }
         )
         let request = try factory.makeRequest(path: "/api/folders/a%2Fb")
         let raw = request.url?.absoluteString ?? ""
@@ -95,6 +106,6 @@ final class MVRequestFactoryTests: XCTestCase {
 /// A `var` captured by an escaping sendable closure and mutated afterwards is a data race the
 /// compiler cannot rule out, even where the test is single-threaded. A reference box makes the
 /// sharing explicit instead of asserting it away.
-private final class TokenBox: @unchecked Sendable {
-    var value: String?
+private final class AuthModeBox: @unchecked Sendable {
+    var value: MVAuthMode = .none
 }

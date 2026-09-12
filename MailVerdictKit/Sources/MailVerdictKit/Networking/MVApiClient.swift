@@ -25,7 +25,7 @@ public struct MVApiClient: Sendable {
     /// to remember, and a caller that swallows its error still cannot swallow this.
     public init(
         requestFactory: MVRequestFactory,
-        urlSession: URLSession = .shared,
+        urlSession: URLSession = .mvDefault,
         onAuthenticationFailure: (@Sendable (MVError) -> Void)? = nil
     ) {
         self.requestFactory = requestFactory
@@ -58,11 +58,28 @@ public struct MVApiClient: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw MVError.transport("Response was not HTTP")
         }
+        // The session this client is built with (see `URLSession.mvDefault`) refuses every
+        // redirect, so a 3xx reaching here is the redirect itself, never a followed one — a
+        // cookie-only SSO's own login page, most commonly.
+        if (300..<400).contains(http.statusCode) {
+            throw MVError.proxyRequiresBrowserLogin
+        }
         guard (200..<300).contains(http.statusCode) else {
             let error = MVError.from(statusCode: http.statusCode, body: data)
             if error.isAuthenticationFailure { onAuthenticationFailure?(error) }
             throw error
         }
+        // A 200 whose body is HTML rather than JSON is the same login-proxy case without a
+        // redirect — some SSO fronts answer an unauthenticated /api call with their sign-in page
+        // directly, status 200 included.
+        if Self.isHTMLContentType(response: http) {
+            throw MVError.proxyRequiresBrowserLogin
+        }
+    }
+
+    private static func isHTMLContentType(response: HTTPURLResponse) -> Bool {
+        let contentType = response.value(forHTTPHeaderField: "Content-Type") ?? ""
+        return contentType.lowercased().contains("text/html")
     }
 
     // MARK: Health

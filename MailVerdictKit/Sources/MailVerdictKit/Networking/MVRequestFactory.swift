@@ -19,13 +19,13 @@ public struct MVRequestFactory: Sendable {
     }
 
     private let baseURL: URL
-    private let tokenProvider: @Sendable () -> String?
+    private let authProvider: @Sendable () -> MVAuthMode
 
-    /// - Parameter tokenProvider: read at send time rather than captured, so a token entered or
-    ///   changed in settings takes effect on the next request without rebuilding the client.
+    /// - Parameter authProvider: read at send time rather than captured, so a credential entered
+    ///   or changed in settings takes effect on the next request without rebuilding the client.
     public init(
         baseURL rawBaseURL: String,
-        tokenProvider: @escaping @Sendable () -> String?
+        authProvider: @escaping @Sendable () -> MVAuthMode
     ) throws {
         let trimmed = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ConfigurationError.emptyBaseURL }
@@ -42,7 +42,7 @@ public struct MVRequestFactory: Sendable {
         }
 
         self.baseURL = normalizedURL
-        self.tokenProvider = tokenProvider
+        self.authProvider = authProvider
     }
 
     public func makeRequest(
@@ -77,8 +77,16 @@ public struct MVRequestFactory: Sendable {
         request.httpMethod = method
         request.httpBody = body
 
-        if let token = tokenProvider(), !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        switch authProvider() {
+        case .none:
+            break
+        case .bearer(let token):
+            if !token.isEmpty {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+        case .basic(let username, let password):
+            let raw = Data("\(username):\(password)".utf8).base64EncodedString()
+            request.setValue("Basic \(raw)", forHTTPHeaderField: "Authorization")
         }
         if let contentType {
             request.setValue(contentType, forHTTPHeaderField: "Content-Type")

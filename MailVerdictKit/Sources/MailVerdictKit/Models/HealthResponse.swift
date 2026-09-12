@@ -13,17 +13,22 @@ public struct HealthResponse: Codable, Sendable, Equatable {
     public let status: String
     public let postimapContract: String
     public let database: String
+    /// Not sent by every server yet — older deployments simply omit the field, which decodes to
+    /// `nil` here rather than failing. "Test Connection" shows it when present.
+    public let version: String?
 
     enum CodingKeys: String, CodingKey {
         case status
         case postimapContract = "postimap_contract"
         case database
+        case version
     }
 
-    public init(status: String, postimapContract: String, database: String) {
+    public init(status: String, postimapContract: String, database: String, version: String? = nil) {
         self.status = status
         self.postimapContract = postimapContract
         self.database = database
+        self.version = version
     }
 
     /// Whether the backend itself reported itself ready — the one field every caller actually

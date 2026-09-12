@@ -103,6 +103,17 @@ final class MVHttpByteStream: NSObject, URLSessionDataDelegate, @unchecked Senda
         finish(throwing: error)
     }
 
+    /// Refuses every redirect, the same rule `MVRedirectGuard` applies to ordinary REST calls —
+    /// a cookie-only SSO redirecting an unauthenticated stream request to its login page should
+    /// surface as the 3xx status in `didReceive response:` above, not be followed silently.
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+    }
+
     /// `finishTasksAndInvalidate()` rather than `invalidateAndCancel()`: by the time this runs,
     /// the task is either already complete (`didCompleteWithError`) or about to be told to cancel
     /// by the caller right after this returns (the early-rejection path in `didReceive

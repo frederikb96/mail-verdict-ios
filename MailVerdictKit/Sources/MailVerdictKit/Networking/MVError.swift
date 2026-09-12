@@ -15,6 +15,10 @@ public enum MVError: Error, Equatable {
     case http(statusCode: Int, reason: String)
     case transport(String)
     case decoding(String)
+    /// A 3xx response, or a `text/html` body, on an `/api` call — a login-proxy page came back
+    /// instead of JSON, most commonly a cookie-only SSO redirecting an unauthenticated request to
+    /// its own sign-in screen rather than answering with a status an API client can act on.
+    case proxyRequiresBrowserLogin
 
     /// The server refused the credential rather than the request.
     ///
@@ -25,7 +29,7 @@ public enum MVError: Error, Equatable {
         switch self {
         case .detail(_, let statusCode), .http(let statusCode, _):
             return statusCode == 401 || statusCode == 403
-        case .transport, .decoding:
+        case .transport, .decoding, .proxyRequiresBrowserLogin:
             return false
         }
     }
@@ -37,6 +41,9 @@ public enum MVError: Error, Equatable {
         case let .http(code, reason): return "HTTP \(code): \(reason)"
         case let .transport(text): return text
         case let .decoding(text): return text
+        case .proxyRequiresBrowserLogin:
+            return "This server's login proxy wants a browser sign-in and does not accept an "
+                + "access token for API requests."
         }
     }
 }
