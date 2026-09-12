@@ -194,9 +194,9 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         } catch {
             guard generation == expected else { return }
             if rows.isEmpty {
-                phase = .failed(Self.message(for: error))
+                phase = .failed(message: error.mvUserMessage, detail: error.mvTechnicalDetail)
             } else {
-                showError("Could not load messages: \(Self.message(for: error))")
+                showError("Could not load messages: \(error.mvUserMessage)")
             }
         }
     }
@@ -592,7 +592,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             phase = .loaded
         } catch {
             guard generation == started.generation else { return }
-            showError("Could not filter: \(Self.message(for: error))")
+            showError("Could not filter: \(error.mvUserMessage)")
         }
         isFilterLoading = false
     }
@@ -766,7 +766,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                 }
             } catch {
                 self.rollBack([row])
-                self.showError("Could not \(bulk.phrase): \(Self.message(for: error))")
+                self.showError("Could not \(bulk.phrase): \(error.mvUserMessage)")
             }
             self.requestRefresh()
         }
@@ -776,7 +776,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         do {
             try await backend.sendMessageAction(messageId: messageId, action: .move, targetFolderId: originalFolderId)
         } catch {
-            showError("Could not undo: \(Self.message(for: error))")
+            showError("Could not undo: \(error.mvUserMessage)")
         }
         await refresh()
     }
@@ -801,7 +801,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                 }
             } catch {
                 self.rollBack([row])
-                self.showError("Could not mark as read: \(Self.message(for: error))")
+                self.showError("Could not mark as read: \(error.mvUserMessage)")
             }
             self.requestRefresh()
         }
@@ -814,7 +814,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                 try await self.backend.sendVerdictFeedback(messageId: row.id, accountId: row.accountId, isSpam: isSpam)
                 self.toasts?.show(MVToast(variant: .success, message: "Thanks — feedback recorded", duration: 3))
             } catch {
-                self.showError("Could not send feedback: \(Self.message(for: error))")
+                self.showError("Could not send feedback: \(error.mvUserMessage)")
             }
             // A ruling can move the message.
             self.requestRefresh()
@@ -914,7 +914,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             )
             selection = .all(predicate, in: scopeAtRequest)
         } catch {
-            showError("Could not select all: \(Self.message(for: error))")
+            showError("Could not select all: \(error.mvUserMessage)")
         }
     }
 
@@ -1007,7 +1007,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             }
         } catch {
             rollBack(originals)
-            showError("Could not \(action.phrase): \(Self.message(for: error))")
+            showError("Could not \(action.phrase): \(error.mvUserMessage)")
         }
 
         if current.predicate != nil {
@@ -1023,7 +1023,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                 _ = try await backend.sendBulkAction(accountId: plan.accountId, request: plan.request)
             }
         } catch {
-            showError("Could not undo: \(Self.message(for: error))")
+            showError("Could not undo: \(error.mvUserMessage)")
         }
         await refresh()
     }
@@ -1049,7 +1049,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                 )
             )
         } catch {
-            showError("Could not mark as read: \(Self.message(for: error))")
+            showError("Could not mark as read: \(error.mvUserMessage)")
         }
         await refresh()
         await loadContext()
@@ -1062,7 +1062,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         do {
             return try await backend.fetchSelectionSnapshot(accountId: accountId, folderId: folderId, filter: .all)
         } catch {
-            showError("Could not count messages: \(Self.message(for: error))")
+            showError("Could not count messages: \(error.mvUserMessage)")
             return nil
         }
     }
@@ -1079,7 +1079,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                 )
             )
         } catch {
-            showError(Self.message(for: error))
+            showError(error.mvUserMessage)
         }
         await replaceList()
         await loadContext()
@@ -1100,10 +1100,6 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
 
     private func showError(_ message: String) {
         toasts?.show(MVToast(variant: .error, message: message, duration: 0))
-    }
-
-    static func message(for error: Error) -> String {
-        (error as? MVError)?.userMessage ?? error.localizedDescription
     }
 
     static func isNotFound(_ error: Error) -> Bool {
