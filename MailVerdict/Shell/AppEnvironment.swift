@@ -74,6 +74,12 @@ final class AppEnvironment {
         /// "Show in Folder" all resolve through this instance rather than each building its own,
         /// so the three can never land a message in different places for the same input.
         let placeResolver: MVMessagePlaceResolver
+
+        /// Accounts, views, folders and photo indexes shared by every list and reader.
+        let referenceCache: MVReferenceCache
+
+        /// Conversations fetched ahead of the reader — on touch-down and for the rows on screen.
+        let threadCache: MVThreadCache
     }
 
     /// Internal, not private — `FixtureBootstrap` seeds this default too, so a fixture-mode
@@ -134,11 +140,16 @@ final class AppEnvironment {
         MVPersistedPath.save(navigationPath, to: defaults)
     }
 
-    /// `scenePhase` going `.active` is where a store would do its own bounded re-read of every
-    /// open list plus a counts refetch on returning to the foreground — nothing binds to this
-    /// yet, but the call site belongs here rather than in `RootView` so a store that needs it
-    /// has one place to subscribe from.
-    func handleScenePhaseChange(to phase: ScenePhase) {}
+    /// The live stream closes in the background and reconnects the moment the app is back. Left
+    /// open, it would die unobserved while the retry backoff grows toward its cap, and the list
+    /// would read "Connecting…" for up to that long after returning.
+    func handleScenePhaseChange(to phase: ScenePhase) {
+        switch phase {
+        case .background: connection?.liveEventHub.pause()
+        case .active: connection?.liveEventHub.resume()
+        default: break
+        }
+    }
 
     @discardableResult
     private func connect() -> Bool {
@@ -164,10 +175,16 @@ final class AppEnvironment {
         liveEventHub.connect()
 
         let membership = MailboxesUnifiedMembership()
+        let referenceCache = MVReferenceCache(backend: client)
+        let threadCache = MVThreadCache(fetch: { try await client.getThread(messageId: $0) })
+        // Held weakly by the hub; the connection owns both for as long as it exists.
+        liveEventHub.subscribe(referenceCache)
+        liveEventHub.subscribe(threadCache)
         connection = Connection(
             requestFactory: factory, apiClient: client, liveEventHub: liveEventHub,
             imageLoader: MVAuthenticatedImageLoader(apiClient: client), membership: membership,
-            placeResolver: MVMessagePlaceResolver(apiClient: client, membershipLookup: membership))
+            placeResolver: MVMessagePlaceResolver(apiClient: client, membershipLookup: membership),
+            referenceCache: referenceCache, threadCache: threadCache)
         lastAuthFailure = nil
         router.gate = .ready
         return true

@@ -62,6 +62,9 @@ private struct ConnectedShell: View {
         .sheet(item: Bindable(environment).presentedCompose) { intent in
             ComposerScreen(intent: intent, environment: environment, connection: connection)
         }
+        .task {
+            ReaderWebKit.prewarm(api: connection.apiClient)
+        }
         #if DEBUG
             .task {
                 navigateToFixtureScreenshotTargetIfNeeded()

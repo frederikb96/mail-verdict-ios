@@ -63,13 +63,20 @@ public final class ReaderSession {
     @ObservationIgnored private var loadTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var settledRowId: UUID?
     @ObservationIgnored private var readRulesApplied: Set<UUID> = []
+    /// Pages drawn from a cached copy whose revalidation has not answered yet. Their read rules
+    /// wait for it: the copy can say read when the message is not.
+    @ObservationIgnored private var awaitingRevalidation: Set<UUID> = []
     @ObservationIgnored private let cacheDirectory: URL
+    /// Conversations fetched ahead of the reader (`MVThreadCache`): a page with a recent copy is
+    /// drawn from it at once and revalidated behind it.
+    @ObservationIgnored private let threadCache: MVThreadCache?
 
     public init(
         context: ReaderContext, api: MVApiClient, placeResolver: MVMessagePlaceResolver, theme: MVCanvas,
         registry: ReaderSourceRegistry = .shared,
         tracker: MVExplicitUnreadTracker = .shared, canvasStore: MVCanvasPreferenceStore = MVCanvasPreferenceStore(),
-        cacheDirectory: URL = FileManager.default.temporaryDirectory
+        cacheDirectory: URL = FileManager.default.temporaryDirectory, threadCache: MVThreadCache? = nil,
+        referenceCache: MVReferenceCache? = nil
     ) {
         self.context = context
         self.api = api
@@ -79,7 +86,8 @@ public final class ReaderSession {
         self.tracker = tracker
         self.canvasStore = canvasStore
         self.canvasChoices = canvasStore.load()
-        self.lookups = ReaderLookups(api: api)
+        self.threadCache = threadCache
+        self.lookups = ReaderLookups(api: api, cache: referenceCache)
         self.cacheDirectory = cacheDirectory.appendingPathComponent("attachments", isDirectory: true)
         let source = registry.source(for: context.source)
         self.source = source
@@ -173,8 +181,23 @@ public final class ReaderSession {
         return ConversationDocumentBuilder.document(for: conversation, options: options)
     }
 
+    /// Starts loading `rowId` unless it already is. A recent copy in the thread cache, with the
+    /// folders and photos it needs also cached, is drawn in the same call — the page's first
+    /// document is then the conversation itself rather than a loading placeholder — and
+    /// revalidated behind it.
     public func ensureLoaded(_ rowId: UUID) {
         guard pages[rowId] == nil else { return }
+        if let cached = threadCache?.cached(rowId), !cached.messages.isEmpty,
+            applyReferenceDataIfCached(for: cached.messages, rowId: rowId)
+        {
+            awaitingRevalidation.insert(rowId)
+            show(cached, for: rowId)
+            refresh(rowId) { [weak self] in
+                guard let self, self.awaitingRevalidation.remove(rowId) != nil else { return }
+                if rowId == self.settledRowId { self.applyReadRules(rowId) }
+            }
+            return
+        }
         load(rowId)
     }
 
@@ -202,7 +225,7 @@ public final class ReaderSession {
         loadTasks[rowId] = Task { [weak self] in
             guard let self else { return }
             do {
-                let thread = try await self.api.getThread(messageId: rowId)
+                let thread = try await self.fetchThread(rowId)
                 guard !Task.isCancelled else { return }
                 await self.apply(thread, to: rowId)
             } catch {
@@ -212,6 +235,13 @@ public final class ReaderSession {
         }
     }
 
+    /// Through the thread cache when there is one, joining a prefetch already in flight and
+    /// keeping the answer for the next open.
+    private func fetchThread(_ rowId: UUID) async throws -> ThreadResponse {
+        guard let threadCache else { return try await api.getThread(messageId: rowId) }
+        return try await threadCache.thread(for: rowId)
+    }
+
     private func apply(_ thread: ThreadResponse, to rowId: UUID) async {
         guard !thread.messages.isEmpty else {
             loadFailed(rowId, error: MVError.http(statusCode: 404, reason: "Not Found"))
@@ -219,6 +249,10 @@ public final class ReaderSession {
         }
         await prepareReferenceData(for: thread.messages, rowId: rowId)
         guard pages[rowId] != nil else { return }
+        show(thread, for: rowId)
+    }
+
+    private func show(_ thread: ThreadResponse, for rowId: UUID) {
         let conversation = ReaderConversation(messages: thread.messages, openedId: rowId)
         pages[rowId] = .loaded(conversation)
         revision += 1
@@ -249,17 +283,47 @@ public final class ReaderSession {
     /// Folder roles and sender photos, fetched before the first document so it already carries
     /// the right Delete/Junk labels and avatars rather than redrawing a moment later.
     private func prepareReferenceData(for messages: [MessageDetail], rowId: UUID) async {
-        var sources: [String: String] = [:]
+        var folders: [UUID: [FolderResponse]] = [:]
+        var indexes: [UUID: ContactPhotoIndexResponse] = [:]
         for accountId in Set(messages.map(\.accountId)) {
-            for folder in await lookups.folders(accountId: accountId) {
-                if let role = folder.specialUse { folderRoles[folder.id] = role }
-            }
-            let index = await lookups.photoIndex(accountId: accountId)
-            for message in messages where message.accountId == accountId {
-                let email = extractEmail(message.fromAddr).lowercased()
-                if let src = ReaderLookups.avatarSource(for: email, in: index, imagesAllowed: message.imagesAllowed) {
-                    sources[email] = src
-                }
+            async let accountFolders = lookups.folders(accountId: accountId)
+            async let index = lookups.photoIndex(accountId: accountId)
+            folders[accountId] = await accountFolders
+            indexes[accountId] = await index
+        }
+        applyReferenceData(folders: folders, indexes: indexes, messages: messages, rowId: rowId)
+    }
+
+    /// The synchronous half of `prepareReferenceData`: `false`, changing nothing, unless every
+    /// account's folders and photo index are already cached.
+    private func applyReferenceDataIfCached(for messages: [MessageDetail], rowId: UUID) -> Bool {
+        var folders: [UUID: [FolderResponse]] = [:]
+        var indexes: [UUID: ContactPhotoIndexResponse] = [:]
+        for accountId in Set(messages.map(\.accountId)) {
+            guard let accountFolders = lookups.cachedFolders(accountId: accountId),
+                let index = lookups.cachedPhotoIndex(accountId: accountId)
+            else { return false }
+            folders[accountId] = accountFolders
+            indexes[accountId] = index
+        }
+        applyReferenceData(folders: folders, indexes: indexes, messages: messages, rowId: rowId)
+        return true
+    }
+
+    private func applyReferenceData(
+        folders: [UUID: [FolderResponse]], indexes: [UUID: ContactPhotoIndexResponse], messages: [MessageDetail],
+        rowId: UUID
+    ) {
+        for folder in folders.values.joined() {
+            if let role = folder.specialUse { folderRoles[folder.id] = role }
+        }
+        var sources: [String: String] = [:]
+        for message in messages {
+            let email = extractEmail(message.fromAddr).lowercased()
+            if let src = ReaderLookups.avatarSource(
+                for: email, in: indexes[message.accountId], imagesAllowed: message.imagesAllowed)
+            {
+                sources[email] = src
             }
         }
         avatarSources[rowId] = sources
@@ -312,11 +376,13 @@ public final class ReaderSession {
             pages[rowId] = nil
             avatarSources[rowId] = nil
             readRulesApplied.remove(rowId)
+            awaitingRevalidation.remove(rowId)
         }
     }
 
     private func applyReadRules(_ rowId: UUID) {
-        guard !readRulesApplied.contains(rowId), let conversation = conversation(for: rowId),
+        guard !readRulesApplied.contains(rowId), !awaitingRevalidation.contains(rowId),
+            let conversation = conversation(for: rowId),
             let primary = conversation.primary
         else { return }
         readRulesApplied.insert(rowId)
@@ -649,11 +715,18 @@ public final class ReaderSession {
     }
 
     /// Re-reads one page's conversation and applies the difference.
-    public func refresh(_ rowId: UUID) {
-        guard let previous = conversation(for: rowId) else { return }
+    /// `completion` runs once the answer is applied, or once it is known there is none to apply.
+    public func refresh(_ rowId: UUID, then completion: (@MainActor () -> Void)? = nil) {
+        guard let previous = conversation(for: rowId) else {
+            completion?()
+            return
+        }
         Task { [weak self] in
-            guard let self, let thread = try? await self.api.getThread(messageId: rowId),
-                let current = self.conversation(for: rowId),
+            guard let self else { return }
+            defer { completion?() }
+            guard let thread = try? await self.api.getThread(messageId: rowId) else { return }
+            self.threadCache?.store(thread, for: rowId)
+            guard let current = self.conversation(for: rowId),
                 current == previous || current.messageIds == previous.messageIds
             else { return }
             let next = ReaderConversation(messages: thread.messages, openedId: rowId)

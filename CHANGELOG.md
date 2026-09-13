@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Opening a message is faster: conversations are fetched as soon as a finger lands on a row and for
+  the rows on screen, a recently read one opens from memory and is refreshed behind it, and the
+  reader's web view is warmed up at launch.
+- Lists open with their account badges, contact photos and title already in place when they have
+  been opened before, and load that data in parallel rather than one request after another.
+- Select mode's bottom bar matches the reader: Archive and Delete, with Mark, Star, Move and Junk
+  under Options.
+
+### Fixed
+
+- Unified views: the account badge on each avatar, and contact photos, now appear on every row —
+  rows drawn before that data arrived kept showing without it.
+- The list's quick filter no longer shows "Could not filter: Cancelled." while typing, and its
+  results show the matched words bold instead of wrapped in `**`.
+- "Connecting…" no longer lingers after returning to the app: the live connection closes in the
+  background and reconnects immediately on return, and a reconnect that finishes within a few
+  seconds is not shown at all. A quiet but healthy connection is no longer torn down every minute.
+
 ## [0.1.2] - 2026-09-12
 
 ### Fixed

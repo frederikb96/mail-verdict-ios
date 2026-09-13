@@ -24,7 +24,13 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
         var openAccounts: () -> Void
         /// The row the reader last settled on for this list, if it was opened from here.
         var lastSettledMessageId: () -> UUID?
+        /// Fetches conversations ahead of the reader — `urgent` for the row under a finger,
+        /// otherwise the rows on screen, a few at a time.
+        var prefetch: (_ rowIds: [UUID], _ urgent: Bool) -> Void
     }
+
+    /// Rows past this many on screen are not fetched ahead — the first few are what gets tapped.
+    private static let visiblePrefetchLimit = 8
 
     private static let cellIdentifier = "MailRow"
     private static let pagingFooterHeight: CGFloat = 44
@@ -37,6 +43,9 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
     private var dataSource: UITableViewDiffableDataSource<Int, UUID>?
 
     private var displayedRows: [UUID: MessageSummary] = [:]
+    /// What each cell was last configured with — a cell is reconfigured exactly when this changes.
+    private var renderedRowData: [UUID: MVMailRowData] = [:]
+    private var appliedContext: MVListContext?
     private var appliedRows: [MessageSummary] = []
     private var appliedIds: [UUID] = []
     private var appliedIdentity: MVListIdentity?
@@ -193,11 +202,16 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
         var seen = Set<UUID>()
         let rows = store.rows.filter { seen.insert($0.id).inserted }
         let identity = store.identity
-        guard identity != appliedIdentity || rows != appliedRows else {
+        let context = store.context
+        // What each row draws depends on the store's context as well as the row — account badges,
+        // contact photos and folder roles usually land after the rows do.
+        guard identity != appliedIdentity || rows != appliedRows || context != appliedContext else {
             applyLanding()
             publishDebugState()
             return
         }
+        let rowData = Dictionary(rows.map { ($0.id, store.rowData(for: $0)) }, uniquingKeysWith: { first, _ in first })
+        appliedContext = context
 
         let newIds = rows.map(\.id)
         let before = geometry()
@@ -229,10 +243,11 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
         var snapshot = NSDiffableDataSourceSnapshot<Int, UUID>()
         snapshot.appendSections([0])
         snapshot.appendItems(newIds, toSection: 0)
-        let changed = rows.filter { row in displayedRows[row.id].map { $0 != row } ?? false }.map(\.id)
+        let changed = newIds.filter { id in renderedRowData[id].map { $0 != rowData[id] } ?? false }
         if !changed.isEmpty { snapshot.reconfigureItems(changed) }
 
         displayedRows = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        renderedRowData = rowData
         appliedRows = rows
         appliedIds = newIds
         appliedIdentity = identity
@@ -248,6 +263,7 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
         applyLanding()
         reconcileSelection()
         checkPaging()
+        prefetchVisibleRows()
         publishDebugState()
     }
 
@@ -363,7 +379,7 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
     }
 
     private func configure(_ cell: UITableViewCell, with row: MessageSummary) {
-        let data = store.rowData(for: row)
+        let data = renderedRowData[row.id] ?? store.rowData(for: row)
         cell.contentConfiguration = UIHostingConfiguration {
             MailListRowContent(data: data)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -392,6 +408,21 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
         tableView.deselectRow(at: indexPath, animated: true)
         store.didOpen(row.id)
         actions.open(row)
+    }
+
+    /// A finger landing on a row starts fetching its conversation — the tap that follows takes
+    /// long enough that the reader usually finds it already there.
+    func tableView(_ tableView: UITableView, didHighlightRowAt indexPath: IndexPath) {
+        guard !tableView.isEditing, let rowId = dataSource?.itemIdentifier(for: indexPath) else { return }
+        actions.prefetch([rowId], true)
+    }
+
+    /// The first rows on screen, fetched ahead in the background once the list is at rest.
+    private func prefetchVisibleRows() {
+        guard isOnScreen, !tableView.isDragging, !tableView.isDecelerating else { return }
+        let ids = (tableView.indexPathsForVisibleRows ?? []).sorted().prefix(Self.visiblePrefetchLimit)
+            .compactMap { dataSource?.itemIdentifier(for: $0) }
+        if !ids.isEmpty { actions.prefetch(ids, false) }
     }
 
     func tableView(_ tableView: UITableView, didDeselectRowAt indexPath: IndexPath) {
@@ -533,10 +564,13 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         savePosition()
+        prefetchVisibleRows()
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        if !decelerate { savePosition() }
+        guard !decelerate else { return }
+        savePosition()
+        prefetchVisibleRows()
     }
 
     func scrollViewDidScrollToTop(_ scrollView: UIScrollView) {

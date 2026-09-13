@@ -29,6 +29,26 @@
             route("/api/search") {
                 SearchResponse(results: [], hasMore: false, nextCursor: nil, query: "", total: 0)
             }
+            // The list fetches the conversations on screen ahead of a tap.
+            for row in messages(now: Date()).messages {
+                route("/api/messages/\(row.id)/thread") { thread(for: row.id, now: Date()) }
+            }
+        }
+
+        /// One message standing for the row's conversation — enough for a prefetch to land.
+        static func thread(for rowId: UUID, now: Date) -> ThreadResponse {
+            guard let row = messages(now: now).messages.first(where: { $0.id == rowId }) else {
+                return ThreadResponse(messages: [])
+            }
+            return ThreadResponse(messages: [
+                MessageDetail(
+                    id: row.id, accountId: row.accountId, folderId: row.folderId, threadId: row.threadId,
+                    subject: row.subject, fromAddr: row.fromAddr, toAddrs: nil, receivedAt: row.receivedAt,
+                    isSeen: row.isSeen, isFlagged: row.isFlagged, isAnswered: row.isAnswered, snippet: row.snippet,
+                    messageId: "<\(row.id)@fixture.invalid>", ccAddrs: nil, bccAddrs: nil, replyTo: nil,
+                    inReplyTo: nil, references: nil, bodyText: row.snippet, bodyHtml: nil, sizeBytes: 2048,
+                    createdAt: row.mirroredAt, verdict: nil)
+            ])
         }
 
         private static func route<T: Encodable & Sendable>(_ path: String, _ body: @escaping @Sendable () -> T) {

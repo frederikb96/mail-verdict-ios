@@ -61,7 +61,8 @@ final class ReaderScreenModel {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         session = ReaderSession(
             context: context, api: connection.apiClient, placeResolver: connection.placeResolver, theme: theme,
-            cacheDirectory: caches ?? FileManager.default.temporaryDirectory)
+            cacheDirectory: caches ?? FileManager.default.temporaryDirectory, threadCache: connection.threadCache,
+            referenceCache: connection.referenceCache)
         // Held weakly by the hub, so the subscription ends with the reader.
         _ = connection.liveEventHub.subscribe(session)
         session.onToast = { [weak environment] toast in

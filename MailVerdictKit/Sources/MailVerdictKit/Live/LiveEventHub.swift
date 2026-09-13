@@ -60,7 +60,14 @@ public final class LiveEventHub {
 
     public private(set) var connectionState: MVConnectionState = .disconnected
 
+    /// `connectionState` as a screen should show it: a reconnect that finishes within
+    /// `reconnectingGraceNanos` — launch, a return from the background, a proxy recycling the
+    /// stream — never surfaces, so "Connecting…" means the connection is genuinely struggling.
+    public private(set) var visibleConnectionState: MVConnectionState = .connected
+
+    public static let reconnectingGraceNanos: UInt64 = 3_000_000_000
     private static let flushIntervalNanos: UInt64 = 500_000_000
+    @ObservationIgnored private var visibleStateTask: Task<Void, Never>?
 
     private let sseClient: MVSseClient
     private var pending: [MVLiveInvalidation] = []
@@ -109,6 +116,7 @@ public final class LiveEventHub {
 
     public func connect() {
         connectionState = .reconnecting
+        updateVisibleState()
         sseClient.connect()
         scheduleFlush()
     }
@@ -118,6 +126,37 @@ public final class LiveEventHub {
         flushTask?.cancel()
         flushTask = nil
         setConnectionState(.disconnected)
+    }
+
+    /// The app went to the background: the stream is closed rather than left to die unobserved.
+    /// Subscribers are not told — nothing is on screen, and `resume()` replays what was missed.
+    public func pause() {
+        guard connectionState != .disconnected else { return }
+        sseClient.pause()
+        connectionState = .reconnecting
+    }
+
+    /// Back in the foreground: reconnect now, not after whatever backoff had accumulated.
+    public func resume() {
+        guard connectionState != .disconnected else { return }
+        sseClient.resume()
+        updateVisibleState()
+    }
+
+    private func updateVisibleState() {
+        visibleStateTask?.cancel()
+        visibleStateTask = nil
+        guard connectionState == .reconnecting else {
+            visibleConnectionState = connectionState
+            return
+        }
+        guard visibleConnectionState != .reconnecting else { return }
+        if visibleConnectionState == .disconnected { visibleConnectionState = .connected }
+        visibleStateTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.reconnectingGraceNanos)
+            guard let self, !Task.isCancelled, self.connectionState == .reconnecting else { return }
+            self.visibleConnectionState = .reconnecting
+        }
     }
 
     /// Registers `subscriber` (held weakly) and immediately tells it the current connection
@@ -137,11 +176,13 @@ public final class LiveEventHub {
 
     private func setConnectionState(_ state: MVConnectionState) {
         connectionState = state
+        updateVisibleState()
         broadcastConnected(state == .connected)
     }
 
     private func handleStreamDisconnected() {
         connectionState = .reconnecting
+        updateVisibleState()
         broadcastConnected(false)
     }
 

@@ -78,8 +78,15 @@ final class ReaderSessionTests: XCTestCase {
             isSeen: seen)
     }
 
+    private func makeClient() throws -> MVApiClient {
+        MVApiClient(
+            requestFactory: try MVRequestFactory(baseURL: "https://mail.example", authProvider: { .none }),
+            urlSession: ReaderRouteStub.makeSession())
+    }
+
     private func makeSession(
-        rows: [UUID], opening: UUID, seen: Bool = false, tracker: MVExplicitUnreadTracker = MVExplicitUnreadTracker()
+        rows: [UUID], opening: UUID, seen: Bool = false, tracker: MVExplicitUnreadTracker = MVExplicitUnreadTracker(),
+        threadCache: MVThreadCache? = nil, referenceCache: MVReferenceCache? = nil
     ) throws -> (ReaderSession, ReaderTestSource) {
         for id in rows {
             ReaderRouteStub.route(
@@ -93,15 +100,14 @@ final class ReaderSessionTests: XCTestCase {
         let registry = ReaderSourceRegistry()
         let context = ReaderContext(source: .spamReview, messageId: opening)
         registry.register(source, for: context.source)
-        let client = MVApiClient(
-            requestFactory: try MVRequestFactory(baseURL: "https://mail.example", authProvider: { .none }),
-            urlSession: ReaderRouteStub.makeSession())
+        let client = try makeClient()
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "reader-session-\(UUID())"))
         let session = ReaderSession(
             context: context, api: client, placeResolver: MVMessagePlaceResolver(apiClient: client), theme: .light,
             registry: registry, tracker: tracker,
             canvasStore: MVCanvasPreferenceStore(defaults: defaults),
-            cacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+            cacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
+            threadCache: threadCache, referenceCache: referenceCache)
         return (session, source)
     }
 
@@ -128,6 +134,54 @@ final class ReaderSessionTests: XCTestCase {
         let neighbourLoaded = await waitUntil { session.conversation(for: self.b) != nil }
         XCTAssertTrue(neighbourLoaded, "the neighbour was never prefetched, so this proves nothing about it")
         XCTAssertFalse(ReaderRouteStub.recorded.contains(actionPath(b)))
+    }
+
+    /// With the conversation and its reference data already cached, the page's first document is
+    /// the conversation itself — not a loading placeholder followed by a second load — and the
+    /// copy is still checked against the server behind it.
+    func testACachedConversationIsTheFirstDocumentAndIsRevalidated() async throws {
+        let threadCache = MVThreadCache(fetch: { _ in ThreadResponse(messages: []) })
+        threadCache.store(ThreadResponse(messages: [message(a, seen: true)]), for: a)
+        ReaderRouteStub.route("GET", "/api/accounts/\(ReaderFixtures.accountId)/folders", json: [FolderResponse]())
+        ReaderRouteStub.route("GET", "/api/contacts/photo-index", json: ContactPhotoIndexResponse(byEmail: [:]))
+        let referenceCache = MVReferenceCache(backend: try makeClient())
+        _ = await referenceCache.fetchFolders(accountId: ReaderFixtures.accountId)
+        _ = await referenceCache.fetchPhotoIndex(accountId: ReaderFixtures.accountId)
+        let (session, _) = try makeSession(
+            rows: [a], opening: a, seen: true, threadCache: threadCache, referenceCache: referenceCache)
+        let threadPath = "GET /api/messages/\(a)/thread"
+        XCTAssertFalse(ReaderRouteStub.recorded.contains(threadPath))
+
+        let first = session.document(for: a)
+
+        XCTAssertTrue(first.revealsOpened, "the first document was a placeholder, not the cached conversation")
+        XCTAssertNotNil(session.conversation(for: a))
+        let revalidated = await waitUntil { ReaderRouteStub.recorded.contains(threadPath) }
+        XCTAssertTrue(revalidated, "the cached copy was never checked against the server")
+    }
+
+    /// A cached copy can say read when the message is unread again — marked unread on another
+    /// device, say. Opening it must still mark it read, from the server's answer, not skip it on
+    /// the strength of the copy.
+    func testACachedCopySayingReadStillMarksAnUnreadMessageRead() async throws {
+        ReaderRouteStub.route(
+            "POST", "/api/messages/\(a)/action",
+            json: MessageActionResponse(success: true, action: "mark_read", messageId: a, message: nil))
+        let threadCache = MVThreadCache(fetch: { _ in ThreadResponse(messages: []) })
+        threadCache.store(ThreadResponse(messages: [message(a, seen: true)]), for: a)
+        ReaderRouteStub.route("GET", "/api/accounts/\(ReaderFixtures.accountId)/folders", json: [FolderResponse]())
+        ReaderRouteStub.route("GET", "/api/contacts/photo-index", json: ContactPhotoIndexResponse(byEmail: [:]))
+        let referenceCache = MVReferenceCache(backend: try makeClient())
+        _ = await referenceCache.fetchFolders(accountId: ReaderFixtures.accountId)
+        _ = await referenceCache.fetchPhotoIndex(accountId: ReaderFixtures.accountId)
+        let (session, _) = try makeSession(
+            rows: [a], opening: a, seen: false, threadCache: threadCache, referenceCache: referenceCache)
+
+        session.didSettle(on: a)
+
+        XCTAssertNotNil(session.conversation(for: a), "the cached copy was not drawn, so this proves nothing")
+        let marked = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.a)) }
+        XCTAssertTrue(marked, "the stale cached read state kept the message from being marked read")
     }
 
     func testAnExplicitlyUnreadMessageIsNotMarkedReadAgain() async throws {

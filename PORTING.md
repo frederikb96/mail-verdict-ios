@@ -262,3 +262,25 @@ there versus a real device.
 Needs a device because: the fixture sweep's own paint gate means no screenshot it takes will ever
 show the placeholder; only watching a real cold launch confirms it replaces the black flash rather
 than adding a visible flicker of its own.
+
+### Account badges and contact photos appear on every row of a unified view — web anchor: ui/src/components/mail-list (account badge)
+Needs a device because: the list controller now reconfigures a cell whenever what it draws changes,
+including context that lands after the rows; the controller is UIKit and compiles only on macOS.
+Confirm: open the Unified Inbox and Sent with grouping on and off, and leave and re-enter each —
+every row shows its account badge, with no row missing it.
+
+### A message opens without a visible wait — web anchor: n/a (native prefetch)
+Needs a device because: the touch-down and on-screen prefetch, the synchronous first document from
+the thread cache and the web view prewarm are timing on a real network and a real WebContent
+process. Confirm: a row near the top opens with its content already drawn, with no spinner; paging
+to a neighbour is instant; a message changed elsewhere still shows its current state after a beat.
+
+### Select mode's bottom bar is Archive, Delete and Options — web anchor: n/a (reader bar parity)
+Needs a device because: toolbar layout. Confirm: with rows ticked, the bar shows Archive and Delete
+on the left and an Options menu on the right holding Mark, Star, Move to… and Junk (Not Junk in the
+Junk folder); all three disable with nothing ticked.
+
+### "Connecting…" only appears when the connection is genuinely down — web anchor: n/a
+Needs a device because: scene-phase transitions and a real network. Confirm: switching away and
+back never flashes "Connecting…"; airplane mode shows it after a few seconds and clears within a few
+seconds of turning it off.
