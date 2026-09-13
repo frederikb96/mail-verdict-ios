@@ -86,6 +86,39 @@ final class MVThreadCacheTests: XCTestCase {
         XCTAssertNil(cache.cached(row))
     }
 
+    /// A burst of live events for other conversations — a spam pass issuing verdicts, say — must
+    /// not throw away prefetches that have nothing to do with them.
+    func testAChangeToAnotherConversationKeepsAnInFlightFetch() async throws {
+        let counter = ThreadFetchCounter()
+        let row = testUUID(1)
+        let elsewhere = testUUID(9)
+        let cache = MVThreadCache(fetch: { try await counter.fetch($0, messages: [$0]) })
+
+        cache.prefetchUrgently(row)
+        await waitUntil { counter.calls.count == 1 }
+        cache.apply([.verdictIssued(accountId: nil, messageId: elsewhere, isSpam: true)])
+        await counter.gate.open()
+        _ = try await cache.thread(for: row)
+        await waitUntil { cache.cached(row) != nil }
+
+        XCTAssertNotNil(cache.cached(row))
+    }
+
+    /// The same event for a message inside the conversation being fetched does make it stale.
+    func testAChangeToAMessageOfAnInFlightFetchIsNotKept() async throws {
+        let counter = ThreadFetchCounter()
+        let row = testUUID(1)
+        let cache = MVThreadCache(fetch: { try await counter.fetch($0, messages: [$0]) })
+
+        cache.prefetchUrgently(row)
+        await waitUntil { counter.calls.count == 1 }
+        cache.apply([.mailUpdated(accountId: nil, folderId: nil, messageId: row, changed: ["is_seen"])])
+        await counter.gate.open()
+        _ = try await cache.thread(for: row)
+
+        XCTAssertNil(cache.cached(row))
+    }
+
     func testACopyOlderThanTheLimitIsNotServed() {
         let clock = TestClock()
         let row = testUUID(1)

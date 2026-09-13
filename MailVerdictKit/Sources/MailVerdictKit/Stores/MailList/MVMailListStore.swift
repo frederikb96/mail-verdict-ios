@@ -62,6 +62,9 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     /// and read again, so a stale response never puts back a row the reader just archived.
     @ObservationIgnored private var mutationEpoch = 0
     @ObservationIgnored private var filterDebounce: Task<Void, Never>?
+    /// The query the filter was last asked for. A response for any other query is stale — typing
+    /// back to a query already showing leaves a longer one's request still in flight.
+    @ObservationIgnored private var latestFilterRequest: String?
     @ObservationIgnored private var unfiltered:
         (rows: [MessageSummary], hasOlder: Bool, hasNewer: Bool, identity: MVListIdentity)?
     @ObservationIgnored private var hasStarted = false
@@ -455,8 +458,13 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         }
     }
 
+    /// A failed read falls back to the cache's last copy, so one account's blip does not blank
+    /// its rows' folder roles.
     private func freshFolders(accountId: UUID) async -> [FolderResponse]? {
-        if let referenceCache { return await referenceCache.fetchFolders(accountId: accountId) }
+        if let referenceCache {
+            return await referenceCache.fetchFolders(accountId: accountId)
+                ?? referenceCache.cachedFolders(accountId: accountId)
+        }
         return try? await backend.fetchFolders(accountId: accountId)
     }
 
@@ -472,7 +480,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     }
 
     private func freshPhotoIndex(accountId: UUID) async -> ContactPhotoIndexResponse? {
-        if let referenceCache { return await referenceCache.fetchPhotoIndex(accountId: accountId) }
+        if let referenceCache {
+            return await referenceCache.fetchPhotoIndex(accountId: accountId)
+                ?? referenceCache.cachedPhotoIndex(accountId: accountId)
+        }
         return try? await backend.fetchContactPhotoIndex(accountId: accountId)
     }
 
@@ -630,6 +641,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     /// Filtering is a different list, starting at the top; clearing it returns the unfiltered
     /// rows (and, through `identity`, the controller's saved position in them).
     func applyFilter(query: String) async {
+        latestFilterRequest = query
         guard query != identity.filterQuery else {
             // Typed back to the query already showing, while a longer one was in flight.
             isFilterLoading = false
@@ -662,14 +674,14 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                 query: query, accountId: filterAccountId, folderIds: folderIds, unreadOnly: unreadOnly, before: nil,
                 limit: MVMailListWindow.pageSize
             )
-            guard generation == started.generation else { return }
+            guard generation == started.generation, latestFilterRequest == query else { return }
             identity = started
             rows = response.results.map(MessageSummary.init)
             hasOlder = response.hasMore
             hasNewer = false
             phase = .loaded
         } catch {
-            guard generation == started.generation else { return }
+            guard generation == started.generation, latestFilterRequest == query else { return }
             // The next keystroke cancelled this request before its own request began.
             if !error.mvIsCancellation { showError("Could not filter: \(error.mvUserMessage)") }
         }

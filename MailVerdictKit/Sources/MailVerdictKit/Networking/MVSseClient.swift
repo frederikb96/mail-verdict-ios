@@ -78,6 +78,7 @@ public final class MVSseClient {
 
     public func connect() {
         guard !stopped else { return }
+        paused = false
         reconnectTask?.cancel()
         streamTask?.cancel()
         activeByteStream?.cancel()

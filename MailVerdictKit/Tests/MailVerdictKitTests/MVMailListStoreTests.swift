@@ -180,6 +180,34 @@ final class MVMailListStoreTests: XCTestCase {
         XCTAssertFalse(store.isFilterLoading)
     }
 
+    /// Typing one character too many and deleting it again returns to a query already on screen
+    /// while the longer one is still in flight; its late answer must not replace the rows.
+    func testALateAnswerForAQueryTypedAwayFromDoesNotReplaceTheRows() async {
+        let gate = TestGate()
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...5)) }
+        backend.filterResults = [
+            SearchResult(
+                id: testUUID(40), accountId: testAccount, folderId: testFolder, threadId: testUUID(41), subject: "Hit",
+                fromAddr: nil, toAddrs: nil, receivedAt: testReceivedBase, snippet: nil, mirroredAt: testReceivedBase
+            )
+        ]
+        let store = makeStore(backend)
+        await store.start()
+        await store.applyFilter(query: "ab")
+        let shown = store.identity
+        backend.filterDelay = { query in if query == "abc" { await gate.wait() } }
+
+        async let longer: Void = store.applyFilter(query: "abc")
+        await waitUntil { backend.filterQueries == ["ab", "abc"] }
+        await store.applyFilter(query: "ab")
+        await gate.open()
+        await longer
+
+        XCTAssertEqual(store.identity, shown)
+        XCTAssertFalse(store.isFilterLoading)
+    }
+
     /// A quick-filter hit's snippet carries the server's `**…**` around the matched terms; shown
     /// raw, the asterisks read as part of the mail.
     func testAQuickFilterHitShowsItsMatchedTermsBoldWithoutMarkers() async throws {

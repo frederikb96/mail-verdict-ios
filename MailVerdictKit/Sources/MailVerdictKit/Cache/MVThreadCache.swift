@@ -35,6 +35,11 @@ public final class MVThreadCache: LiveEventSubscriber {
     private var runningBackground = 0
     private var useCounter: UInt64 = 0
     private var generation = 0
+    /// When each message was last reported changed, on `changeCounter`'s clock — a fetch that
+    /// started before one of its own messages changed is not kept. Cleared whenever nothing is in
+    /// flight, since only an in-flight fetch can be stale this way.
+    private var changeCounter: UInt64 = 0
+    private var changedAt: [UUID: UInt64] = [:]
 
     public init(fetch: @escaping Fetch, now: @escaping @Sendable () -> Date = { Date() }) {
         self.fetch = fetch
@@ -112,15 +117,23 @@ public final class MVThreadCache: LiveEventSubscriber {
     @discardableResult
     private func start(_ rowId: UUID) -> Task<ThreadResponse, Error> {
         let started = generation
+        let startedAt = changeCounter
         let task = Task { [fetch] in try await fetch(rowId) }
         inFlight[rowId] = task
         Task { [weak self] in
             let result = try? await task.value
             guard let self else { return }
             if self.inFlight[rowId] == task { self.inFlight[rowId] = nil }
-            if let result, started == self.generation { self.store(result, for: rowId) }
+            if let result, started == self.generation, !self.changed(result, rowId: rowId, since: startedAt) {
+                self.store(result, for: rowId)
+            }
+            if self.inFlight.isEmpty { self.changedAt = [:] }
         }
         return task
+    }
+
+    private func changed(_ thread: ThreadResponse, rowId: UUID, since startedAt: UInt64) -> Bool {
+        ([rowId] + thread.messages.map(\.id)).contains { (changedAt[$0] ?? 0) > startedAt }
     }
 
     private func drainQueue() {
@@ -140,7 +153,10 @@ public final class MVThreadCache: LiveEventSubscriber {
     private func drop(containing messageId: UUID) {
         let stale = entries.filter { $0.key == messageId || $0.value.messageIds.contains(messageId) }.map(\.key)
         for rowId in stale { entries[rowId] = nil }
-        if !stale.isEmpty { generation += 1 }
+        if !inFlight.isEmpty {
+            changeCounter += 1
+            changedAt[messageId] = changeCounter
+        }
     }
 
     private func evictIfNeeded() {

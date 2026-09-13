@@ -63,6 +63,9 @@ public final class ReaderSession {
     @ObservationIgnored private var loadTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var settledRowId: UUID?
     @ObservationIgnored private var readRulesApplied: Set<UUID> = []
+    /// Pages drawn from a cached copy whose revalidation has not answered yet. Their read rules
+    /// wait for it: the copy can say read when the message is not.
+    @ObservationIgnored private var awaitingRevalidation: Set<UUID> = []
     @ObservationIgnored private let cacheDirectory: URL
     /// Conversations fetched ahead of the reader (`MVThreadCache`): a page with a recent copy is
     /// drawn from it at once and revalidated behind it.
@@ -187,8 +190,12 @@ public final class ReaderSession {
         if let cached = threadCache?.cached(rowId), !cached.messages.isEmpty,
             applyReferenceDataIfCached(for: cached.messages, rowId: rowId)
         {
+            awaitingRevalidation.insert(rowId)
             show(cached, for: rowId)
-            refresh(rowId)
+            refresh(rowId) { [weak self] in
+                guard let self, self.awaitingRevalidation.remove(rowId) != nil else { return }
+                if rowId == self.settledRowId { self.applyReadRules(rowId) }
+            }
             return
         }
         load(rowId)
@@ -369,11 +376,13 @@ public final class ReaderSession {
             pages[rowId] = nil
             avatarSources[rowId] = nil
             readRulesApplied.remove(rowId)
+            awaitingRevalidation.remove(rowId)
         }
     }
 
     private func applyReadRules(_ rowId: UUID) {
-        guard !readRulesApplied.contains(rowId), let conversation = conversation(for: rowId),
+        guard !readRulesApplied.contains(rowId), !awaitingRevalidation.contains(rowId),
+            let conversation = conversation(for: rowId),
             let primary = conversation.primary
         else { return }
         readRulesApplied.insert(rowId)
@@ -706,10 +715,16 @@ public final class ReaderSession {
     }
 
     /// Re-reads one page's conversation and applies the difference.
-    public func refresh(_ rowId: UUID) {
-        guard let previous = conversation(for: rowId) else { return }
+    /// `completion` runs once the answer is applied, or once it is known there is none to apply.
+    public func refresh(_ rowId: UUID, then completion: (@MainActor () -> Void)? = nil) {
+        guard let previous = conversation(for: rowId) else {
+            completion?()
+            return
+        }
         Task { [weak self] in
-            guard let self, let thread = try? await self.api.getThread(messageId: rowId) else { return }
+            guard let self else { return }
+            defer { completion?() }
+            guard let thread = try? await self.api.getThread(messageId: rowId) else { return }
             self.threadCache?.store(thread, for: rowId)
             guard let current = self.conversation(for: rowId),
                 current == previous || current.messageIds == previous.messageIds

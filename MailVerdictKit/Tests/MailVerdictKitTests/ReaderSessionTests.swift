@@ -160,6 +160,30 @@ final class ReaderSessionTests: XCTestCase {
         XCTAssertTrue(revalidated, "the cached copy was never checked against the server")
     }
 
+    /// A cached copy can say read when the message is unread again — marked unread on another
+    /// device, say. Opening it must still mark it read, from the server's answer, not skip it on
+    /// the strength of the copy.
+    func testACachedCopySayingReadStillMarksAnUnreadMessageRead() async throws {
+        ReaderRouteStub.route(
+            "POST", "/api/messages/\(a)/action",
+            json: MessageActionResponse(success: true, action: "mark_read", messageId: a, message: nil))
+        let threadCache = MVThreadCache(fetch: { _ in ThreadResponse(messages: []) })
+        threadCache.store(ThreadResponse(messages: [message(a, seen: true)]), for: a)
+        ReaderRouteStub.route("GET", "/api/accounts/\(ReaderFixtures.accountId)/folders", json: [FolderResponse]())
+        ReaderRouteStub.route("GET", "/api/contacts/photo-index", json: ContactPhotoIndexResponse(byEmail: [:]))
+        let referenceCache = MVReferenceCache(backend: try makeClient())
+        _ = await referenceCache.fetchFolders(accountId: ReaderFixtures.accountId)
+        _ = await referenceCache.fetchPhotoIndex(accountId: ReaderFixtures.accountId)
+        let (session, _) = try makeSession(
+            rows: [a], opening: a, seen: false, threadCache: threadCache, referenceCache: referenceCache)
+
+        session.didSettle(on: a)
+
+        XCTAssertNotNil(session.conversation(for: a), "the cached copy was not drawn, so this proves nothing")
+        let marked = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.a)) }
+        XCTAssertTrue(marked, "the stale cached read state kept the message from being marked read")
+    }
+
     func testAnExplicitlyUnreadMessageIsNotMarkedReadAgain() async throws {
         let tracker = MVExplicitUnreadTracker()
         await tracker.markExplicit(a)

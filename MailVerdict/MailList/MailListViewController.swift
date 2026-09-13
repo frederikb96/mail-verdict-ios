@@ -45,6 +45,7 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
     private var displayedRows: [UUID: MessageSummary] = [:]
     /// What each cell was last configured with — a cell is reconfigured exactly when this changes.
     private var renderedRowData: [UUID: MVMailRowData] = [:]
+    private var appliedContext: MVListContext?
     private var appliedRows: [MessageSummary] = []
     private var appliedIds: [UUID] = []
     private var appliedIdentity: MVListIdentity?
@@ -201,14 +202,16 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
         var seen = Set<UUID>()
         let rows = store.rows.filter { seen.insert($0.id).inserted }
         let identity = store.identity
-        // What each row draws, not only the row itself: account badges, contact photos and folder
-        // roles come from the store's context, which usually lands after the rows do.
-        let rowData = Dictionary(rows.map { ($0.id, store.rowData(for: $0)) }, uniquingKeysWith: { first, _ in first })
-        guard identity != appliedIdentity || rows != appliedRows || rowData != renderedRowData else {
+        let context = store.context
+        // What each row draws depends on the store's context as well as the row — account badges,
+        // contact photos and folder roles usually land after the rows do.
+        guard identity != appliedIdentity || rows != appliedRows || context != appliedContext else {
             applyLanding()
             publishDebugState()
             return
         }
+        let rowData = Dictionary(rows.map { ($0.id, store.rowData(for: $0)) }, uniquingKeysWith: { first, _ in first })
+        appliedContext = context
 
         let newIds = rows.map(\.id)
         let before = geometry()
