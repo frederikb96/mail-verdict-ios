@@ -138,13 +138,21 @@ final class FakeMailListBackend: MVMailListBackend, @unchecked Sendable {
         return try await handler(cursor, limit)
     }
 
+    /// Runs before a filter page is answered — a test holds a query open here, or fails it.
+    var filterDelay: (@Sendable (String) async throws -> Void)? {
+        get { locked { _filterDelay } }
+        set { locked { _filterDelay = newValue } }
+    }
+    private var _filterDelay: (@Sendable (String) async throws -> Void)?
+
     func fetchFilterPage(
         query: String, accountId: UUID?, folderIds: [UUID], unreadOnly: Bool, before: UUID?, limit: Int
     ) async throws -> SearchResponse {
-        let results = locked {
+        let (results, delay) = locked {
             _filterQueries.append(query)
-            return _filterResults
+            return (_filterResults, _filterDelay)
         }
+        try await delay?(query)
         return SearchResponse(results: results, hasMore: false, nextCursor: nil, query: query, total: results.count)
     }
 

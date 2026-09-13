@@ -152,6 +152,57 @@ final class MVMailListStoreTests: XCTestCase {
         XCTAssertTrue(store.hasOlder)
     }
 
+    /// Each keystroke cancels the filter request still in flight; that cancellation is the
+    /// store's own doing and must never reach the screen as "Could not filter".
+    func testTypingOnWhileAFilterIsInFlightShowsNoError() async {
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...5)) }
+        backend.filterDelay = { query in
+            guard query == "in" else { return }
+            do {
+                try await Task.sleep(nanoseconds: 10_000_000_000)
+            } catch {
+                // What URLSession throws for a cancelled task, rather than CancellationError.
+                throw URLError(.cancelled)
+            }
+        }
+        let toasts = MVToastStore()
+        let store = makeStore(backend, toasts: toasts)
+        await store.start()
+
+        store.setFilterText("in")
+        await waitUntil { backend.filterQueries == ["in"] }
+        store.setFilterText("inv")
+        await waitUntil { store.identity.filterQuery == "inv" }
+
+        XCTAssertEqual(backend.filterQueries, ["in", "inv"])
+        XCTAssertNil(toasts.current)
+        XCTAssertFalse(store.isFilterLoading)
+    }
+
+    /// A quick-filter hit's snippet carries the server's `**…**` around the matched terms; shown
+    /// raw, the asterisks read as part of the mail.
+    func testAQuickFilterHitShowsItsMatchedTermsBoldWithoutMarkers() async throws {
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...2)) }
+        backend.filterResults = [
+            SearchResult(
+                id: testUUID(40), accountId: testAccount, folderId: testFolder, threadId: testUUID(41), subject: "Hit",
+                fromAddr: nil, toAddrs: nil, receivedAt: testReceivedBase, snippet: "the **invoice** is due",
+                mirroredAt: testReceivedBase
+            )
+        ]
+        let store = makeStore(backend)
+        await store.start()
+
+        await store.applyFilter(query: "invoice")
+        let row = try XCTUnwrap(store.row(id: testUUID(40)))
+        let segments = store.rowData(for: row).line4
+
+        XCTAssertEqual(segments.filter(\.isBold).map(\.text), ["invoice"])
+        XCTAssertFalse(segments.contains { $0.text.contains("**") })
+    }
+
     /// An arrival never enters a window that does not start at the newest message; it is
     /// counted for the capsule, and the jump replaces the window with the newest page.
     func testArrivalsAboveAWindowAwayFromTheNewestEdgeAreCountedNotAdded() async {

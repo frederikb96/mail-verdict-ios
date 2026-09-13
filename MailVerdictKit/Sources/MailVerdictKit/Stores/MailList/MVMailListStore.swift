@@ -42,6 +42,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     public private(set) var selection: MVSelection = .empty
 
     @ObservationIgnored private let backend: any MVMailListBackend
+    /// The app-wide reference data, when there is one: the context starts from its last copy so
+    /// a list opened again shows badges, avatars and counts at once, and fresh reads go through
+    /// it so every screen shares them.
+    @ObservationIgnored private let referenceCache: MVReferenceCache?
     @ObservationIgnored private let toasts: MVToastStore?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let session: MVListSession
@@ -68,7 +72,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
 
     public init(
         scope: ListScope, aroundMessageId: UUID? = nil, backend: any MVMailListBackend, toasts: MVToastStore?,
-        defaults: UserDefaults = .standard, session: MVListSession? = nil
+        defaults: UserDefaults = .standard, session: MVListSession? = nil, referenceCache: MVReferenceCache? = nil
     ) {
         let session = session ?? .shared
         let threaded = MVListPreferences.threaded(defaults: defaults)
@@ -80,6 +84,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             scope: scope, threaded: threaded, unreadOnly: unreadOnly, filterQuery: "", generation: 0
         )
         self.backend = backend
+        self.referenceCache = referenceCache
         self.toasts = toasts
         self.defaults = defaults
         self.session = session
@@ -125,6 +130,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         guard !hasStarted else { return }
         hasStarted = true
         let restoring = initialAroundId == nil ? positions.load(scope: scope, threaded: threaded) : nil
+        seedContextFromCache()
         async let contextLoad: Void = loadContext()
         await loadFirstPage(aroundId: initialAroundId, restoring: restoring, generation: generation)
         await contextLoad
@@ -364,47 +370,122 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         await loadContext()
     }
 
-    private func loadContext() async {
+    /// The last copy of everything the context needs, before any request: a list opened again
+    /// draws its rows with badges, avatars and the title straight away.
+    private func seedContextFromCache() {
+        guard let cache = referenceCache else { return }
         var next = context
-        if let accounts = try? await backend.fetchAccounts() {
-            next.accounts = Dictionary(accounts.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        if let accounts = cache.cachedAccounts { next.accounts = Self.byId(accounts) }
+        if case .unified(let viewId, _) = scope, let views = cache.cachedUnifiedViews {
+            next.unifiedView = views.first { $0.id == viewId }
         }
+        let accountIds = accountIdsIn(next)
+        next.folders = Self.byId(accountIds.flatMap { cache.cachedFolders(accountId: $0) ?? [] })
+        next.avatarPhotos = Self.avatarPhotos(accountIds.compactMap { cache.cachedPhotoIndex(accountId: $0) })
+        context = next
+    }
+
+    /// Every part of the context read at once — accounts, the view, each account's folders and
+    /// photo index, the dead outbox — rather than one request after another. A part whose
+    /// request fails keeps what the context already had.
+    private func loadContext() async {
+        async let accountsLoad = freshAccounts()
+        async let deadLoad = try? backend.fetchDeadOutbox()
+        var unifiedView = context.unifiedView
+        if case .unified(let viewId, _) = scope, let views = await freshUnifiedViews() {
+            unifiedView = views.first { $0.id == viewId }
+        }
+        let accountIds: [UUID]
         switch scope {
-        case .folder(let accountId, _):
-            if let folders = try? await backend.fetchFolders(accountId: accountId) {
-                next.folders = Dictionary(folders.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            }
+        case .folder(let accountId, _): accountIds = [accountId]
+        case .unified: accountIds = Array(Set(unifiedView?.folders.map(\.accountId) ?? []))
+        }
+        async let foldersLoad = freshFolders(accountIds)
+        async let photosLoad = freshPhotoIndexes(accountIds)
+        let (accounts, dead, folders, photoIndexes) = await (accountsLoad, deadLoad, foldersLoad, photosLoad)
+
+        var next = context
+        if let accounts { next.accounts = Self.byId(accounts) }
+        next.unifiedView = unifiedView
+        var mergedFolders = next.folders.filter { accountIds.contains($0.value.accountId) }
+        for (accountId, list) in folders {
+            mergedFolders = mergedFolders.filter { $0.value.accountId != accountId }
+            for folder in list { mergedFolders[folder.id] = folder }
+        }
+        next.folders = mergedFolders
+        if case .folder(let accountId, _) = scope {
             next.neverConnectedError = nil
             if let account = next.accounts[accountId], account.state == "error",
                 let status = try? await backend.fetchSyncStatus(accountId: accountId), status.lastFullSync == nil
             {
                 next.neverConnectedError = account.stateError ?? "This account has never connected"
             }
-        case .unified(let viewId, _):
-            if let views = try? await backend.fetchUnifiedViews() {
-                next.unifiedView = views.first { $0.id == viewId }
-            }
-            var folders: [UUID: FolderResponse] = [:]
-            for accountId in Set(next.unifiedView?.folders.map(\.accountId) ?? []) {
-                for folder in (try? await backend.fetchFolders(accountId: accountId)) ?? [] {
-                    folders[folder.id] = folder
-                }
-            }
-            next.folders = folders
         }
-        if let dead = try? await backend.fetchDeadOutbox() {
-            let accountIds = Set(accountIdsIn(next))
-            let scoped = dead.filter { accountIds.contains($0.accountId) }
+        if let dead {
+            let scopedIds = Set(accountIds)
+            let scoped = dead.filter { scopedIds.contains($0.accountId) }
             next.deadOutboxCount = scoped.count
             next.deadOutboxAccountNames = Set(scoped.map(\.accountId)).compactMap { next.accounts[$0]?.name }.sorted()
         }
+        if !photoIndexes.isEmpty || accountIds.isEmpty {
+            next.avatarPhotos = Self.avatarPhotos(Array(photoIndexes.values))
+        }
+        context = next
+    }
+
+    private func freshAccounts() async -> [AccountResponse]? {
+        if let referenceCache { return await referenceCache.fetchAccounts() }
+        return try? await backend.fetchAccounts()
+    }
+
+    private func freshUnifiedViews() async -> [UnifiedFolderResponse]? {
+        if let referenceCache { return await referenceCache.fetchUnifiedViews() }
+        return try? await backend.fetchUnifiedViews()
+    }
+
+    /// Each account's folders, keyed by account — an account whose request failed is absent.
+    private func freshFolders(_ accountIds: [UUID]) async -> [UUID: [FolderResponse]] {
+        await withTaskGroup(of: (UUID, [FolderResponse]?).self) { group in
+            for accountId in accountIds {
+                group.addTask { (accountId, await self.freshFolders(accountId: accountId)) }
+            }
+            var result: [UUID: [FolderResponse]] = [:]
+            for await (accountId, folders) in group { result[accountId] = folders }
+            return result
+        }
+    }
+
+    private func freshFolders(accountId: UUID) async -> [FolderResponse]? {
+        if let referenceCache { return await referenceCache.fetchFolders(accountId: accountId) }
+        return try? await backend.fetchFolders(accountId: accountId)
+    }
+
+    private func freshPhotoIndexes(_ accountIds: [UUID]) async -> [UUID: ContactPhotoIndexResponse] {
+        await withTaskGroup(of: (UUID, ContactPhotoIndexResponse?).self) { group in
+            for accountId in accountIds {
+                group.addTask { (accountId, await self.freshPhotoIndex(accountId: accountId)) }
+            }
+            var result: [UUID: ContactPhotoIndexResponse] = [:]
+            for await (accountId, index) in group { result[accountId] = index }
+            return result
+        }
+    }
+
+    private func freshPhotoIndex(accountId: UUID) async -> ContactPhotoIndexResponse? {
+        if let referenceCache { return await referenceCache.fetchPhotoIndex(accountId: accountId) }
+        return try? await backend.fetchContactPhotoIndex(accountId: accountId)
+    }
+
+    private static func byId<T: Identifiable>(_ items: [T]) -> [T.ID: T] {
+        Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private static func avatarPhotos(_ indexes: [ContactPhotoIndexResponse]) -> [String: MVAvatarPhotoSource] {
         var photos: [String: MVAvatarPhotoSource] = [:]
-        for accountId in accountIdsIn(next) {
-            guard let index = try? await backend.fetchContactPhotoIndex(accountId: accountId) else { continue }
+        for index in indexes {
             for (email, entry) in index.byEmail { photos[email.lowercased()] = entry.avatarSource }
         }
-        next.avatarPhotos = photos
-        context = next
+        return photos
     }
 
     // MARK: - Live updates
@@ -549,7 +630,11 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     /// Filtering is a different list, starting at the top; clearing it returns the unfiltered
     /// rows (and, through `identity`, the controller's saved position in them).
     func applyFilter(query: String) async {
-        guard query != identity.filterQuery else { return }
+        guard query != identity.filterQuery else {
+            // Typed back to the query already showing, while a longer one was in flight.
+            isFilterLoading = false
+            return
+        }
         if query.isEmpty {
             isFilterLoading = false
             guard let saved = unfiltered else { return }
@@ -585,7 +670,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             phase = .loaded
         } catch {
             guard generation == started.generation else { return }
-            showError("Could not filter: \(error.mvUserMessage)")
+            // The next keystroke cancelled this request before its own request began.
+            if !error.mvIsCancellation { showError("Could not filter: \(error.mvUserMessage)") }
         }
         isFilterLoading = false
     }
@@ -679,7 +765,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             dateText: MVDateFormat.relativeDate(row.receivedAt, now: now), pendingSync: row.pendingSync,
             subject: row.subject ?? "(no subject)", threadCount: identity.threaded ? row.threadCount : nil,
             isAnswered: row.isAnswered, hasAttachments: row.hasAttachments, verdictIsSpam: row.verdictIsSpam == true,
-            isStarred: row.isFlagged, snippet: row.snippet,
+            isStarred: row.isFlagged, snippet: row.snippet, snippetMarksMatches: isFilterActive,
             avatarIdentity: row.fromAddr.map(extractEmail) ?? extractSenderName(row.fromAddr),
             avatarPhoto: context.avatarPhotos[extractEmail(row.fromAddr).lowercased()],
             unifiedAccountEmoji: isUnified ? context.accounts[row.accountId]?.emoji : nil

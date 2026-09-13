@@ -58,6 +58,7 @@ public final class MVSseClient {
     private var backoffNanos = MVSseClient.initialBackoffNanos
     private var lastEventTime = Date()
     private var stopped = false
+    private var paused = false
     private var streamTask: Task<Void, Never>?
     private var watchdogTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
@@ -92,6 +93,27 @@ public final class MVSseClient {
         callbacks.onDisconnected()
     }
 
+    /// Closes the stream until `resume()` without retrying — for an app going to the background,
+    /// where the socket would die unobserved and the retry backoff would keep growing against a
+    /// network the app cannot use.
+    public func pause() {
+        guard !stopped, !paused else { return }
+        paused = true
+        reconnectTask?.cancel()
+        streamTask?.cancel()
+        activeByteStream?.cancel()
+        watchdogTask?.cancel()
+    }
+
+    /// Reconnects at once with the backoff reset, sending the last event id so the server
+    /// replays what was missed (or answers `resync`).
+    public func resume() {
+        guard !stopped, paused else { return }
+        paused = false
+        backoffNanos = Self.initialBackoffNanos
+        connect()
+    }
+
     private func runConnection() async {
         var query: [URLQueryItem] = []
         if let accountId { query.append(URLQueryItem(name: "account_id", value: accountId)) }
@@ -121,6 +143,11 @@ public final class MVSseClient {
                     callbacks.onConnected()
                     startWatchdog()
                 case .chunk(let data):
+                    // Any bytes prove the connection alive — the backend's idle `: keepalive`
+                    // comment carries no record, and counting only records would have the
+                    // watchdog tear down a healthy, quiet connection every minute.
+                    lastEventTime = Date()
+                    callbacks.onActivity()
                     for line in splitter.ingest(data) {
                         if let record = accumulator.ingest(line: line) {
                             handleRecord(record)
@@ -179,7 +206,7 @@ public final class MVSseClient {
         streamTask?.cancel()
         activeByteStream?.cancel()
         watchdogTask?.cancel()
-        guard !stopped else { return }
+        guard !stopped, !paused else { return }
 
         let delay = backoffNanos
         backoffNanos = min(backoffNanos * 2, Self.maxBackoffNanos)

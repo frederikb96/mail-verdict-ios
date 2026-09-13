@@ -63,20 +63,27 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
         self.accountChip = accountChip
     }
 
-    /// The ordinary (non-search) shape: line 3 and 4 are both the plain snippet, no bold spans.
+    /// The ordinary (non-search) shape: the snippet alone, wrapping across both preview lines.
+    /// `snippetMarksMatches` is set for a quick-filter hit, whose snippet carries the server's
+    /// `**bold**` markers around the matched terms.
     public static func plain(
         id: UUID, isUnread: Bool, senderName: String, dateText: String, pendingSync: Bool = false,
         subject: String?, threadCount: Int? = nil, isAnswered: Bool = false,
         hasAttachments: Bool = false, verdictIsSpam: Bool = false, isStarred: Bool = false,
-        snippet: String?, avatarIdentity: String, avatarPhoto: MVAvatarPhotoSource? = nil,
-        unifiedAccountEmoji: String? = nil
+        snippet: String?, snippetMarksMatches: Bool = false, avatarIdentity: String,
+        avatarPhoto: MVAvatarPhotoSource? = nil, unifiedAccountEmoji: String? = nil
     ) -> MVMailRowData {
-        MVMailRowData(
+        let line4: [MVTextSegment]
+        if let snippet {
+            line4 = snippetMarksMatches ? parseBoldMarkers(snippet) : [MVTextSegment(text: snippet, isBold: false)]
+        } else {
+            line4 = []
+        }
+        return MVMailRowData(
             id: id, isUnread: isUnread, senderName: senderName, dateText: dateText,
             pendingSync: pendingSync, subject: subject, threadCount: threadCount,
             isAnswered: isAnswered, hasAttachments: hasAttachments, verdictIsSpam: verdictIsSpam,
-            isStarred: isStarred, line3: nil,
-            line4: snippet.map { [MVTextSegment(text: $0, isBold: false)] } ?? [],
+            isStarred: isStarred, line3: nil, line4: line4,
             avatarIdentity: avatarIdentity, avatarPhoto: avatarPhoto,
             unifiedAccountEmoji: unifiedAccountEmoji
         )

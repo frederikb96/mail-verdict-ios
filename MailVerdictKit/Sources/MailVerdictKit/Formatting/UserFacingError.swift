@@ -61,4 +61,12 @@ extension Error {
     /// The original error's own text, for a disclosure next to `mvUserMessage` rather than in
     /// place of it.
     public var mvTechnicalDetail: String { MVUserFacingError(self).technicalDetail }
+
+    /// A request this app cancelled itself because something newer superseded it — never a
+    /// failure to show. Structured cancellation surfaces from `URLSession` as `URLError.cancelled`
+    /// rather than `CancellationError`, so both count.
+    public var mvIsCancellation: Bool {
+        if self is CancellationError { return true }
+        return (self as? URLError)?.code == .cancelled
+    }
 }

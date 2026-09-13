@@ -31,7 +31,7 @@ struct MailListScreen: View {
         _store = State(
             initialValue: MVMailListStore(
                 scope: scope, aroundMessageId: aroundMessageId, backend: connection.apiClient,
-                toasts: environment.toasts
+                toasts: environment.toasts, referenceCache: connection.referenceCache
             )
         )
     }
@@ -195,7 +195,27 @@ struct MailListScreen: View {
                 Button("Done") { store.setSelecting(false) }
                     .accessibilityIdentifier("maillist-done")
             }
-            ToolbarItemGroup(placement: .bottomBar) { selectionActions }
+            // The reader's own bar: Archive and Delete, then everything else under Options.
+            ToolbarItem(placement: .bottomBar) {
+                Button {
+                    bulk(.archive)
+                } label: {
+                    Label(MVMessageUIAction.archive.title, systemImage: MVSymbols.archive)
+                }
+                .disabled(store.effectiveSelection.isEmpty)
+                .accessibilityIdentifier("maillist-bulk-archive")
+            }
+            ToolbarItem(placement: .bottomBar) {
+                Button {
+                    bulk(.trash)
+                } label: {
+                    Label(MVMessageUIAction.delete.title, systemImage: MVSymbols.delete)
+                }
+                .disabled(store.effectiveSelection.isEmpty)
+                .accessibilityIdentifier("maillist-bulk-trash")
+            }
+            ToolbarSpacer(.flexible, placement: .bottomBar)
+            ToolbarItem(placement: .bottomBar) { selectionOptionsMenu }
         } else {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Select") { store.setSelecting(true) }
@@ -210,64 +230,47 @@ struct MailListScreen: View {
         }
     }
 
-    @ViewBuilder
-    private var selectionActions: some View {
-        let isEmpty = store.effectiveSelection.isEmpty
-        Menu("Mark") {
-            Button {
-                bulk(.markRead)
-            } label: {
-                Label(MVMessageUIAction.markRead.title, systemImage: MVSymbols.markRead)
+    /// Everything the selection can do besides Archive and Delete, the way the reader's Options
+    /// menu holds everything besides those two.
+    private var selectionOptionsMenu: some View {
+        Menu {
+            Section {
+                bulkButton(.markRead, .markRead)
+                bulkButton(.markUnread, .markUnread)
+                bulkButton(.star, .flag)
+                bulkButton(.unstar, .unflag)
             }
-            Button {
-                bulk(.markUnread)
-            } label: {
-                Label(MVMessageUIAction.markUnread.title, systemImage: MVSymbols.markUnread)
+            Section {
+                Button {
+                    presentBulkMove()
+                } label: {
+                    Label(MVMessageUIAction.moveTo.title, systemImage: MVMessageUIAction.moveTo.symbol)
+                }
+                .accessibilityIdentifier("maillist-bulk-move")
+                if isJunkFolder {
+                    bulkButton(.notJunk, .notSpam)
+                } else {
+                    bulkButton(.moveToJunk, .spam)
+                }
             }
-            Button {
-                bulk(.flag)
-            } label: {
-                Label(MVMessageUIAction.star.title, systemImage: MVSymbols.star)
-            }
-            Button {
-                bulk(.unflag)
-            } label: {
-                Label(MVMessageUIAction.unstar.title, systemImage: MVSymbols.unstar)
-            }
-        }
-        .disabled(isEmpty)
-        .accessibilityIdentifier("maillist-bulk-mark")
-        Spacer()
-        Button("Move") { presentBulkMove() }
-            .disabled(isEmpty)
-            .accessibilityIdentifier("maillist-bulk-move")
-        Spacer()
-        Button {
-            bulk(.spam)
         } label: {
-            Image(systemName: MVSymbols.moveToJunk)
+            Label("Options", systemImage: MVSymbols.options)
         }
-        .disabled(isEmpty)
-        .accessibilityLabel(MVMessageUIAction.moveToJunk.title)
-        .accessibilityIdentifier("maillist-bulk-junk")
-        Spacer()
+        .disabled(store.effectiveSelection.isEmpty)
+        .accessibilityIdentifier("maillist-bulk-options")
+    }
+
+    private func bulkButton(_ action: MVMessageUIAction, _ bulkAction: MVBulkAction) -> some View {
         Button {
-            bulk(.archive)
+            bulk(bulkAction)
         } label: {
-            Image(systemName: MVSymbols.archive)
+            Label(action.title, systemImage: action.symbol)
         }
-        .disabled(isEmpty)
-        .accessibilityLabel(MVMessageUIAction.archive.title)
-        .accessibilityIdentifier("maillist-bulk-archive")
-        Spacer()
-        Button {
-            bulk(.trash)
-        } label: {
-            Image(systemName: MVSymbols.delete)
-        }
-        .disabled(isEmpty)
-        .accessibilityLabel("Move to Trash")
-        .accessibilityIdentifier("maillist-bulk-trash")
+    }
+
+    private var isJunkFolder: Bool {
+        guard case .folder(_, let folderId) = scope else { return false }
+        return store.context.folders[folderId]?.specialUse == "junk"
     }
 
     private var moreMenu: some View {
@@ -410,7 +413,14 @@ struct MailListScreen: View {
             perform: { action, row in route(action, row) },
             showOptions: { row in optionsRow = row },
             openAccounts: { environment.navigationPath.append(.accounts) },
-            lastSettledMessageId: { ReaderSourceRegistry.shared.lastSettledMessageId(for: .list(scope)) }
+            lastSettledMessageId: { ReaderSourceRegistry.shared.lastSettledMessageId(for: .list(scope)) },
+            prefetch: { [threadCache = connection.threadCache] rowIds, urgent in
+                if urgent {
+                    for rowId in rowIds { threadCache.prefetchUrgently(rowId) }
+                } else {
+                    threadCache.prefetch(rowIds)
+                }
+            }
         )
     }
 
@@ -526,7 +536,7 @@ struct MailListScreen: View {
             // Fixture mode has no event stream; its failing one would read as "Connecting…".
             if MVFixtureLaunch.isEnabled() { return .connected }
         #endif
-        return connection.liveEventHub.connectionState
+        return connection.liveEventHub.visibleConnectionState
     }
 
     // MARK: - Helpers

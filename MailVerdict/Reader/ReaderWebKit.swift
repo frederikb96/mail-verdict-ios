@@ -12,6 +12,21 @@ enum ReaderWebKit {
     private static var isCompiling = false
     private static var waiting: [@MainActor () -> Void] = []
     private static var ready = false
+    /// Held for the app's lifetime so a WebContent process is already running when the first
+    /// reader page asks for one.
+    private static var warmWebView: WKWebView?
+
+    /// Compiles the rule lists and starts a web content process ahead of the first message
+    /// opened, which otherwise pays for both before its first paint. Idempotent.
+    static func prewarm(api: MVApiClient) {
+        guard warmWebView == nil else { return }
+        let configuration = makeConfiguration(api: api)
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        warmWebView = webView
+        applyContentRules(to: configuration.userContentController, imagesAllowed: false) {
+            webView.loadHTMLString("<!doctype html><html><body></body></html>", baseURL: nil)
+        }
+    }
 
     static func makeConfiguration(api: MVApiClient) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
