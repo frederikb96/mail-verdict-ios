@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Any message in a thread can be made the open one: an expanded older message gets an "Open this
+  message" control that makes it the one Reply, Reply All and Forward answer.
+
+### Fixed
+
+- Collapsing an account or the Unified section in Mailboxes actually collapses it now — tapping
+  the chevron previously did nothing, since the collapse state lived outside SwiftUI's own
+  Observation tracking.
+
 ## [0.1.3] - 2026-09-13
 
 ### Changed

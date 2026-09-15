@@ -24,7 +24,15 @@ public struct MailboxesUIState: @unchecked Sendable {
     public static func accountKey(_ accountId: UUID) -> String { "account:\(accountId)" }
 
     public func isCollapsed(_ key: String) -> Bool {
-        (defaults.stringArray(forKey: Self.collapsedKey) ?? []).contains(key)
+        collapsedKeys().contains(key)
+    }
+
+    /// Every key currently collapsed. `MailboxesStore` reads this once, at init, into its own
+    /// `@Observable`-tracked storage — `UserDefaults` is not itself Observable, so a screen
+    /// reading straight through `isCollapsed(_:)` on every render would never see a `toggleCollapsed`
+    /// (or a relaunch's restored state) invalidate the view.
+    public func collapsedKeys() -> Set<String> {
+        Set(defaults.stringArray(forKey: Self.collapsedKey) ?? [])
     }
 
     public func setCollapsed(_ isCollapsed: Bool, forKey key: String) {

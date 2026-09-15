@@ -58,6 +58,10 @@ public final class MailboxesStore {
     public private(set) var isLoading = false
     public private(set) var loadError: String?
     public private(set) var hasAnyAccount = true
+    /// Which sections are collapsed — the `@Observable`-tracked mirror of `uiState`'s own
+    /// `UserDefaults` storage. `MailboxesScreen`'s body reads this (through `isCollapsed(_:)`),
+    /// never `uiState` directly, so `toggleCollapsed` actually triggers a re-render.
+    public private(set) var collapsedKeys: Set<String>
 
     public let membership: MailboxesUnifiedMembership
 
@@ -81,15 +85,18 @@ public final class MailboxesStore {
         self.diskCache = diskCache
         self.recentViews = recentViews
         self.membership = membership
+        self.collapsedKeys = uiState.collapsedKeys()
         applyCachedSnapshotIfAvailable()
     }
 
     // MARK: - Collapse state
 
-    public func isCollapsed(_ key: String) -> Bool { uiState.isCollapsed(key) }
+    public func isCollapsed(_ key: String) -> Bool { collapsedKeys.contains(key) }
 
     public func toggleCollapsed(_ key: String) {
-        uiState.setCollapsed(!uiState.isCollapsed(key), forKey: key)
+        let collapsed = !collapsedKeys.contains(key)
+        if collapsed { collapsedKeys.insert(key) } else { collapsedKeys.remove(key) }
+        uiState.setCollapsed(collapsed, forKey: key)
         reportDebugState()
     }
 
