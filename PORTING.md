@@ -284,3 +284,9 @@ Junk folder); all three disable with nothing ticked.
 Needs a device because: scene-phase transitions and a real network. Confirm: switching away and
 back never flashes "Connecting…"; airplane mode shows it after a few seconds and clears within a few
 seconds of turning it off.
+
+### Any message in a thread can be made the open one, and Reply answers it — web anchor: ui/src/components/mail/thread-message.tsx (Open this message), reading-pane.tsx (ReplyBox source)
+Needs a device because: reader header layout and navigation. Confirm: expanding an older message
+offers "Open this message"; tapping it moves the toolbar, the reply bar and the folder to that
+message while the newer ones stay collapsed above; Reply then quotes and threads to that message,
+not the newest. The message's light/dark switch sits beside its date as an icon.
