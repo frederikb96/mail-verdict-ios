@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-15
+
 ### Added
 
 - Any message in a thread can be made the open one: an expanded older message gets an "Open this
