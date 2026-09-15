@@ -220,6 +220,85 @@ final class ReaderSessionTests: XCTestCase {
         XCTAssertTrue(marked, "opening an unread older message never marked it read")
     }
 
+    /// Archiving, deleting or junking the open message when it is not the row's own must leave
+    /// the row (and the rest of the pager) exactly where it was — only the message itself leaves
+    /// its folder, the same as the web, where the conversation's row survives.
+    func testArchivingANonRowMessageKeepsTheRowInThePager() async throws {
+        let older = message(b, seen: false)
+        let newer = message(a, seen: true)
+        ReaderRouteStub.route(
+            "POST", "/api/messages/\(b)/action",
+            json: MessageActionResponse(success: true, action: "archive", messageId: b, message: nil))
+        let (session, _) = try makeSession(rows: [a], opening: a, seen: true)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", json: ThreadResponse(messages: [older, newer]))
+        session.didSettle(on: a)
+        let loaded = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(loaded)
+        session.openMessage(b)
+        XCTAssertEqual(session.currentPrimary?.id, b)
+
+        XCTAssertEqual(session.remove(with: .archive), .stay)
+
+        XCTAssertEqual(session.currentRowId, a, "archiving the open message moved the pager off its row")
+        XCTAssertFalse(session.paging.removedIds.contains(a), "the row itself was removed from the pager")
+        let archived = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.b)) }
+        XCTAssertTrue(archived, "the open message was never archived")
+        XCTAssertFalse(
+            ReaderRouteStub.recorded.contains(actionPath(a)), "the row's own message was archived instead")
+    }
+
+    /// A refresh must carry the currently open message forward rather than snapping back to the
+    /// row's own — a new reply arriving over SSE, or a cached copy revalidated behind the first
+    /// document, both go through the same `refresh(_:)`.
+    func testRefreshingAfterOpeningAnOlderMessageKeepsItOpenWhenTheThreadGrows() async throws {
+        let older = message(b, seen: true)
+        let newer = message(a, seen: true)
+        let (session, _) = try makeSession(rows: [a], opening: a, seen: true)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", json: ThreadResponse(messages: [older, newer]))
+        session.didSettle(on: a)
+        let loaded = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(loaded)
+        session.openMessage(b)
+        XCTAssertEqual(session.currentPrimary?.id, b)
+
+        let reply = message(c, seen: true)
+        ReaderRouteStub.route(
+            "GET", "/api/messages/\(a)/thread", json: ThreadResponse(messages: [older, newer, reply]))
+        var refreshed = false
+        session.refresh(a) { refreshed = true }
+        let done = await waitUntil { refreshed }
+        XCTAssertTrue(done)
+
+        XCTAssertEqual(session.currentPrimary?.id, b, "a live refresh snapped the open message back to the row's own")
+        XCTAssertEqual(session.conversation(for: a)?.messageIds.count, 3)
+    }
+
+    /// `applyReadRules` dismisses a settled row's own unseen alerts; opening a different message
+    /// of the same thread must do the same for that message.
+    func testOpeningAnOlderMessageDismissesItsOwnUnseenAlerts() async throws {
+        let older = message(b, seen: true)
+        let newer = message(a, seen: true)
+        let (session, _) = try makeSession(rows: [a], opening: a, seen: true)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", json: ThreadResponse(messages: [older, newer]))
+        session.didSettle(on: a)
+        let loaded = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(loaded)
+        let rulesRan = await waitUntil { ReaderRouteStub.recorded.contains("GET /api/alerts") }
+        XCTAssertTrue(rulesRan, "the settle rules never ran")
+
+        let alertId = UUID()
+        let alert = AlertResponse(
+            id: alertId, kind: "new_mail", title: nil, body: nil, url: nil, accountId: nil, messageId: b,
+            folderId: nil, deliveredAt: nil, dismissedAt: nil, createdAt: Date())
+        ReaderRouteStub.route("GET", "/api/alerts", json: [alert])
+        ReaderRouteStub.route("POST", "/api/alerts/\(alertId)/dismiss", body: Data())
+
+        session.openMessage(b)
+
+        let dismissed = await waitUntil { ReaderRouteStub.recorded.contains("POST /api/alerts/\(alertId)/dismiss") }
+        XCTAssertTrue(dismissed, "opening an older message never dismissed its own unseen alert")
+    }
+
     func testArchivingAdvancesAtOnceAndAFailedRequestPutsTheMessageBack() async throws {
         ReaderRouteStub.route(
             "POST", "/api/messages/\(b)/action", status: 500, body: Data(#"{"detail":"server down"}"#.utf8))

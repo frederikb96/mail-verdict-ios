@@ -399,11 +399,7 @@ public final class ReaderSession {
                         accountId: primary.accountId, request: BulkActionRequest(action: .markRead, ids: ids))
                 }
             }
-            if let alerts = try? await self.api.listAlerts(limit: 200, unseenOnly: true) {
-                for alert in alerts where alert.messageId == primary.id && alert.dismissedAt == nil {
-                    try? await self.api.dismissAlert(id: alert.id)
-                }
-            }
+            await self.dismissAlerts(for: primary.id)
         }
     }
 
@@ -415,6 +411,15 @@ public final class ReaderSession {
         if !explicit { await tracker.clear() }
         if ReaderReadPolicy.shouldMarkRead(message, explicitlyUnreadId: explicit ? message.id : nil) {
             await send(.markRead, to: message.id, optimistic: { $0.isSeen = true }, revert: { $0.isSeen = false })
+        }
+    }
+
+    /// Dismisses every undismissed alert for one message — shared by settling on a row's own
+    /// primary and by switching to another message of the same conversation.
+    private func dismissAlerts(for messageId: UUID) async {
+        guard let alerts = try? await api.listAlerts(limit: 200, unseenOnly: true) else { return }
+        for alert in alerts where alert.messageId == messageId && alert.dismissedAt == nil {
+            try? await api.dismissAlert(id: alert.id)
         }
     }
 
@@ -434,36 +439,48 @@ public final class ReaderSession {
                 html: ConversationDocumentBuilder.document(for: conversation, options: options(for: rowId)),
                 revealsOpened: true))
         if let message = conversation.messages.first(where: { $0.id == id }) {
-            Task { [weak self] in await self?.markReadIfNeeded(message) }
+            Task { [weak self] in
+                guard let self else { return }
+                await self.markReadIfNeeded(message)
+                await self.dismissAlerts(for: message.id)
+            }
         }
     }
 
     // MARK: Actions leaving the list
 
-    /// Archive, Delete, Delete Forever, Junk and Not Junk: the page slides on to the neighbour in
-    /// the direction last paged straight away, and the request follows. An undoable action offers
-    /// Undo, which moves the message back; a failed one puts it back in the pager.
+    /// Archive, Delete, Delete Forever, Junk and Not Junk. When the primary is the row's own
+    /// message, the page slides on to the neighbour in the direction last paged straight away, and
+    /// the request follows. But `openMessage` can make the primary a different message than the
+    /// row — acting on it then only takes that one message out of its folder; the row, and the
+    /// rest of the pager, stay exactly where they are, the same as the web, where the conversation
+    /// row survives and only the message leaves it. An undoable action offers Undo, which moves
+    /// the message back; a failed one puts it back where it was — in the pager when the row
+    /// itself moved, or just in its folder when only the message did.
     public func remove(with action: MVMessageAction) -> ReaderActionOutcome {
         guard let message = currentPrimary else { return .stay }
         let rowId = currentRowId
         let originalFolderId = message.folderId
-        let removal = paging.remove(rowId)
+        let removesRow = message.id == rowId
+        let removal = removesRow ? paging.remove(rowId) : nil
         Task { [weak self] in
             guard let self else { return }
             do {
                 _ = try await self.api.performMessageAction(messageId: message.id, action: action)
+                if !removesRow { self.refresh(rowId) }
                 if let label = MailActionLabels.undoToast(for: action) {
                     self.onToast?(
                         MVToast(
                             variant: .success, message: label, duration: 6, actionTitle: "Undo",
                             action: { [weak self] in
                                 Task { @MainActor in
-                                    await self?.undoMove(message.id, rowId: rowId, to: originalFolderId)
+                                    await self?.undoMove(
+                                        message.id, rowId: rowId, to: originalFolderId, restoringRow: removesRow)
                                 }
                             }))
                 }
             } catch {
-                self.paging.restore(rowId)
+                if removesRow { self.paging.restore(rowId) }
                 self.onToast?(
                     MVToast(
                         variant: .error, message: MailActionLabels.failure(action, reason: error.mvUserMessage),
@@ -472,14 +489,15 @@ public final class ReaderSession {
         }
         switch removal {
         case .advance(let target, let direction)?: return .advance(to: target, direction: direction)
-        case .exhausted?, nil: return .close
+        case .exhausted?: return .close
+        case nil: return .stay
         }
     }
 
-    private func undoMove(_ messageId: UUID, rowId: UUID, to folderId: UUID) async {
+    private func undoMove(_ messageId: UUID, rowId: UUID, to folderId: UUID, restoringRow: Bool) async {
         do {
             _ = try await api.performMessageAction(messageId: messageId, action: .move, targetFolderId: folderId)
-            paging.restore(rowId)
+            if restoringRow { paging.restore(rowId) } else { refresh(rowId) }
         } catch {
             onToast?(
                 MVToast(
@@ -756,7 +774,12 @@ public final class ReaderSession {
             guard let current = self.conversation(for: rowId),
                 current == previous || current.messageIds == previous.messageIds
             else { return }
-            let next = ReaderConversation(messages: thread.messages, openedId: rowId)
+            // `openMessage` may have moved `current.openedId` off the row's own id — carry it
+            // forward whenever the re-fetched thread still holds it, or a new reply arriving over
+            // SSE, or a cached copy revalidated one message short, would silently snap Reply and
+            // the toolbar back to the row's own message.
+            let openedId = thread.messages.contains { $0.id == current.openedId } ? current.openedId : rowId
+            let next = ReaderConversation(messages: thread.messages, openedId: openedId)
             guard !next.messages.isEmpty else { return }
             if next.messageIds != current.messageIds {
                 await self.prepareReferenceData(for: next.messages, rowId: rowId)
