@@ -16,11 +16,6 @@ public struct ReaderConversation: Sendable, Equatable {
         messages.first { $0.id == openedId } ?? messages.last
     }
 
-    /// Reply, Reply All and Forward answer the thread's newest message, as the web's reply box does.
-    public var newest: MessageDetail? {
-        messages.last
-    }
-
     public var messageIds: [UUID] {
         messages.map(\.id)
     }
@@ -129,7 +124,7 @@ public enum ConversationDocumentBuilder {
         let open = expanded ? " open" : ""
         return #"<details class="mv-message" id="\#(id)"\#(open)><summary class="mv-summary">"#
             + collapsedRow(message, options: options, isDraft: false)
-            + expandedHeader(message, options: options)
+            + expandedHeader(message, isPrimary: isPrimary, options: options)
             + "</summary>" + content(message, options: options) + "</details>"
     }
 
@@ -144,7 +139,7 @@ public enum ConversationDocumentBuilder {
             + #"<span class="mv-date">\#(escape(MVDateFormat.relativeDate(message.receivedAt, now: options.now)))</span></div>"#
     }
 
-    static func expandedHeader(_ message: MessageDetail, options: ReaderDocumentOptions) -> String {
+    static func expandedHeader(_ message: MessageDetail, isPrimary: Bool, options: ReaderDocumentOptions) -> String {
         let sender = extractSenderName(message.fromAddr)
         let email = extractEmail(message.fromAddr)
         let from =
@@ -152,11 +147,15 @@ public enum ConversationDocumentBuilder {
             + #"<span class="mv-from-name">\#(escape(sender))</span> <span class="mv-email">&lt;\#(escape(email))&gt;</span></a>"#
         let clip = message.attachments.isEmpty ? "" : paperclip
         let pending = message.pendingSync ? #"<span class="mv-spinner"></span>"# : ""
+        let openControl =
+            isPrimary
+            ? ""
+            : #"<a class="mv-open-btn" aria-label="Open this message" href="\#(MVReaderLink.openMessage(messageId: message.id).url)">\#(locateGlyph)</a>"#
         return #"<div class="mv-expanded">\#(avatar(message, options: options, size: 40))<div class="mv-header-text">"#
             + from
             + recipientLine("To:", field: .to, addresses: message.toAddrs?.addresses ?? [], messageId: message.id)
             + recipientLine("Cc:", field: .cc, addresses: message.ccAddrs?.addresses ?? [], messageId: message.id)
-            + #"<div class="mv-full-date">\#(escape(MVDateFormat.fullDate(message.receivedAt)))\#(clip)\#(pending)</div>"#
+            + #"<div class="mv-full-date">\#(escape(MVDateFormat.fullDate(message.receivedAt)))\#(clip)\#(pending)\#(openControl)</div>"#
             + "</div>" + chevronDown + "</div>"
     }
 
@@ -277,6 +276,8 @@ public enum ConversationDocumentBuilder {
         #"<svg class="mv-glyph mv-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>"#
     static let shareGlyph =
         #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 7.5L12 3l4.5 4.5M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>"#
+    static let locateGlyph =
+        #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>"#
 
     /// The chrome's own stylesheet — iOS system colours per theme, Dynamic Type text styles, and
     /// `overflow-x: hidden` at the root so that at rest zoom the page never scrolls sideways and
@@ -313,6 +314,7 @@ public enum ConversationDocumentBuilder {
         .mv-email, .mv-recipients, .mv-full-date { color: var(--secondary); font: -apple-system-subheadline; }
         .mv-recipients .mv-addr { color: var(--secondary); }
         .mv-full-date { display: flex; align-items: center; gap: 6px; }
+        .mv-open-btn { color: var(--tint); padding: 4px; margin: -4px; display: inline-flex; }
         .mv-avatar { flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
           color: var(--avatar); background-color: color-mix(in srgb, var(--avatar) 20%, transparent);
           background-size: cover; background-position: center; font-weight: 600; overflow: hidden; }

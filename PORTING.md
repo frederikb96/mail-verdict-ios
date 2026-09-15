@@ -286,7 +286,13 @@ back never flashes "Connecting…"; airplane mode shows it after a few seconds a
 seconds of turning it off.
 
 ### Any message in a thread can be made the open one, and Reply answers it — web anchor: ui/src/components/mail/thread-message.tsx (Open this message), reading-pane.tsx (ReplyBox source)
-Needs a device because: reader header layout and navigation. Confirm: expanding an older message
-offers "Open this message"; tapping it moves the toolbar, the reply bar and the folder to that
-message while the newer ones stay collapsed above; Reply then quotes and threads to that message,
-not the newest. The message's light/dark switch sits beside its date as an icon.
+Needs a device because: reader header layout and the web view control tap. Confirm: expanding an
+older message offers "Open this message" (a small target icon beside its date); tapping it swaps
+the primary message in place — the same row, no folder navigation, since the whole thread is
+already loaded in one page — and the other messages collapse above it; Reply/Reply All/Forward
+then target that message, not the newest, and it gets marked read. The web moves folder scope
+because it re-fetches per message; ported as an in-page switch instead, since the iOS reader
+already renders the full conversation as one document (`ConversationDocumentBuilder`) regardless
+of which message is open. The web's own move of its per-message light/dark switch has no
+equivalent here: iOS never had a labelled button for it — the switch is already scoped to
+whichever message is primary, via the reader's Options menu.

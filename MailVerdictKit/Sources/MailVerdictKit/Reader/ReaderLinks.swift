@@ -13,6 +13,9 @@ public enum MVReaderLink: Sendable, Equatable {
     case draft(messageId: UUID)
     case retry
     case invitation(messageId: UUID, action: MVInvitationLinkAction)
+    /// The header control on a message that is not the open one: switches it to become the open
+    /// one, the one every action and the reply box target.
+    case openMessage(messageId: UUID)
 
     public static let scheme = "mv"
 
@@ -25,6 +28,7 @@ public enum MVReaderLink: Sendable, Equatable {
         case .draft(let id): return "mv://draft/\(Self.id(id))"
         case .retry: return "mv://retry"
         case .invitation(let id, let action): return "mv://invitation/\(Self.id(id))/\(action.pathComponent)"
+        case .openMessage(let id): return "mv://open-message/\(Self.id(id))"
         }
     }
 
@@ -56,6 +60,9 @@ public enum MVReaderLink: Sendable, Equatable {
             guard let id = uuid(0), let action = MVInvitationLinkAction(pathComponents: Array(parts.dropFirst()))
             else { return nil }
             self = .invitation(messageId: id, action: action)
+        case "open-message":
+            guard let id = uuid(0) else { return nil }
+            self = .openMessage(messageId: id)
         default:
             return nil
         }

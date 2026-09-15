@@ -214,6 +214,8 @@ final class ReaderScreenModel {
             session.retry(session.currentRowId)
         case .invitation(let messageId, let action):
             handleInvitation(action, messageId: messageId)
+        case .openMessage(let messageId):
+            session.openMessage(messageId)
         }
     }
 

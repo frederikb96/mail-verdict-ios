@@ -389,12 +389,7 @@ public final class ReaderSession {
         let scopedFolders = (source as? any ReaderConversationScopedSource)?.conversationFolderIds(for: rowId)
         Task { [weak self] in
             guard let self else { return }
-            let explicit = await self.tracker.isExplicit(primary.id)
-            if !explicit { await self.tracker.clear() }
-            if ReaderReadPolicy.shouldMarkRead(primary, explicitlyUnreadId: explicit ? primary.id : nil) {
-                await self.send(
-                    .markRead, to: primary.id, optimistic: { $0.isSeen = true }, revert: { $0.isSeen = false })
-            }
+            await self.markReadIfNeeded(primary)
             if let scopedFolders {
                 let ids = ReaderReadPolicy.conversationIdsToMarkRead(
                     thread: conversation.messages, openedId: primary.id, folderIds: scopedFolders)
@@ -409,6 +404,37 @@ public final class ReaderSession {
                     try? await self.api.dismissAlert(id: alert.id)
                 }
             }
+        }
+    }
+
+    /// Marks one message read, unless it is a draft or someone explicitly marked it unread while
+    /// looking at it — shared by settling on a row's own primary and by switching to another
+    /// message of the same conversation.
+    private func markReadIfNeeded(_ message: MessageDetail) async {
+        let explicit = await tracker.isExplicit(message.id)
+        if !explicit { await tracker.clear() }
+        if ReaderReadPolicy.shouldMarkRead(message, explicitlyUnreadId: explicit ? message.id : nil) {
+            await send(.markRead, to: message.id, optimistic: { $0.isSeen = true }, revert: { $0.isSeen = false })
+        }
+    }
+
+    /// Switches the conversation's open message to another one of the same thread — the header
+    /// control on an expanded message that is not already open. Every action, the reply box and
+    /// the newly-open message's own read state follow it; the rest of the thread collapses above
+    /// it, the same as a freshly loaded page.
+    public func openMessage(_ id: UUID) {
+        guard let rowId = row(containing: id), var conversation = conversation(for: rowId), conversation.openedId != id
+        else { return }
+        conversation.openedId = id
+        pages[rowId] = .loaded(conversation)
+        revision += 1
+        emit(
+            rowId,
+            .document(
+                html: ConversationDocumentBuilder.document(for: conversation, options: options(for: rowId)),
+                revealsOpened: true))
+        if let message = conversation.messages.first(where: { $0.id == id }) {
+            Task { [weak self] in await self?.markReadIfNeeded(message) }
         }
     }
 
@@ -568,13 +594,14 @@ public final class ReaderSession {
                 html: ConversationDocumentBuilder.bodyHost(messageId, rendering: rendering)))
     }
 
-    /// Reply, Reply All and Forward answer the thread's newest message.
+    /// Reply, Reply All and Forward answer the conversation's open message — the one `openMessage`
+    /// last switched to, or its newest message otherwise.
     public func composeIntent(for action: MVMessageUIAction) -> ComposeIntent? {
-        guard let newest = conversation(for: currentRowId)?.newest else { return nil }
+        guard let primary = currentPrimary else { return nil }
         switch action {
-        case .reply: return ComposeIntent(kind: .reply(messageId: newest.id))
-        case .replyAll: return ComposeIntent(kind: .replyAll(messageId: newest.id))
-        case .forward: return ComposeIntent(kind: .forward(messageId: newest.id))
+        case .reply: return ComposeIntent(kind: .reply(messageId: primary.id))
+        case .replyAll: return ComposeIntent(kind: .replyAll(messageId: primary.id))
+        case .forward: return ComposeIntent(kind: .forward(messageId: primary.id))
         default: return nil
         }
     }

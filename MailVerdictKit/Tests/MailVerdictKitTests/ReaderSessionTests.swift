@@ -195,6 +195,31 @@ final class ReaderSessionTests: XCTestCase {
         XCTAssertFalse(ReaderRouteStub.recorded.contains(actionPath(a)))
     }
 
+    /// The row opens on its own (newest) message; switching to an older message of the same
+    /// thread makes it the primary — what Reply targets, and what gets marked read — while the
+    /// row itself (`a`) stays exactly where the pager left it.
+    func testOpeningAnOlderMessageOfTheThreadBecomesPrimaryAndIsMarkedRead() async throws {
+        let older = message(b, seen: false)
+        let newer = message(a, seen: true)
+        ReaderRouteStub.route(
+            "POST", "/api/messages/\(b)/action",
+            json: MessageActionResponse(success: true, action: "mark_read", messageId: b, message: nil))
+        let (session, _) = try makeSession(rows: [a], opening: a, seen: true)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", json: ThreadResponse(messages: [older, newer]))
+        session.didSettle(on: a)
+        let loaded = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(session.currentPrimary?.id, a, "the row did not open on its own newest message")
+
+        session.openMessage(b)
+
+        XCTAssertEqual(session.currentRowId, a, "switching the open message moved the pager off its row")
+        XCTAssertEqual(session.currentPrimary?.id, b)
+        XCTAssertEqual(session.composeIntent(for: .reply)?.kind, .reply(messageId: b))
+        let marked = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.b)) }
+        XCTAssertTrue(marked, "opening an unread older message never marked it read")
+    }
+
     func testArchivingAdvancesAtOnceAndAFailedRequestPutsTheMessageBack() async throws {
         ReaderRouteStub.route(
             "POST", "/api/messages/\(b)/action", status: 500, body: Data(#"{"detail":"server down"}"#.utf8))

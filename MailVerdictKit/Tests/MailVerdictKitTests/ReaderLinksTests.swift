@@ -15,7 +15,7 @@ final class ReaderLinksTests: XCTestCase {
             .invitation(messageId: id, action: .respond(.declined)),
             .invitation(messageId: id, action: .sendAgain), .invitation(messageId: id, action: .note),
             .invitation(messageId: id, action: .eventDetails), .invitation(messageId: id, action: .confirmChange),
-            .invitation(messageId: id, action: .retry),
+            .invitation(messageId: id, action: .retry), .openMessage(messageId: id),
         ]
         for link in links {
             let url = try XCTUnwrap(URL(string: link.url))

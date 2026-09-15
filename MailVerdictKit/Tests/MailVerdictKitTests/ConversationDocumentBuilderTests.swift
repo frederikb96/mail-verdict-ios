@@ -88,6 +88,14 @@ final class ConversationDocumentBuilderTests: XCTestCase {
         XCTAssertEqual(doc.components(separatedBy: #"shadowrootmode="open""#).count - 1, 2)
     }
 
+    func testOnlyANonPrimaryMessageGetsTheOpenControl() {
+        let older = message(minutesAgo: 60)
+        let newer = message(minutesAgo: 5)
+        let doc = document([older, newer], opened: newer.id)
+        XCTAssertTrue(doc.contains(MVReaderLink.openMessage(messageId: older.id).url))
+        XCTAssertFalse(doc.contains(MVReaderLink.openMessage(messageId: newer.id).url))
+    }
+
     func testEveryFixturePageBuilds() {
         for (rowId, thread) in ReaderFixtures.threads() {
             let doc = document(thread.messages, opened: rowId)
