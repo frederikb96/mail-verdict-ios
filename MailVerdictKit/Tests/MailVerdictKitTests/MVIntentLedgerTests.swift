@@ -14,6 +14,9 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     private var _inFlight = 0
     private var _maxInFlight = 0
     private var _handler: Handler = { _ in }
+    private var _thread = ThreadResponse(messages: [])
+    private var _threadFetches = 0
+    private var _bulkIds: [[UUID]] = []
 
     private func locked<T>(_ body: () -> T) -> T {
         lock.lock()
@@ -27,6 +30,13 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     var keys: [UUID?] { locked { _keys } }
     var timeouts: [TimeInterval] { locked { _timeouts } }
     var maxInFlight: Int { locked { _maxInFlight } }
+    var thread: ThreadResponse {
+        get { locked { _thread } }
+        set { locked { _thread = newValue } }
+    }
+    var threadFetches: Int { locked { _threadFetches } }
+    /// The ids each bulk delivery named.
+    var bulkIds: [[UUID]] { locked { _bulkIds } }
     var handler: Handler {
         get { locked { _handler } }
         set { locked { _handler = newValue } }
@@ -58,6 +68,7 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     func deliverBulkAction(
         accountId: UUID, request: BulkActionRequest, timeout: TimeInterval
     ) async throws -> BulkActionResponse {
+        locked { _bulkIds.append(request.ids ?? []) }
         try await record(
             Self.label(request.action.rawValue, request.ids?.first), key: request.idempotencyKey, timeout: timeout)
         return BulkActionResponse(
@@ -65,7 +76,10 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     }
 
     func fetchThread(messageId: UUID) async throws -> ThreadResponse {
-        ThreadResponse(messages: [])
+        locked {
+            _threadFetches += 1
+            return _thread
+        }
     }
 }
 
@@ -206,6 +220,39 @@ final class MVIntentLedgerTests: XCTestCase {
         XCTAssertEqual(outcome, .gone)
         XCTAssertTrue(ledger.intents.isEmpty)
         XCTAssertNil(toasts.current)
+    }
+
+    /// The server refuses a repeated key carrying a different body, so a retried conversation
+    /// read sends the ids it resolved the first time, not a re-read of a conversation that has
+    /// since changed.
+    func testARetriedConversationReadSendsTheSameIdsItFirstResolved() async {
+        let clock = TestIntentClock()
+        let transport = RecordingIntentTransport()
+        let message = { (id: UUID, seen: Bool) in
+            ReaderFixtures.message(
+                id: id, from: "a@example.org", to: [], subject: "s", html: nil, text: "x", minutesAgo: 1, isSeen: seen)
+        }
+        let folder = message(testUUID(1), false).folderId
+        transport.thread = ThreadResponse(messages: [message(testUUID(1), false), message(testUUID(2), false)])
+        let attempts = CallCounter()
+        transport.handler = { _ in
+            if attempts.next() == 1 { throw MVError.detail("still applying", statusCode: 503) }
+        }
+        let ledger = makeTestLedger(transport: transport, clock: clock)
+
+        let retryAt = clock.now.addingTimeInterval(1)
+        ledger.enqueue(
+            MVIntentRequest(
+                accountId: testAccount, action: .markRead, messageIds: [testUUID(1)],
+                delivery: .conversationRead(folderIds: [folder])))
+        await waitUntil { transport.bulkIds.count == 1 && clock.hasSleeper(endingAt: retryAt) }
+        transport.thread = ThreadResponse(
+            messages: [message(testUUID(1), false), message(testUUID(2), false), message(testUUID(3), false)])
+        clock.advance(by: 1)
+        await waitUntil { ledger.intents.first?.state == .done }
+
+        XCTAssertEqual(transport.bulkIds, [[testUUID(1), testUUID(2)], [testUUID(1), testUUID(2)]])
+        XCTAssertEqual(transport.threadFetches, 1)
     }
 
     // MARK: - Connectivity and persistence

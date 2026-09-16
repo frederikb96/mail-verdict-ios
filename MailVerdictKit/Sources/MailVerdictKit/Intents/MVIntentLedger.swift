@@ -351,9 +351,15 @@ public final class MVIntentLedger {
                         accountId: intent.accountId, request: request, timeout: timeout))
             case .conversationRead(let folderIds):
                 guard let messageId = intent.messageIds.first else { return .refused("Nothing to send") }
-                let thread = try await transport.fetchThread(messageId: messageId)
-                let scoped = Set(folderIds)
-                let unread = thread.messages.filter { scoped.contains($0.folderId) && !$0.isSeen }.map(\.id)
+                let unread: [UUID]
+                if let resolved = intent.resolvedMessageIds {
+                    unread = resolved
+                } else {
+                    let thread = try await transport.fetchThread(messageId: messageId)
+                    let scoped = Set(folderIds)
+                    unread = thread.messages.filter { scoped.contains($0.folderId) && !$0.isSeen }.map(\.id)
+                    recordResolved(unread, for: intent.id)
+                }
                 guard !unread.isEmpty else { return .delivered(affectedCount: 0, sources: []) }
                 let request = BulkActionRequest(action: .markRead, ids: unread, idempotencyKey: intent.id)
                 return Self.delivered(
@@ -363,6 +369,12 @@ public final class MVIntentLedger {
         } catch {
             return MVIntentDelivery.classify(error)
         }
+    }
+
+    private func recordResolved(_ ids: [UUID], for id: UUID) {
+        guard let index = intents.firstIndex(where: { $0.id == id }) else { return }
+        intents[index].resolvedMessageIds = ids
+        save()
     }
 
     private static func delivered(_ response: BulkActionResponse) -> MVIntentDelivery {

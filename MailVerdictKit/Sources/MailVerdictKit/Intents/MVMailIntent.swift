@@ -53,6 +53,9 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
     /// Every message the server reports having moved — an expanded conversation names more than
     /// `messageIds` does.
     public internal(set) var movedSources: [BulkActionSource]
+    /// A conversation read's unread messages, as resolved on its first attempt. Every retry sends
+    /// exactly these, since the server refuses a repeated idempotency key with a different body.
+    public internal(set) var resolvedMessageIds: [UUID]?
 
     init(request: MVIntentRequest, id: UUID, undoes: UUID?, createdAt: Date) {
         self.id = id
