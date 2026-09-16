@@ -324,18 +324,24 @@ public enum MVMessageAction: String, Sendable, Equatable, CaseIterable, Codable 
 public struct MessageActionRequest: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "MessageActionRequest"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case action, targetFolderId = "target_folder_id", keyword
+        case action, targetFolderId = "target_folder_id", keyword, idempotencyKey = "idempotency_key"
     }
     public typealias CodingKeys = ContractKeys
 
     public let action: MVMessageAction
     public let targetFolderId: UUID?
     public let keyword: String?
+    /// The same key on a repeated request makes the server answer with the first one's response
+    /// instead of applying the action again.
+    public let idempotencyKey: UUID?
 
-    public init(action: MVMessageAction, targetFolderId: UUID? = nil, keyword: String? = nil) {
+    public init(
+        action: MVMessageAction, targetFolderId: UUID? = nil, keyword: String? = nil, idempotencyKey: UUID? = nil
+    ) {
         self.action = action
         self.targetFolderId = targetFolderId
         self.keyword = keyword
+        self.idempotencyKey = idempotencyKey
     }
 }
 

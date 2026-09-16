@@ -77,8 +77,9 @@ public final class MVIntentLedger {
         init(_ observer: any MVIntentObserver) { self.observer = observer }
     }
 
-    /// Loads what the last launch left: a request that was out is sent again (its idempotency key
-    /// makes that safe), and a done one is dropped, since every read from now on already has it.
+    /// Loads what the last launch left: a request that was out is sent again — its idempotency key
+    /// (the intent's id) makes that safe — and a done one is dropped, since every read from now on
+    /// already has it.
     public init(
         transport: any MVIntentTransport, persistence: any MVIntentPersistence,
         clock: any MVIntentClock = MVSystemIntentClock(), connectivity: any MVConnectivity,
@@ -338,12 +339,13 @@ public final class MVIntentLedger {
                     let action = MVMessageAction(rawValue: intent.action.rawValue)
                 else { return .refused("Nothing to send") }
                 try await transport.deliverMessageAction(
-                    messageId: messageId, action: action, targetFolderId: intent.targetFolderId, timeout: timeout)
+                    messageId: messageId, action: action, targetFolderId: intent.targetFolderId,
+                    idempotencyKey: intent.id, timeout: timeout)
                 return .delivered(affectedCount: nil, sources: [])
             case .bulk(let expandThreads):
                 let request = BulkActionRequest(
                     action: intent.action, targetFolderId: intent.targetFolderId, ids: intent.messageIds,
-                    expandThreads: expandThreads)
+                    expandThreads: expandThreads, idempotencyKey: intent.id)
                 return Self.delivered(
                     try await transport.deliverBulkAction(
                         accountId: intent.accountId, request: request, timeout: timeout))
@@ -353,7 +355,7 @@ public final class MVIntentLedger {
                 let scoped = Set(folderIds)
                 let unread = thread.messages.filter { scoped.contains($0.folderId) && !$0.isSeen }.map(\.id)
                 guard !unread.isEmpty else { return .delivered(affectedCount: 0, sources: []) }
-                let request = BulkActionRequest(action: .markRead, ids: unread)
+                let request = BulkActionRequest(action: .markRead, ids: unread, idempotencyKey: intent.id)
                 return Self.delivered(
                     try await transport.deliverBulkAction(
                         accountId: intent.accountId, request: request, timeout: timeout))

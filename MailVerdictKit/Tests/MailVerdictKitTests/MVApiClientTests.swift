@@ -85,6 +85,38 @@ final class MVApiClientTests: XCTestCase {
             XCTAssertEqual(error, .proxyRequiresBrowserLogin)
         }
     }
+
+    /// A delivery request gives up well before the session's minute-long default.
+    func testAMessageActionCarriesItsOwnTimeout() async throws {
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: ["Content-Type": "application/json"],
+            body: Data(#"{"success":true,"action":"archive","message_id":"00000000-0000-0000-0000-000000000001"}"#.utf8)
+        )
+        _ = try await makeClient().performMessageAction(
+            messageId: UUID(), action: .archive, idempotencyKey: UUID(), timeout: 20)
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.timeoutInterval, 20)
+    }
+
+    func testActionRequestsSendTheirIdempotencyKeyAndOmitItWithout() throws {
+        let key = UUID()
+        let single =
+            try JSONSerialization.jsonObject(
+                with: JSONEncoder.mvDefault.encode(MessageActionRequest(action: .archive, idempotencyKey: key))
+            ) as? [String: Any]
+        let bulk =
+            try JSONSerialization.jsonObject(
+                with: JSONEncoder.mvDefault.encode(
+                    BulkActionRequest(action: .trash, ids: [UUID()], idempotencyKey: key))
+            ) as? [String: Any]
+        let plain =
+            try JSONSerialization.jsonObject(
+                with: JSONEncoder.mvDefault.encode(MessageActionRequest(action: .archive))
+            ) as? [String: Any]
+
+        XCTAssertEqual((single?["idempotency_key"] as? String).flatMap(UUID.init(uuidString:)), key)
+        XCTAssertEqual((bulk?["idempotency_key"] as? String).flatMap(UUID.init(uuidString:)), key)
+        XCTAssertNil(plain?["idempotency_key"])
+    }
 }
 
 private struct EmptyBody: Decodable {}

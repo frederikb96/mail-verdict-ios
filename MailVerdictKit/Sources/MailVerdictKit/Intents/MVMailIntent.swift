@@ -28,7 +28,8 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         case failed
     }
 
-    /// Stable across every retry, a relaunch's included.
+    /// Also the request's idempotency key: every retry, a relaunch's included, is the same request
+    /// to the server.
     public let id: UUID
     public let accountId: UUID
     public let action: MVBulkAction

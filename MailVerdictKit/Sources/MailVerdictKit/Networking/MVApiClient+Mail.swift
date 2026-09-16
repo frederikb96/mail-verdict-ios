@@ -64,9 +64,10 @@ extension MVApiClient {
 
     public func performMessageAction(
         messageId: UUID, action: MVMessageAction, targetFolderId: UUID? = nil, keyword: String? = nil,
-        timeout: TimeInterval? = nil
+        idempotencyKey: UUID? = nil, timeout: TimeInterval? = nil
     ) async throws -> MessageActionResponse {
-        let request = MessageActionRequest(action: action, targetFolderId: targetFolderId, keyword: keyword)
+        let request = MessageActionRequest(
+            action: action, targetFolderId: targetFolderId, keyword: keyword, idempotencyKey: idempotencyKey)
         return try await send(
             path: "/api/messages/\(messageId)/action", method: "POST",
             body: try Self.encodeBody(request), timeout: timeout

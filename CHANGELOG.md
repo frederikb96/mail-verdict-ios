@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   A row still waiting shows a spinner, and the list's subtitle counts what is waiting; a change the
   server refuses puts the message back, marks its row, and offers Retry.
 - Undo on an action that has not reached the server yet simply cancels it.
+- Every action carries an idempotency key, so a retry after a lost response is never applied twice.
+  Needs a server that accepts `idempotency_key` on message and bulk actions.
 
 ### Fixed
 

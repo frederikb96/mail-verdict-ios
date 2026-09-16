@@ -7,7 +7,7 @@ import Foundation
 /// The requests an intent is delivered with. `MVApiClient` is the one real implementation.
 public protocol MVIntentTransport: Sendable {
     func deliverMessageAction(
-        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, timeout: TimeInterval
+        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, idempotencyKey: UUID, timeout: TimeInterval
     ) async throws
     func deliverBulkAction(
         accountId: UUID, request: BulkActionRequest, timeout: TimeInterval
@@ -17,10 +17,11 @@ public protocol MVIntentTransport: Sendable {
 
 extension MVApiClient: MVIntentTransport {
     public func deliverMessageAction(
-        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, timeout: TimeInterval
+        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, idempotencyKey: UUID, timeout: TimeInterval
     ) async throws {
         _ = try await performMessageAction(
-            messageId: messageId, action: action, targetFolderId: targetFolderId, timeout: timeout)
+            messageId: messageId, action: action, targetFolderId: targetFolderId, idempotencyKey: idempotencyKey,
+            timeout: timeout)
     }
 
     public func deliverBulkAction(

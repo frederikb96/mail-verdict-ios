@@ -9,6 +9,8 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
 
     private let lock = NSLock()
     private var _calls: [String] = []
+    private var _keys: [UUID?] = []
+    private var _timeouts: [TimeInterval] = []
     private var _inFlight = 0
     private var _maxInFlight = 0
     private var _handler: Handler = { _ in }
@@ -21,6 +23,9 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
 
     /// `"<action> <first message id's last digits>"`, in delivery order — `"archive 1"`.
     var calls: [String] { locked { _calls } }
+    /// The idempotency key each delivery carried.
+    var keys: [UUID?] { locked { _keys } }
+    var timeouts: [TimeInterval] { locked { _timeouts } }
     var maxInFlight: Int { locked { _maxInFlight } }
     var handler: Handler {
         get { locked { _handler } }
@@ -31,9 +36,11 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
         "\(action) \(id.map { String(Int($0.uuidString.suffix(12)) ?? -1) } ?? "-")"
     }
 
-    private func record(_ call: String) async throws {
+    private func record(_ call: String, key: UUID?, timeout: TimeInterval) async throws {
         let handler = locked {
             _calls.append(call)
+            _keys.append(key)
+            _timeouts.append(timeout)
             _inFlight += 1
             _maxInFlight = max(_maxInFlight, _inFlight)
             return _handler
@@ -43,15 +50,16 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     }
 
     func deliverMessageAction(
-        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, timeout: TimeInterval
+        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, idempotencyKey: UUID, timeout: TimeInterval
     ) async throws {
-        try await record(Self.label(action.rawValue, messageId))
+        try await record(Self.label(action.rawValue, messageId), key: idempotencyKey, timeout: timeout)
     }
 
     func deliverBulkAction(
         accountId: UUID, request: BulkActionRequest, timeout: TimeInterval
     ) async throws -> BulkActionResponse {
-        try await record(Self.label(request.action.rawValue, request.ids?.first))
+        try await record(
+            Self.label(request.action.rawValue, request.ids?.first), key: request.idempotencyKey, timeout: timeout)
         return BulkActionResponse(
             success: true, action: request.action.rawValue, affectedCount: request.ids?.count ?? 0)
     }
@@ -90,6 +98,8 @@ final class MVIntentLedgerTests: XCTestCase {
 
         XCTAssertEqual(transport.calls, ["mark_read 1", "archive 1", "flag 2"])
         XCTAssertEqual(transport.maxInFlight, 1)
+        XCTAssertEqual(Set(transport.keys).count, 3, "two intents shared an idempotency key")
+        XCTAssertEqual(transport.timeouts, Array(repeating: MVIntentLedger.Timing().requestTimeout, count: 3))
     }
 
     /// A message whose request is backing off holds back later intents for the same message — a
@@ -180,6 +190,7 @@ final class MVIntentLedgerTests: XCTestCase {
         toasts.current?.action?()
         await waitUntil { ledger.intents.first?.state == .done }
         XCTAssertEqual(transport.calls, ["archive 1", "archive 1"])
+        XCTAssertEqual(Set(transport.keys), [ledger.intents.first?.id], "a retry was not the same request")
     }
 
     func testAMessageThatIsGoneRetiresItsIntentQuietly() async {
@@ -235,6 +246,7 @@ final class MVIntentLedgerTests: XCTestCase {
         await gate.open()
         await waitUntil { second.intents.first?.state == .done }
         XCTAssertEqual(second.intents.map(\.id), [id])
+        XCTAssertEqual(transport.keys, [id], "the relaunch sent a request the server cannot match to the first")
     }
 
     func testARelaunchSendsWhatWasOutAgainAndDropsWhatWasDone() async {
