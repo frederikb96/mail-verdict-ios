@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Archiving, deleting or moving a message from the reader takes it out of the list at once: closing
+  onto the list after acting on its last message no longer shows the message for another second.
+  Marking read or unread and starring from the reader update the list row the same way.
+- Moving a message from the reader slides on to the next message, the same as Archive.
+
 ## [0.1.4] - 2026-09-15
 
 ### Added

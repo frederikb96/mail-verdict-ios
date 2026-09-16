@@ -61,6 +61,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     /// Bumped by every optimistic change. A refresh that was in flight across one is discarded
     /// and read again, so a stale response never puts back a row the reader just archived.
     @ObservationIgnored private var mutationEpoch = 0
+    /// Rows the reader took out of this list, kept to put back if it undoes or fails.
+    @ObservationIgnored private var removedByReader: [UUID: MessageSummary] = [:]
     @ObservationIgnored private var filterDebounce: Task<Void, Never>?
     /// The query the filter was last asked for. A response for any other query is stale — typing
     /// back to a query already showing leaves a longer one's request still in flight.
@@ -123,6 +125,25 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     /// A row was opened from this list.
     public func didOpen(_ messageId: UUID) {
         openedMessageId = messageId
+    }
+
+    public func readerDidChange(_ change: ReaderRowChange) {
+        switch change {
+        case .removed(let id):
+            guard let row = row(id: id) else { return }
+            removedByReader[id] = row
+            mutationEpoch += 1
+            rows.removeAll { $0.id == id }
+        case .restored(let id):
+            guard let original = removedByReader.removeValue(forKey: id) else { return }
+            mutationEpoch += 1
+            rollBack([original])
+        case .changed(let id, let action):
+            guard containsRow(id) else { return }
+            mutationEpoch += 1
+            rows = rows.map { $0.id == id ? Self.applying(action, to: $0, threaded: identity.threaded) : $0 }
+            if action == .markRead { keptWhileUnread.insert(id) }
+        }
     }
 
     // MARK: - Loading

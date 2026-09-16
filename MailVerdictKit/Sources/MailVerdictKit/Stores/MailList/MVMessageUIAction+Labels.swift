@@ -38,6 +38,17 @@ extension MVBulkAction {
         }
     }
 
+    /// The action that puts read or star state back; `nil` for one that moves the message.
+    public var inverse: MVBulkAction? {
+        switch self {
+        case .markRead: return .markUnread
+        case .markUnread: return .markRead
+        case .flag: return .unflag
+        case .unflag: return .flag
+        case .move, .archive, .trash, .expunge, .spam, .notSpam: return nil
+        }
+    }
+
     /// Actions that take a message out of the folder it was shown in.
     var removesFromList: Bool {
         switch self {

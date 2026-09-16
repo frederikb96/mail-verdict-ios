@@ -101,6 +101,16 @@ final class ReaderPagingStoreTests: XCTestCase {
         XCTAssertEqual(store.refresh(), .advance(to: c, direction: .older))
     }
 
+    /// The list catching up with a removal the reader already closed on is not a second removal —
+    /// reporting it would close the reader twice.
+    func testTheListDroppingARowTheReaderRemovedItselfIsNotReportedAgain() async {
+        let source = ReaderTestSource(rowIds: [a])
+        let store = ReaderPagingStore(openedId: a, source: source)
+        XCTAssertEqual(store.remove(a), .exhausted)
+        source.rowIds = []
+        XCTAssertNil(store.refresh())
+    }
+
     func testWithoutASourceThereIsNothingToPageTo() async {
         let store = ReaderPagingStore(openedId: a, source: nil)
         XCTAssertNil(store.older)

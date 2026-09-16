@@ -88,7 +88,9 @@ public final class ReaderPagingStore {
     public func refresh() -> ReaderRemoval? {
         let previous = knownRows
         knownRows = source?.rowIds ?? []
-        if source != nil, !knownRows.contains(currentId), previous.contains(currentId) {
+        // A row the reader removed itself has already been left, or closed on.
+        if source != nil, !knownRows.contains(currentId), previous.contains(currentId), !removedIds.contains(currentId)
+        {
             recomputeNeighbours(previousRows: previous)
             return advanceAway(from: currentId)
         }

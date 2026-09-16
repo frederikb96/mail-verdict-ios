@@ -394,7 +394,10 @@ public final class ReaderSession {
                 let ids = ReaderReadPolicy.conversationIdsToMarkRead(
                     thread: conversation.messages, openedId: primary.id, folderIds: scopedFolders)
                 if !ids.isEmpty {
-                    for id in ids { self.updateMessage(id) { $0.isSeen = true } }
+                    for id in ids {
+                        self.updateMessage(id) { $0.isSeen = true }
+                        self.source?.readerDidChange(.changed(id, .markRead))
+                    }
                     _ = try? await self.api.bulkAction(
                         accountId: primary.accountId, request: BulkActionRequest(action: .markRead, ids: ids))
                 }
@@ -449,24 +452,26 @@ public final class ReaderSession {
 
     // MARK: Actions leaving the list
 
-    /// Archive, Delete, Delete Forever, Junk and Not Junk. When the primary is the row's own
-    /// message, the page slides on to the neighbour in the direction last paged straight away, and
-    /// the request follows. But `openMessage` can make the primary a different message than the
+    /// Archive, Delete, Delete Forever, Junk, Not Junk and Move (with `targetFolderId`). When the
+    /// primary is the row's own message, the page slides on to the neighbour in the direction last
+    /// paged straight away, the list the reader came from drops the row, and the request follows. But `openMessage` can make the primary a different message than the
     /// row — acting on it then only takes that one message out of its folder; the row, and the
     /// rest of the pager, stay exactly where they are, the same as the web, where the conversation
     /// row survives and only the message leaves it. An undoable action offers Undo, which moves
     /// the message back; a failed one puts it back where it was — in the pager when the row
     /// itself moved, or just in its folder when only the message did.
-    public func remove(with action: MVMessageAction) -> ReaderActionOutcome {
+    public func remove(with action: MVMessageAction, targetFolderId: UUID? = nil) -> ReaderActionOutcome {
         guard let message = currentPrimary else { return .stay }
         let rowId = currentRowId
         let originalFolderId = message.folderId
         let removesRow = message.id == rowId
         let removal = removesRow ? paging.remove(rowId) : nil
+        if removesRow { source?.readerDidChange(.removed(rowId)) }
         Task { [weak self] in
             guard let self else { return }
             do {
-                _ = try await self.api.performMessageAction(messageId: message.id, action: action)
+                _ = try await self.api.performMessageAction(
+                    messageId: message.id, action: action, targetFolderId: targetFolderId)
                 if !removesRow { self.refresh(rowId) }
                 if let label = MailActionLabels.undoToast(for: action) {
                     self.onToast?(
@@ -480,7 +485,10 @@ public final class ReaderSession {
                             }))
                 }
             } catch {
-                if removesRow { self.paging.restore(rowId) }
+                if removesRow {
+                    self.paging.restore(rowId)
+                    self.source?.readerDidChange(.restored(rowId))
+                }
                 self.onToast?(
                     MVToast(
                         variant: .error, message: MailActionLabels.failure(action, reason: error.mvUserMessage),
@@ -497,7 +505,12 @@ public final class ReaderSession {
     private func undoMove(_ messageId: UUID, rowId: UUID, to folderId: UUID, restoringRow: Bool) async {
         do {
             _ = try await api.performMessageAction(messageId: messageId, action: .move, targetFolderId: folderId)
-            if restoringRow { paging.restore(rowId) } else { refresh(rowId) }
+            if restoringRow {
+                paging.restore(rowId)
+                source?.readerDidChange(.restored(rowId))
+            } else {
+                refresh(rowId)
+            }
         } catch {
             onToast?(
                 MVToast(
@@ -525,18 +538,6 @@ public final class ReaderSession {
         await send(
             starred ? .flag : .unflag, to: message.id, optimistic: { $0.isFlagged = starred },
             revert: { $0.isFlagged = !starred })
-    }
-
-    public func move(to folderId: UUID) async {
-        guard let message = currentPrimary else { return }
-        do {
-            _ = try await api.performMessageAction(messageId: message.id, action: .move, targetFolderId: folderId)
-        } catch {
-            onToast?(
-                MVToast(
-                    variant: .error, message: MailActionLabels.failure(.move, reason: error.mvUserMessage),
-                    duration: 0))
-        }
     }
 
     /// 👍 confirms the verdict, 👎 corrects it — one feedback call either way, as on the web. A
@@ -825,11 +826,14 @@ public final class ReaderSession {
         _ action: MVMessageAction, to messageId: UUID, optimistic: (inout MessageDetail) -> Void,
         revert: (inout MessageDetail) -> Void
     ) async {
+        let change = MVBulkAction(rawValue: action.rawValue)
         updateMessage(messageId, optimistic)
+        if let change { source?.readerDidChange(.changed(messageId, change)) }
         do {
             _ = try await api.performMessageAction(messageId: messageId, action: action)
         } catch {
             updateMessage(messageId, revert)
+            if let inverse = change?.inverse { source?.readerDidChange(.changed(messageId, inverse)) }
             onToast?(
                 MVToast(
                     variant: .error, message: MailActionLabels.failure(action, reason: error.mvUserMessage),

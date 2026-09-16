@@ -296,3 +296,10 @@ already renders the full conversation as one document (`ConversationDocumentBuil
 of which message is open. The web's own move of its per-message light/dark switch has no
 equivalent here: iOS never had a labelled button for it — the switch is already scoped to
 whichever message is primary, via the reader's Options menu.
+
+### The reader's actions reach the list at once — web anchor: ui/src/hooks/use-mails.ts (useMailAction)
+Needs a device because: the reader closing onto the list and the list controller applying the
+change are UIKit transitions. Confirm: open the only message in a folder and Archive — the reader
+closes onto a list that is already empty, with no row flashing and disappearing; star or mark a
+message unread in the reader and go Back — the row already shows it; Move to… from the reader slides
+on to the next message and the moved row is gone from the list.
