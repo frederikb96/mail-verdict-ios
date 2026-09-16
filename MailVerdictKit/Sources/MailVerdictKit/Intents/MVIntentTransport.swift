@@ -31,6 +31,7 @@ public protocol MVIntentTransport: Sendable {
     /// `nil` when the message no longer exists. `includeFlags` reads read and star state too,
     /// which costs the whole message rather than its location.
     func fetchMessageState(messageId: UUID, includeFlags: Bool, timeout: TimeInterval) async throws -> MVMessageState?
+    func fetchFolders(accountId: UUID, timeout: TimeInterval) async throws -> [FolderResponse]
 }
 
 extension MVApiClient: MVIntentTransport {
@@ -51,6 +52,10 @@ extension MVApiClient: MVIntentTransport {
 
     public func fetchConversation(messageId: UUID, timeout: TimeInterval) async throws -> ThreadResponse {
         try await getThread(messageId: messageId, loadImages: false, timeout: timeout)
+    }
+
+    public func fetchFolders(accountId: UUID, timeout: TimeInterval) async throws -> [FolderResponse] {
+        try await listFolders(accountId: accountId, timeout: timeout)
     }
 
     public func fetchMessageState(
@@ -84,8 +89,11 @@ enum MVIntentDelivery: Equatable {
     /// when the request could have been applied without its answer coming back.
     case retry(String, mayHaveLanded: Bool)
     /// The credential or the login proxy refused it: nothing was applied, and nothing is sent
-    /// until the app is signed in again.
+    /// for a while.
     case hold(String)
+    /// 503: the server is still applying an earlier attempt, or is not taking requests at all.
+    /// Nothing new was applied; asked again shortly, without counting as an attempt.
+    case busy(String)
     /// The server refused the request itself; sending it again would be refused again.
     case refused(String)
 
@@ -103,6 +111,7 @@ enum MVIntentDelivery: Equatable {
             if status == 408 || status == 425 || status == 429 {
                 return .retry(error.userMessage, mayHaveLanded: false)
             }
+            if status == 503 { return .busy(error.userMessage) }
             if status >= 500 { return .retry(error.userMessage, mayHaveLanded: true) }
             return .refused(error.userMessage)
         case .transport:

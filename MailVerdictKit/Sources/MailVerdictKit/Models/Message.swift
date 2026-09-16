@@ -145,7 +145,7 @@ public struct MessageListResponse: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "MessageListResponse"
     public enum ContractKeys: String, CodingKey, CaseIterable {
         case messages, hasMore = "has_more", nextCursor = "next_cursor",
-            hasMoreNewer = "has_more_newer", prevCursor = "prev_cursor"
+            hasMoreNewer = "has_more_newer", prevCursor = "prev_cursor", asOf = "as_of"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -154,16 +154,20 @@ public struct MessageListResponse: ContractModel, Codable, Sendable, Equatable {
     public let nextCursor: String?
     @MVDefaulted<MVDefaultFalse> public var hasMoreNewer: Bool
     public let prevCursor: String?
+    /// The server's clock once this page's rows were read — the bound a conversation acted on
+    /// from these rows is expanded through.
+    public let asOf: Date?
 
     public init(
         messages: [MessageSummary], hasMore: Bool, nextCursor: String?,
-        hasMoreNewer: Bool = false, prevCursor: String? = nil
+        hasMoreNewer: Bool = false, prevCursor: String? = nil, asOf: Date? = nil
     ) {
         self.messages = messages
         self.hasMore = hasMore
         self.nextCursor = nextCursor
         self.hasMoreNewer = hasMoreNewer
         self.prevCursor = prevCursor
+        self.asOf = asOf
     }
 }
 

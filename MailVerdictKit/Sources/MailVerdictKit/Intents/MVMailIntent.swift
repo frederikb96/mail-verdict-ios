@@ -71,6 +71,10 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
     /// For a bulk action expanding conversations: the newest `mirrored_at` among the rows acted on,
     /// so replies that arrive before a late send are not swept along.
     public let seenThrough: Date?
+    /// On an intent that undoes a move: the action it reverses and that action's own target, which
+    /// together name the folder each message is expected in when no answer said where it was filed.
+    public internal(set) var reversedAction: MVBulkAction?
+    public internal(set) var reversedTargetFolderId: UUID?
 
     init(request: MVIntentRequest, id: UUID, undoes: UUID?, createdAt: Date) {
         self.id = id
@@ -122,6 +126,8 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         sendConfirmed = try container.decodeIfPresent(Bool.self, forKey: .sendConfirmed) ?? false
         filedFolderIds = (try? container.decodeIfPresent([UUID: UUID].self, forKey: .filedFolderIds)) ?? [:]
         seenThrough = try container.decodeIfPresent(Date.self, forKey: .seenThrough)
+        reversedAction = try? container.decodeIfPresent(MVBulkAction.self, forKey: .reversedAction)
+        reversedTargetFolderId = try container.decodeIfPresent(UUID.self, forKey: .reversedTargetFolderId)
     }
 
     /// Outstanding: not yet known to the server.

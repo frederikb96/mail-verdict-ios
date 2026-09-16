@@ -22,8 +22,8 @@ extension MVApiClient {
         try await sendNoContent(path: "/api/accounts/\(id)", method: "DELETE")
     }
 
-    public func listFolders(accountId: UUID) async throws -> [FolderResponse] {
-        try await send(path: "/api/accounts/\(accountId)/folders")
+    public func listFolders(accountId: UUID, timeout: TimeInterval? = nil) async throws -> [FolderResponse] {
+        try await send(path: "/api/accounts/\(accountId)/folders", timeout: timeout)
     }
 
     public func getSyncStatus(accountId: UUID) async throws -> SyncStatusResponse {

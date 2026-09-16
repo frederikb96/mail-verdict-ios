@@ -125,6 +125,17 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     }
     private var _messageResponseSuccess = true
 
+    /// The account's folders; the role folders by default, empty to model an account without them.
+    var folders: [FolderResponse] {
+        get { locked { _folders } }
+        set { locked { _folders = newValue } }
+    }
+    private var _folders = testRoleFolderList()
+
+    func fetchFolders(accountId: UUID, timeout: TimeInterval) async throws -> [FolderResponse] {
+        locked { _folders }
+    }
+
     func fetchMessageState(messageId: UUID, includeFlags: Bool, timeout: TimeInterval) async throws -> MVMessageState? {
         locked {
             _lookups.append(Self.label("state", messageId))

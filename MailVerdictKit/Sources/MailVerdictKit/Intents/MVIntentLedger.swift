@@ -29,8 +29,9 @@ extension MVIntentObserver {
 ///   applied, the ledger reads the messages and treats an action they already show as done — a
 ///   server that ignores the idempotency key would otherwise apply it twice.
 /// - While the device is offline nothing is sent; everything goes the moment it is back.
-/// - A 401, 403 or login-proxy answer holds everything, unsent and unfailed, until the app is
-///   signed in again (a new ledger picks the persisted intents up) or returns to the foreground.
+/// - A 401, 403 or login-proxy answer holds everything, unsent and unfailed, for
+///   `Timing.holdRecheck`, or until the app is signed in again or returns to the foreground.
+/// - A 503 is the server still applying an earlier attempt: asked again shortly, never counted.
 /// - Any other 4xx refuses the intent; a 404 means the message is gone and the intent retires.
 /// - An intent still unsent after `Timing.pendingExpiry` is not sent on its own: the mailbox may
 ///   have moved on since, so the person sends or discards it (`unsentIntents`).
@@ -58,6 +59,11 @@ public final class MVIntentLedger {
         /// Past this many messages, an intent that may have landed is sent again without reading
         /// each message first; the idempotency key alone keeps that safe.
         public var reconcileLimit = 25
+        /// How soon a request answered 503 — the server still applying an earlier attempt — is
+        /// asked again.
+        public var busyRetryDelay: TimeInterval = 5
+        /// How long a refused credential holds delivery before it is tried again.
+        public var holdRecheck: TimeInterval = 60
 
         public init() {}
     }
@@ -69,9 +75,10 @@ public final class MVIntentLedger {
     public private(set) var sequence = 0
     /// Open intents that have been waiting long enough to say so.
     public private(set) var waitingIds: Set<UUID> = []
-    /// The credential or the login proxy was refused; nothing goes out until the app is signed in
-    /// again or comes back to the foreground.
-    public private(set) var isHeld = false
+    /// Until when a refused credential or login proxy holds delivery — cleared early by signing in
+    /// again or returning to the foreground.
+    public private(set) var heldUntil: Date?
+    public var isHeld: Bool { heldUntil != nil }
 
     @ObservationIgnored private let transport: any MVIntentTransport
     @ObservationIgnored private let persistence: any MVIntentPersistence
@@ -86,6 +93,9 @@ public final class MVIntentLedger {
     @ObservationIgnored private var callbacks: [UUID: @MainActor (MVIntentOutcome) -> Void] = [:]
     @ObservationIgnored private var idleWaiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var isStopped = false
+    /// Each account's special-use folders by role, read once when an action's landing folder is
+    /// needed.
+    @ObservationIgnored private var roleFolders: [UUID: [String: UUID]] = [:]
 
     private final class WeakObserver {
         weak var observer: (any MVIntentObserver)?
@@ -196,6 +206,21 @@ public final class MVIntentLedger {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// Actions on this account the server may not have yet — outstanding, held, or failed after an
+    /// attempt that may have landed. A folder is not emptied or deleted while any exist: a message
+    /// on its way out of it, or back into it, would be destroyed with it.
+    public func hasUnsettledActions(accountId: UUID) -> Bool {
+        intents.contains { $0.accountId == accountId && ($0.isOpen || ($0.state == .failed && $0.mayHaveLanded)) }
+    }
+
+    /// Why a folder of this account may not be emptied or deleted right now, or `nil` when it may.
+    public func folderDestructionRefusal(accountId: UUID) -> MVError? {
+        guard hasUnsettledActions(accountId: accountId) else { return nil }
+        return .detail(
+            "Some changes to this account's mail have not reached the server yet. Try again once they have — "
+                + "a message on its way into or out of this folder would be lost with it.", statusCode: 409)
+    }
+
     public var hasOpenIntents: Bool { intents.contains { $0.isOpen && !$0.awaitingConfirmation } }
 
     /// Returns once nothing is left to send — or the ledger stops, or everything left is waiting
@@ -304,7 +329,7 @@ public final class MVIntentLedger {
     /// Back in the foreground or back online: whatever is waiting on a backoff goes now.
     public func resume() {
         guard !isStopped else { return }
-        isHeld = false
+        heldUntil = nil
         for index in intents.indices where intents[index].state == .pending {
             intents[index].nextAttemptAt = nil
         }
@@ -363,7 +388,11 @@ public final class MVIntentLedger {
         guard !isStopped else { return nil }
         let open = intents.filter { $0.accountId == accountId && $0.isOpen && !$0.awaitingConfirmation }
         guard !open.isEmpty else { return nil }
-        guard !isHeld else { return .wait(nil) }
+        if let heldUntil {
+            let now = clock.now
+            if heldUntil > now { return .wait(heldUntil.timeIntervalSince(now)) }
+            self.heldUntil = nil
+        }
         guard connectivity.isOnline else {
             waitingIds.formUnion(open.map(\.id))
             return .wait(nil)
@@ -431,6 +460,13 @@ public final class MVIntentLedger {
         let transport = transport
         let timeout = timing.requestTimeout
         do {
+            var intent = intent
+            if intent.undoes != nil, intent.leavesFolder {
+                guard let guarded = try await guardReversal(intent) else {
+                    return .refused("There is no folder the action could have left the message in")
+                }
+                intent = guarded
+            }
             switch intent.delivery {
             case .message:
                 guard let messageId = intent.messageIds.first,
@@ -466,6 +502,47 @@ public final class MVIntentLedger {
         }
     }
 
+    /// An undo never moves a message it cannot say where it expects to find: each message not
+    /// already known to be filed somewhere is expected in the folder the reversed action files
+    /// into. `nil` when that folder does not exist.
+    private func guardReversal(_ intent: MVMailIntent) async throws -> MVMailIntent? {
+        let missing = intent.messageIds.filter { intent.originFolderIds[$0] == nil }
+        guard !missing.isEmpty else { return intent }
+        guard let action = intent.reversedAction,
+            let landing = try await landingFolder(
+                for: action, target: intent.reversedTargetFolderId, accountId: intent.accountId)
+        else { return nil }
+        var guarded = intent
+        for id in missing { guarded.originFolderIds[id] = landing }
+        if let index = intents.firstIndex(where: { $0.id == intent.id }) {
+            intents[index].originFolderIds = guarded.originFolderIds
+            changed()
+        }
+        return guarded
+    }
+
+    /// The folder `action` files a message into: a move's own target, or the account's folder for
+    /// that role. `nil` for an action that files nowhere, or a role the account has no folder for.
+    private func landingFolder(for action: MVBulkAction, target: UUID?, accountId: UUID) async throws -> UUID? {
+        let role: String
+        switch action {
+        case .move: return target
+        case .archive: role = "archive"
+        case .trash: role = "trash"
+        case .spam: role = "junk"
+        case .notSpam: role = "inbox"
+        case .expunge, .markRead, .markUnread, .flag, .unflag: return nil
+        }
+        if let known = roleFolders[accountId] { return known[role] }
+        let folders = try await transport.fetchFolders(accountId: accountId, timeout: timing.requestTimeout)
+        var byRole: [String: UUID] = [:]
+        for folder in folders {
+            if let use = folder.specialUse, byRole[use] == nil { byRole[use] = folder.id }
+        }
+        roleFolders[accountId] = byRole
+        return byRole[role]
+    }
+
     /// A conversation read's unread messages, resolved once and kept. A message a later intent
     /// names is left out: marked unread since, say, it stays that way.
     private func resolveConversation(_ intent: MVMailIntent) async throws -> [UUID]? {
@@ -485,7 +562,8 @@ public final class MVIntentLedger {
     }
 
     /// For an intent that may already have been applied: done when every message already shows
-    /// it, `nil` (send it) otherwise, or the lookup's own failure.
+    /// it — a moved message in the folder the action files into, not merely gone from where it was,
+    /// since someone else may have moved it — `nil` (send it) otherwise, or the lookup's own failure.
     private func reconcile(_ intent: MVMailIntent) async -> MVIntentDelivery? {
         let ids: [UUID]
         if case .conversationRead = intent.delivery {
@@ -498,31 +576,40 @@ public final class MVIntentLedger {
         let transport = transport
         let timeout = timing.requestTimeout
         do {
+            var landing: UUID?
+            if intent.leavesFolder {
+                let action = intent.undoes == nil ? intent.action : .move
+                guard
+                    let folder = try await landingFolder(
+                        for: action, target: intent.targetFolderId, accountId: intent.accountId)
+                else { return nil }
+                landing = folder
+            }
             for id in ids {
                 let state = try await transport.fetchMessageState(
                     messageId: id, includeFlags: !intent.leavesFolder, timeout: timeout)
-                guard Self.shows(intent, on: id, state) else { return nil }
+                guard Self.shows(intent, on: id, state, landing: landing) else { return nil }
             }
-            return .delivered(affectedCount: nil, sources: [])
+            let filed = landing.map { folder in Dictionary(uniqueKeysWithValues: ids.map { ($0, folder) }) } ?? [:]
+            return .delivered(affectedCount: nil, sources: [], filed: filed)
         } catch {
             switch MVIntentDelivery.classify(error) {
             case .hold(let reason): return .hold(reason)
-            case .retry(let reason, _), .refused(let reason): return .retry(reason, mayHaveLanded: true)
+            case .retry(let reason, _), .refused(let reason), .busy(let reason):
+                return .retry(reason, mayHaveLanded: true)
             case .delivered, .gone, .notApplied: return nil
             }
         }
     }
 
     /// Whether `state` already carries what `intent` does to message `id` (`nil` state: gone).
-    static func shows(_ intent: MVMailIntent, on id: UUID, _ state: MVMessageState?) -> Bool {
+    /// `landing` is where a moving action files the message.
+    static func shows(_ intent: MVMailIntent, on id: UUID, _ state: MVMessageState?, landing: UUID?) -> Bool {
         guard let state else { return true }
         switch intent.action {
         case .expunge: return false
-        case .move:
-            return intent.targetFolderId == state.folderId
-        case .archive, .trash, .spam, .notSpam:
-            guard let origin = intent.originFolderIds[id] else { return false }
-            return state.folderId != origin
+        case .move, .archive, .trash, .spam, .notSpam:
+            return landing != nil && state.folderId == landing
         case .markRead: return state.isSeen == true
         case .markUnread: return state.isSeen == false
         case .flag: return state.isFlagged == true
@@ -578,7 +665,7 @@ public final class MVIntentLedger {
             if result == .notApplied {
                 let message =
                     intent.undoes != nil
-                    ? "Nothing to undo — the message has moved since"
+                    ? "Nothing to undo — the message is no longer where the action left it"
                     : "Did not \(intent.action.phrase) — the message had already moved"
                 toasts?.show(MVToast(variant: .info, message: message))
             }
@@ -600,12 +687,20 @@ public final class MVIntentLedger {
                 waitingIds.insert(id)
                 changed()
             }
+        case .busy(let reason):
+            intents[index].state = .pending
+            intents[index].attempts = max(intents[index].attempts - 1, 0)
+            intents[index].lastError = reason
+            intents[index].nextAttemptAt = clock.now.addingTimeInterval(timing.busyRetryDelay)
+            waitingIds.insert(id)
+            if intents[index].undoRequested { replaceWithReversal(id) }
+            changed()
         case .hold(let reason):
             intents[index].state = .pending
             intents[index].attempts = max(intents[index].attempts - 1, 0)
             intents[index].lastError = reason
             waitingIds.insert(id)
-            isHeld = true
+            heldUntil = clock.now.addingTimeInterval(timing.holdRecheck)
             if intents[index].undoRequested { replaceWithReversal(id) }
             changed()
         case .refused(let reason):
@@ -669,15 +764,20 @@ public final class MVIntentLedger {
 
     private func appendReversal(of intent: MVMailIntent) {
         for reversal in Self.reversal(of: intent) {
-            intents.append(
-                MVMailIntent(request: reversal, id: UUID(), undoes: intent.id, createdAt: clock.now))
+            var undo = MVMailIntent(request: reversal, id: UUID(), undoes: intent.id, createdAt: clock.now)
+            if intent.leavesFolder {
+                undo.reversedAction = intent.action
+                undo.reversedTargetFolderId = intent.targetFolderId
+            }
+            intents.append(undo)
             startWorker(reversal.accountId)
         }
     }
 
     /// Moves back to each message's own origin folder — one intent per folder, expecting each
-    /// message where the server said it filed it, so one filed elsewhere since stays there — or
-    /// read and star state flipped back. Expunge and a conversation read have nothing to reverse.
+    /// message where the server said it filed it (or, not having said, where the action files
+    /// messages: `guardReversal`), so one filed elsewhere since stays there — or read and star
+    /// state flipped back. Expunge and a conversation read have nothing to reverse.
     private static func reversal(of intent: MVMailIntent) -> [MVIntentRequest] {
         if let inverse = intent.action.inverse {
             if case .conversationRead = intent.delivery { return [] }

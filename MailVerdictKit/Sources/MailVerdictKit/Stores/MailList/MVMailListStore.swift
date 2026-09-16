@@ -49,6 +49,9 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     @ObservationIgnored private let backend: any MVMailListBackend
     @ObservationIgnored private let ledger: MVIntentLedger
     @ObservationIgnored private var projected: (key: ProjectionKey, rows: [MessageSummary])?
+    /// The `as_of` of the page each row was last read in; absent when that page carried none (an
+    /// older server, or quick-filter results).
+    @ObservationIgnored private var rowReadAt: [UUID: Date] = [:]
     /// The app-wide reference data, when there is one: the context starts from its last copy so
     /// a list opened again shows badges, avatars and counts at once, and fresh reads go through
     /// it so every screen shares them.
@@ -149,6 +152,24 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     }
 
     /// The rows as a read that began at `sequence` gave them — the whole window.
+    /// Records when the server read these rows.
+    private func noteRead(_ rows: [MessageSummary], asOf: Date?) {
+        for row in rows { rowReadAt[row.id] = asOf }
+    }
+
+    /// How far a conversation acted on from `rows` expands: the newest `as_of` of the pages they
+    /// came from, so every member mirrored before one of those reads is included — a reply that
+    /// arrived between two reads is swept along, never an older member left behind. `nil`, no
+    /// bound, when any row's page carried none.
+    private func conversationBound(for rows: [MessageSummary]) -> Date? {
+        var newest: Date?
+        for row in rows {
+            guard let readAt = rowReadAt[row.id] else { return nil }
+            newest = max(newest ?? readAt, readAt)
+        }
+        return newest
+    }
+
     private func setBase(_ rows: [MessageSummary], readAt sequence: Int) {
         baseRows = rows
         baseSequence = sequence
@@ -266,6 +287,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                 )
             }
             guard generation == expected else { return }
+            noteRead(page.messages, asOf: page.asOf)
             setBase(page.messages, readAt: readAt)
             hasOlder = page.hasMore
             hasNewer = page.hasMoreNewer
@@ -334,8 +356,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     unreadOnly: started.unreadOnly, before: baseRows.last?.id, limit: MVMailListWindow.pageSize
                 )
                 guard identity == started else { return }
+                let results = response.results.map(MessageSummary.init)
+                noteRead(results, asOf: nil)
                 extendBase(
-                    MVMailListWindow.appendingOlder(response.results.map(MessageSummary.init), to: baseRows),
+                    MVMailListWindow.appendingOlder(results, to: baseRows),
                     readAt: readAt)
                 hasOlder = response.hasMore
                 return
@@ -348,6 +372,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     cursor: .olderThan(last.id), limit: MVMailListWindow.pageSize
                 )
                 guard identity == started else { return }
+                noteRead(response.messages, asOf: response.asOf)
                 extendBase(MVMailListWindow.appendingOlder(response.messages, to: baseRows), readAt: readAt)
                 hasOlder = response.hasMore
             case .newer:
@@ -357,6 +382,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     cursor: .newerThan(first.id), limit: MVMailListWindow.pageSize
                 )
                 guard identity == started else { return }
+                noteRead(response.messages, asOf: response.asOf)
                 extendBase(MVMailListWindow.prependingNewer(response.messages, to: baseRows), readAt: readAt)
                 hasNewer = response.hasMoreNewer
                 if !hasNewer { await catchUpAfterReachingNewestEdge(started) }
@@ -379,6 +405,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
             ),
             identity == started
         else { return }
+        noteRead(response.messages, asOf: response.asOf)
         extendBase(MVMailListWindow.prependingNewer(response.messages, to: baseRows), readAt: readAt)
     }
 
@@ -431,6 +458,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     current: current, freshAboveLast: response.messages, freshHasMoreNewer: response.hasMoreNewer,
                     preserveIds: preserve
                 )
+                noteRead(response.messages, asOf: response.asOf)
                 setBase(merged.rows, readAt: readAt)
                 hasNewer = merged.hasNewer
             } else {
@@ -443,6 +471,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     current: current, fresh: response.messages, freshHasMore: response.hasMore,
                     currentHasMore: hasOlder, preserveIds: preserve
                 )
+                noteRead(response.messages, asOf: response.asOf)
                 setBase(merged.rows, readAt: readAt)
                 hasOlder = merged.hasMore
             }
@@ -763,7 +792,9 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
             )
             guard generation == started.generation, latestFilterRequest == query else { return }
             identity = started
-            setBase(response.results.map(MessageSummary.init), readAt: readAt)
+            let results = response.results.map(MessageSummary.init)
+            noteRead(results, asOf: nil)
+            setBase(results, readAt: readAt)
             hasOlder = response.hasMore
             hasNewer = false
             phase = .loaded
@@ -1079,7 +1110,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     originFolderIds: Dictionary(
                         planOriginals.map { ($0.id, $0.folderId) }, uniquingKeysWith: { first, _ in first }),
                     snapshots: planOriginals,
-                    seenThrough: plan.request.expandThreads ? planOriginals.map(\.mirroredAt).max() : nil))
+                    seenThrough: plan.request.expandThreads ? conversationBound(for: planOriginals) : nil))
         }
         if let phrase = action.bulkUndoPhrase, !intentIds.isEmpty {
             // Offered at once, like a single action's: undoing what has not been sent yet simply
@@ -1143,6 +1174,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     /// confirmed and the set deleted are the same snapshot.
     public func prepareEmptyFolder() async -> SelectionSnapshotResponse? {
         guard case .folder(let accountId, let folderId) = scope else { return nil }
+        if let refusal = ledger.folderDestructionRefusal(accountId: accountId) {
+            showError(refusal.userMessage)
+            return nil
+        }
         do {
             return try await backend.fetchSelectionSnapshot(accountId: accountId, folderId: folderId, filter: .all)
         } catch {
@@ -1153,6 +1188,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
 
     public func emptyFolder(confirmed snapshot: SelectionSnapshotResponse) async {
         guard case .folder(let accountId, let folderId) = scope else { return }
+        if let refusal = ledger.folderDestructionRefusal(accountId: accountId) {
+            showError(refusal.userMessage)
+            return
+        }
         do {
             _ = try await backend.sendBulkAction(
                 accountId: accountId,
