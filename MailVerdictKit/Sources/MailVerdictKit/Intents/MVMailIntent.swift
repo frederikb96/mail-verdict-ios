@@ -66,6 +66,11 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
     public internal(set) var awaitingConfirmation: Bool
     /// The person chose to send it after all.
     public internal(set) var sendConfirmed: Bool
+    /// Where the server filed each message — the folder an undo expects to find it in.
+    public internal(set) var filedFolderIds: [UUID: UUID]
+    /// For a bulk action expanding conversations: the newest `mirrored_at` among the rows acted on,
+    /// so replies that arrive before a late send are not swept along.
+    public let seenThrough: Date?
 
     init(request: MVIntentRequest, id: UUID, undoes: UUID?, createdAt: Date) {
         self.id = id
@@ -85,6 +90,8 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         self.undoRequested = false
         self.awaitingConfirmation = false
         self.sendConfirmed = false
+        self.filedFolderIds = [:]
+        self.seenThrough = request.seenThrough
     }
 
     /// Everything but the identity and the action itself may be missing from a record an older or
@@ -113,12 +120,21 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         undoRequested = try container.decodeIfPresent(Bool.self, forKey: .undoRequested) ?? false
         awaitingConfirmation = try container.decodeIfPresent(Bool.self, forKey: .awaitingConfirmation) ?? false
         sendConfirmed = try container.decodeIfPresent(Bool.self, forKey: .sendConfirmed) ?? false
+        filedFolderIds = (try? container.decodeIfPresent([UUID: UUID].self, forKey: .filedFolderIds)) ?? [:]
+        seenThrough = try container.decodeIfPresent(Date.self, forKey: .seenThrough)
     }
 
     /// Outstanding: not yet known to the server.
     public var isOpen: Bool { state == .pending || state == .sending }
 
     public var leavesFolder: Bool { action.removesFromList }
+
+    /// The folder each message is expected in when sent, for actions that must not follow a
+    /// message somewhere it has been filed since. Read and star changes follow it anywhere.
+    var expectedFolderIds: [UUID: UUID]? {
+        guard leavesFolder || action == .expunge, !originFolderIds.isEmpty else { return nil }
+        return originFolderIds.filter { messageIds.contains($0.key) }
+    }
 
     /// The messages this intent's request can touch — ordering holds later intents naming any of
     /// them back until this one is done.
@@ -134,11 +150,12 @@ public struct MVIntentRequest: Sendable, Equatable {
     public var delivery: MVMailIntent.Delivery
     public var originFolderIds: [UUID: UUID]
     public var snapshots: [MessageSummary]
+    public var seenThrough: Date?
 
     public init(
         accountId: UUID, action: MVBulkAction, targetFolderId: UUID? = nil, messageIds: [UUID],
         delivery: MVMailIntent.Delivery = .message, originFolderIds: [UUID: UUID] = [:],
-        snapshots: [MessageSummary] = []
+        snapshots: [MessageSummary] = [], seenThrough: Date? = nil
     ) {
         self.accountId = accountId
         self.action = action
@@ -147,6 +164,7 @@ public struct MVIntentRequest: Sendable, Equatable {
         self.delivery = delivery
         self.originFolderIds = originFolderIds
         self.snapshots = snapshots
+        self.seenThrough = seenThrough
     }
 }
 
@@ -159,6 +177,8 @@ public enum MVIntentOutcome: Sendable, Equatable {
     case failed(String)
     /// Undone or discarded before the server had it.
     case cancelled
+    /// The messages were no longer where the action expected them; nothing was written.
+    case notApplied
 }
 
 /// What a row or the reader shows for the intents naming a message.

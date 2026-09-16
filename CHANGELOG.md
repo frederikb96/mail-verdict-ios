@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   which keeps a server without idempotency keys safe too.
 - An expired sign-in holds outstanding actions until the app is signed in again, instead of losing
   them.
+- An action sent late, or an Undo, only moves a message still where it was seen: one filed somewhere
+  else in the meantime, on this device or another, stays there. Undo says so when there is nothing
+  left to undo. A late bulk action on conversations no longer sweeps in replies that arrived after.
 
 ### Fixed
 

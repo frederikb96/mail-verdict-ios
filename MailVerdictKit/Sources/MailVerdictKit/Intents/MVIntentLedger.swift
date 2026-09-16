@@ -438,23 +438,28 @@ public final class MVIntentLedger {
                 else { return .refused("Nothing to send") }
                 let response = try await transport.deliverMessageAction(
                     messageId: messageId, action: action, targetFolderId: intent.targetFolderId,
-                    idempotencyKey: intent.id, timeout: timeout)
+                    expectedFolderId: intent.expectedFolderIds?[messageId], idempotencyKey: intent.id,
+                    timeout: timeout)
                 guard response.success else { return .refused(response.message ?? "The server did not apply it") }
-                return .delivered(affectedCount: nil, sources: [])
+                guard response.applied else { return .notApplied }
+                return .delivered(
+                    affectedCount: nil, sources: [], filed: response.folderId.map { [messageId: $0] } ?? [:])
             case .bulk(let expandThreads):
                 let request = BulkActionRequest(
                     action: intent.action, targetFolderId: intent.targetFolderId, ids: intent.messageIds,
-                    expandThreads: expandThreads, idempotencyKey: intent.id)
+                    expandThreads: expandThreads, idempotencyKey: intent.id,
+                    expectedFolderIds: intent.expectedFolderIds,
+                    expandThreadsThrough: expandThreads ? intent.seenThrough : nil)
                 return Self.delivered(
                     try await transport.deliverBulkAction(
-                        accountId: intent.accountId, request: request, timeout: timeout))
+                        accountId: intent.accountId, request: request, timeout: timeout), for: intent)
             case .conversationRead:
                 guard let unread = try await resolveConversation(intent) else { return .refused("Nothing to send") }
                 guard !unread.isEmpty else { return .delivered(affectedCount: 0, sources: []) }
                 let request = BulkActionRequest(action: .markRead, ids: unread, idempotencyKey: intent.id)
                 return Self.delivered(
                     try await transport.deliverBulkAction(
-                        accountId: intent.accountId, request: request, timeout: timeout))
+                        accountId: intent.accountId, request: request, timeout: timeout), for: intent)
             }
         } catch {
             return MVIntentDelivery.classify(error)
@@ -503,7 +508,7 @@ public final class MVIntentLedger {
             switch MVIntentDelivery.classify(error) {
             case .hold(let reason): return .hold(reason)
             case .retry(let reason, _), .refused(let reason): return .retry(reason, mayHaveLanded: true)
-            case .delivered, .gone: return nil
+            case .delivered, .gone, .notApplied: return nil
             }
         }
     }
@@ -525,23 +530,33 @@ public final class MVIntentLedger {
         }
     }
 
-    private static func delivered(_ response: BulkActionResponse) -> MVIntentDelivery {
+    private static func delivered(_ response: BulkActionResponse, for intent: MVMailIntent) -> MVIntentDelivery {
         guard response.success else {
             let errors = response.errors.joined(separator: "; ")
             return .refused(errors.isEmpty ? "The server did not apply it" : errors)
         }
-        return .delivered(affectedCount: response.affectedCount, sources: response.sources)
+        let skipped = Set(response.skippedIds)
+        if !skipped.isEmpty, response.affectedCount == 0, Set(intent.messageIds).isSubset(of: skipped) {
+            return .notApplied
+        }
+        var filed: [UUID: UUID] = [:]
+        if let target = response.targetFolderId {
+            let moved = response.sources.isEmpty ? intent.messageIds : response.sources.map(\.id)
+            for id in moved where !skipped.contains(id) { filed[id] = target }
+        }
+        return .delivered(affectedCount: response.affectedCount, sources: response.sources, filed: filed)
     }
 
     private func settle(_ id: UUID, _ result: MVIntentDelivery) {
         guard let index = intents.firstIndex(where: { $0.id == id }) else { return }
         switch result {
-        case .delivered(let affected, let sources):
+        case .delivered(let affected, let sources, let filed):
             sequence += 1
             intents[index].state = .done
             intents[index].settledSequence = sequence
             intents[index].settledAt = clock.now
             intents[index].movedSources = sources
+            intents[index].filedFolderIds = filed
             intents[index].lastError = nil
             intents[index].mayHaveLanded = false
             waitingIds.remove(id)
@@ -554,13 +569,16 @@ public final class MVIntentLedger {
             notifySettled([intent])
             finish(id, intent.undoRequested ? .cancelled : .done(affectedCount: affected, sources: sources))
             scheduleRetirement()
-        case .gone:
+        case .gone, .notApplied:
             sequence += 1
             let intent = intents.remove(at: index)
             waitingIds.remove(id)
             changed()
             notifySettled([intent])
-            finish(id, .gone)
+            if result == .notApplied, intent.undoes != nil {
+                toasts?.show(MVToast(variant: .info, message: "Nothing to undo — the message has moved since"))
+            }
+            finish(id, result == .gone ? .gone : .notApplied)
         case .retry(let reason, let mayHaveLanded):
             intents[index].lastError = reason
             intents[index].mayHaveLanded = intents[index].mayHaveLanded || mayHaveLanded
@@ -653,8 +671,9 @@ public final class MVIntentLedger {
         }
     }
 
-    /// Moves back to each message's own origin folder — one intent per folder — or read and star
-    /// state flipped back. Expunge and a conversation read have nothing to reverse.
+    /// Moves back to each message's own origin folder — one intent per folder, expecting each
+    /// message where the server said it filed it, so one filed elsewhere since stays there — or
+    /// read and star state flipped back. Expunge and a conversation read have nothing to reverse.
     private static func reversal(of intent: MVMailIntent) -> [MVIntentRequest] {
         if let inverse = intent.action.inverse {
             if case .conversationRead = intent.delivery { return [] }
@@ -676,7 +695,7 @@ public final class MVIntentLedger {
             return MVIntentRequest(
                 accountId: intent.accountId, action: .move, targetFolderId: folderId, messageIds: ids,
                 delivery: ids.count == 1 ? .message : .bulk(expandThreads: false),
-                originFolderIds: Dictionary(uniqueKeysWithValues: ids.map { ($0, folderId) }),
+                originFolderIds: intent.filedFolderIds.filter { ids.contains($0.key) },
                 snapshots: intent.snapshots.filter { ids.contains($0.id) })
         }
     }

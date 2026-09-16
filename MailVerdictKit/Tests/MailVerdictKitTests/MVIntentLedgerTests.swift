@@ -60,18 +60,42 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     }
 
     func deliverMessageAction(
-        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, idempotencyKey: UUID, timeout: TimeInterval
+        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
+        timeout: TimeInterval
     ) async throws -> MessageActionResponse {
+        locked { _expected.append(expectedFolderId.map { [messageId: $0] } ?? [:]) }
         try await record(Self.label(action.rawValue, messageId), key: idempotencyKey, timeout: timeout)
+        let (applied, filed) = locked { (_applied, _filedFolder) }
         return MessageActionResponse(
             success: messageResponseSuccess, action: action.rawValue, messageId: messageId,
-            message: messageResponseSuccess ? nil : "Feedback processing failed")
+            message: messageResponseSuccess ? nil : "Feedback processing failed", applied: applied, folderId: filed)
     }
+
+    /// The folders each delivery expected its messages in.
+    var expected: [[UUID: UUID]] { locked { _expected } }
+    private var _expected: [[UUID: UUID]] = []
+    /// What a single action answers: whether it applied, and where it filed the message.
+    var applied: Bool {
+        get { locked { _applied } }
+        set { locked { _applied = newValue } }
+    }
+    private var _applied = true
+    var filedFolder: UUID? {
+        get { locked { _filedFolder } }
+        set { locked { _filedFolder = newValue } }
+    }
+    private var _filedFolder: UUID?
+    /// Bulk requests as sent.
+    var bulkRequests: [BulkActionRequest] { locked { _bulkRequests } }
+    private var _bulkRequests: [BulkActionRequest] = []
 
     func deliverBulkAction(
         accountId: UUID, request: BulkActionRequest, timeout: TimeInterval
     ) async throws -> BulkActionResponse {
-        locked { _bulkIds.append(request.ids ?? []) }
+        locked {
+            _bulkIds.append(request.ids ?? [])
+            _bulkRequests.append(request)
+        }
         try await record(
             Self.label(request.action.rawValue, request.ids?.first), key: request.idempotencyKey, timeout: timeout)
         return BulkActionResponse(

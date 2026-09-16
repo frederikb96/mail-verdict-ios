@@ -1078,7 +1078,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     messageIds: planIds, delivery: .bulk(expandThreads: plan.request.expandThreads),
                     originFolderIds: Dictionary(
                         planOriginals.map { ($0.id, $0.folderId) }, uniquingKeysWith: { first, _ in first }),
-                    snapshots: planOriginals))
+                    snapshots: planOriginals,
+                    seenThrough: plan.request.expandThreads ? planOriginals.map(\.mirroredAt).max() : nil))
         }
         if let phrase = action.bulkUndoPhrase, !intentIds.isEmpty {
             // Offered at once, like a single action's: undoing what has not been sent yet simply

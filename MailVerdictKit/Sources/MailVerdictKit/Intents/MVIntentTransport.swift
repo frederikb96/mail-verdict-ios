@@ -21,7 +21,8 @@ public struct MVMessageState: Sendable, Equatable {
 /// The requests an intent is delivered with. `MVApiClient` is the one real implementation.
 public protocol MVIntentTransport: Sendable {
     func deliverMessageAction(
-        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, idempotencyKey: UUID, timeout: TimeInterval
+        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
+        timeout: TimeInterval
     ) async throws -> MessageActionResponse
     func deliverBulkAction(
         accountId: UUID, request: BulkActionRequest, timeout: TimeInterval
@@ -34,11 +35,12 @@ public protocol MVIntentTransport: Sendable {
 
 extension MVApiClient: MVIntentTransport {
     public func deliverMessageAction(
-        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, idempotencyKey: UUID, timeout: TimeInterval
+        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
+        timeout: TimeInterval
     ) async throws -> MessageActionResponse {
         try await performMessageAction(
             messageId: messageId, action: action, targetFolderId: targetFolderId, idempotencyKey: idempotencyKey,
-            timeout: timeout)
+            expectedFolderId: expectedFolderId, timeout: timeout)
     }
 
     public func deliverBulkAction(
@@ -72,7 +74,10 @@ extension MVApiClient: MVIntentTransport {
 
 /// What a delivery attempt means for the intent.
 enum MVIntentDelivery: Equatable {
-    case delivered(affectedCount: Int?, sources: [BulkActionSource])
+    /// `filed`: where the server says it put each message.
+    case delivered(affectedCount: Int?, sources: [BulkActionSource], filed: [UUID: UUID] = [:])
+    /// A guarded action whose messages had all moved on: nothing written, nothing to retry.
+    case notApplied
     /// 404: the message is gone. Nothing left to do or to show.
     case gone
     /// Worth trying again: no response, a timeout, a rate limit or a server error. `mayHaveLanded`

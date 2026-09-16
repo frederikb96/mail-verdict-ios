@@ -174,7 +174,8 @@ final class FakeMailListBackend: MVMailListBackend, MVIntentTransport, @unchecke
     }
 
     func deliverMessageAction(
-        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, idempotencyKey: UUID, timeout: TimeInterval
+        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
+        timeout: TimeInterval
     ) async throws -> MessageActionResponse {
         let (error, delay) = locked {
             _messageActions.append((messageId, action, targetFolderId))

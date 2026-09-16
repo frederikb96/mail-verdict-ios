@@ -324,7 +324,8 @@ public enum MVMessageAction: String, Sendable, Equatable, CaseIterable, Codable 
 public struct MessageActionRequest: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "MessageActionRequest"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case action, targetFolderId = "target_folder_id", keyword, idempotencyKey = "idempotency_key"
+        case action, targetFolderId = "target_folder_id", keyword, idempotencyKey = "idempotency_key",
+            expectedFolderId = "expected_folder_id"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -334,21 +335,26 @@ public struct MessageActionRequest: ContractModel, Codable, Sendable, Equatable 
     /// The same key on a repeated request makes the server answer with the first one's response
     /// instead of applying the action again.
     public let idempotencyKey: UUID?
+    /// The folder the message was seen in. When it has moved since, the server writes nothing and
+    /// answers `applied: false`.
+    public let expectedFolderId: UUID?
 
     public init(
-        action: MVMessageAction, targetFolderId: UUID? = nil, keyword: String? = nil, idempotencyKey: UUID? = nil
+        action: MVMessageAction, targetFolderId: UUID? = nil, keyword: String? = nil, idempotencyKey: UUID? = nil,
+        expectedFolderId: UUID? = nil
     ) {
         self.action = action
         self.targetFolderId = targetFolderId
         self.keyword = keyword
         self.idempotencyKey = idempotencyKey
+        self.expectedFolderId = expectedFolderId
     }
 }
 
 public struct MessageActionResponse: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "MessageActionResponse"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case success, action, messageId = "message_id", message
+        case success, action, messageId = "message_id", message, applied, folderId = "folder_id"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -356,11 +362,19 @@ public struct MessageActionResponse: ContractModel, Codable, Sendable, Equatable
     public let action: String
     public let messageId: UUID
     public let message: String?
+    /// `false` when `expected_folder_id` no longer matched and nothing was written.
+    @MVDefaulted<MVDefaultTrue> public var applied: Bool
+    /// Where the message is once the action is applied — where an undo expects to find it.
+    public let folderId: UUID?
 
-    public init(success: Bool, action: String, messageId: UUID, message: String?) {
+    public init(
+        success: Bool, action: String, messageId: UUID, message: String?, applied: Bool = true, folderId: UUID? = nil
+    ) {
         self.success = success
         self.action = action
         self.messageId = messageId
         self.message = message
+        self.applied = applied
+        self.folderId = folderId
     }
 }
