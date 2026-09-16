@@ -56,8 +56,8 @@ final class ReaderListSyncTests: XCTestCase {
         return (session, store)
     }
 
-    /// The owner-reported case: archiving the only message closes the reader onto the list, which
-    /// must already be without it.
+    /// Archiving the only message closes the reader onto the list, which must already be without
+    /// it.
     func testArchivingTheLastMessageTakesItOutOfTheListBeforeTheReaderCloses() async throws {
         ReaderRouteStub.route(
             "POST", "/api/messages/\(first)/action", status: 409, body: Data(#"{"detail":"Message is locked"}"#.utf8))
