@@ -316,7 +316,7 @@ another client — the row comes back with a red mark and an error toast offerin
 subtitle reads "Waiting for the network" while its message's change is waiting. Row height does not
 change for either mark.
 
-### Actions that need a decision, and actions finishing in the background — web anchor: ui/src/components/mail/actions-indicator.tsx
+### Actions that need a decision, and actions finishing in the background — web anchor: ui/src/components/layout/actions-indicator.tsx
 Needs a device because: the bottom capsule and confirmation dialog, `beginBackgroundTask`, and the
 subtitle chrome. Confirm: archive a message, lock the phone within a second — the archive reaches
 the server (check on the web) without unlocking. Move a message to a folder another client just
