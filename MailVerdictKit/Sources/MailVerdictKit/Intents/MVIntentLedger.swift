@@ -575,8 +575,12 @@ public final class MVIntentLedger {
             waitingIds.remove(id)
             changed()
             notifySettled([intent])
-            if result == .notApplied, intent.undoes != nil {
-                toasts?.show(MVToast(variant: .info, message: "Nothing to undo — the message has moved since"))
+            if result == .notApplied {
+                let message =
+                    intent.undoes != nil
+                    ? "Nothing to undo — the message has moved since"
+                    : "Did not \(intent.action.phrase) — the message had already moved"
+                toasts?.show(MVToast(variant: .info, message: message))
             }
             finish(id, result == .gone ? .gone : .notApplied)
         case .retry(let reason, let mayHaveLanded):

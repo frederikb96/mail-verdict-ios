@@ -28,8 +28,8 @@ final class MVIntentGuardTests: XCTestCase {
     }
 
     /// Rescued from Trash on another device before a queued trash went out: the server leaves it
-    /// alone, and so does the phone — no error, and the row is back.
-    func testAnActionTheServerDidNotApplyRetiresQuietly() async {
+    /// alone, and so does the phone — the row is back, nothing is retried, and the person is told.
+    func testAnActionTheServerDidNotApplyRetiresAndSaysSo() async {
         let toasts = MVToastStore()
         let transport = RecordingIntentTransport()
         transport.applied = false
@@ -41,7 +41,8 @@ final class MVIntentGuardTests: XCTestCase {
 
         XCTAssertEqual(outcome, .notApplied)
         XCTAssertTrue(ledger.intents.isEmpty)
-        XCTAssertNil(toasts.current)
+        XCTAssertEqual(toasts.current?.message, "Did not move to trash — the message had already moved")
+        XCTAssertNil(toasts.current?.actionTitle, "a guard miss offered a retry")
         XCTAssertEqual(
             ledger.project(testRows(1...2), scope: scope).map(\.id), [testUUID(1), testUUID(2)])
     }
