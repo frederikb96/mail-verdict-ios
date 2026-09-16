@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An action sent late, or an Undo, only moves a message still where it was seen: one filed somewhere
   else in the meantime, on this device or another, stays there — Undo and Discard included, even
   when no answer ever said where the action put it. Undo says so when there is nothing left to undo.
+- A late bulk action on conversations takes along only replies the list had already read, never
+  leaving an older message of the conversation behind. Needs a server that sends `as_of` with list
+  pages; without it, conversations are acted on in full.
 - Emptying or deleting a folder waits until every action on its account has reached the server, so a
   message on its way into or out of the folder is never destroyed with it.
 

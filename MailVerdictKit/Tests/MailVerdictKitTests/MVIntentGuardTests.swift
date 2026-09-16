@@ -138,14 +138,41 @@ final class MVIntentGuardTests: XCTestCase {
         XCTAssertTrue(response.applied, "a server without the guard reads as not having applied anything")
     }
 
-    /// A row's own `mirrored_at` is not a bound on its conversation: a member dated earlier but
-    /// mirrored later would be left behind. Until the list carries a server-clock bound, a
-    /// conversation is expanded in full.
-    func testABulkArchiveFromTheListDoesNotBoundItsConversationsByARowsOwnTime() async {
+    /// Rows from two pages: the conversations expand through the newer page's read, so a member
+    /// mirrored before either read — whatever its own date — goes with them.
+    func testABulkConversationActionExpandsThroughTheNewestReadItsRowsCameFrom() async {
         let backend = FakeMailListBackend()
-        let newest = testReceivedBase.addingTimeInterval(120)
+        let firstRead = testReceivedBase.addingTimeInterval(600)
+        let laterRead = testReceivedBase.addingTimeInterval(900)
+        backend.pageHandler = { cursor, _ in
+            if case .olderThan = cursor {
+                return MessageListResponse(
+                    messages: [testRow(3), testRow(4)], hasMore: false, nextCursor: nil, asOf: laterRead)
+            }
+            return MessageListResponse(messages: testRows(1...2), hasMore: true, nextCursor: nil, asOf: firstRead)
+        }
+        let ledger = makeTestLedger(transport: backend)
+        let store = MVMailListStore(
+            scope: .folder(accountId: testAccount, folderId: testFolder), backend: backend, ledger: ledger, toasts: nil,
+            defaults: testDefaults(threaded: true), session: MVListSession())
+        await store.start()
+        await store.loadOlder()
+
+        store.toggleSelection(of: testUUID(1))
+        store.toggleSelection(of: testUUID(3))
+        await store.performBulk(.archive)
+        await waitUntil { backend.bulkRequests.count == 1 }
+
+        XCTAssertEqual(backend.bulkRequests.first?.1.expandThreadsThrough, laterRead)
+        XCTAssertEqual(backend.bulkRequests.first?.1.expectedFolderIds?.count, 2)
+    }
+
+    /// An older server reads no clock with its pages: the conversation expands in full rather than
+    /// through a row's own time, which would leave older-dated members behind.
+    func testABulkConversationActionFromPagesWithoutAReadClockIsNotBounded() async {
+        let backend = FakeMailListBackend()
         backend.pageHandler = { _, _ in
-            testPage([testRow(1, mirroredAt: newest), testRow(2), testRow(3)])
+            testPage([testRow(1, mirroredAt: testReceivedBase.addingTimeInterval(120)), testRow(2), testRow(3)])
         }
         let ledger = makeTestLedger(transport: backend)
         let store = MVMailListStore(
@@ -159,7 +186,6 @@ final class MVIntentGuardTests: XCTestCase {
         await waitUntil { backend.bulkRequests.count == 1 }
 
         XCTAssertNil(backend.bulkRequests.first?.1.expandThreadsThrough)
-        XCTAssertEqual(backend.bulkRequests.first?.1.expectedFolderIds?.count, 2)
     }
 }
 
