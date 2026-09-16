@@ -18,7 +18,8 @@ struct MailboxesScreen: View {
         self.environment = environment
         self.connection = connection
         self._store = State(
-            initialValue: MailboxesStore(apiClient: connection.apiClient, membership: connection.membership))
+            initialValue: MailboxesStore(
+                apiClient: connection.apiClient, ledger: connection.intentLedger, membership: connection.membership))
     }
 
     var body: some View {
@@ -68,10 +69,14 @@ struct MailboxesScreen: View {
         .alert("Empty folder?", isPresented: isEmptyFolderAlertPresented, presenting: pendingEmptyFolder) { pending in
             Button("Empty Folder", role: .destructive) {
                 Task {
-                    try? await store.emptyFolder(
-                        accountId: pending.accountId, folderId: pending.folderId,
-                        confirmMessageCount: pending.messageCount, snapshotAt: pending.snapshotAt
-                    )
+                    do {
+                        try await store.emptyFolder(
+                            accountId: pending.accountId, folderId: pending.folderId,
+                            confirmMessageCount: pending.messageCount, snapshotAt: pending.snapshotAt
+                        )
+                    } catch {
+                        showError(error)
+                    }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -86,10 +91,14 @@ struct MailboxesScreen: View {
         ) { pending in
             Button("Delete", role: .destructive) {
                 Task {
-                    try? await store.deleteFolder(
-                        accountId: pending.accountId, folderId: pending.folderId,
-                        confirmMessageCount: pending.messageCount
-                    )
+                    do {
+                        try await store.deleteFolder(
+                            accountId: pending.accountId, folderId: pending.folderId,
+                            confirmMessageCount: pending.messageCount
+                        )
+                    } catch {
+                        showError(error)
+                    }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -232,8 +241,13 @@ struct MailboxesScreen: View {
         }
         Button("Empty Folder…", role: .destructive) {
             Task {
-                guard let snapshot = try? await store.mintEmptySelection(accountId: accountId, folderId: folder.id)
-                else { return }
+                let snapshot: SelectionSnapshotResponse
+                do {
+                    snapshot = try await store.mintEmptySelection(accountId: accountId, folderId: folder.id)
+                } catch {
+                    showError(error)
+                    return
+                }
                 pendingEmptyFolder = PendingEmptyFolder(
                     accountId: accountId, folderId: folder.id, folderName: folder.displayName,
                     messageCount: snapshot.count, snapshotAt: snapshot.snapshotAt
@@ -245,12 +259,20 @@ struct MailboxesScreen: View {
         }
         if folder.specialUse == nil {
             Button("Delete Folder…", role: .destructive) {
+                if let refusal = store.folderDestructionRefusal(accountId: accountId) {
+                    showError(refusal)
+                    return
+                }
                 pendingDeleteFolder = PendingDeleteFolder(
                     accountId: accountId, folderId: folder.id, folderName: folder.displayName,
                     messageCount: folder.totalCount
                 )
             }
         }
+    }
+
+    private func showError(_ error: Error) {
+        environment.toasts.show(MVToast(variant: .error, message: error.mvUserMessage, duration: 0))
     }
 
     // MARK: - MailVerdict section

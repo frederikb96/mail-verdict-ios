@@ -62,7 +62,7 @@ final class MVIntentGuardTests: XCTestCase {
 
         XCTAssertEqual(transport.calls, ["archive 1", "move 1"])
         XCTAssertEqual(transport.expected.last, [testUUID(1): archiveFolder])
-        XCTAssertEqual(toasts.current?.message, "Nothing to undo — the message has moved since")
+        XCTAssertEqual(toasts.current?.message, "Nothing to undo — the message is no longer where the action left it")
     }
 
     func testABulkActionExpectsEveryFolderAndStopsExpandingAtWhatWasSeen() async {
@@ -138,7 +138,10 @@ final class MVIntentGuardTests: XCTestCase {
         XCTAssertTrue(response.applied, "a server without the guard reads as not having applied anything")
     }
 
-    func testABulkArchiveFromTheListStopsExpandingAtTheNewestRowSeen() async {
+    /// A row's own `mirrored_at` is not a bound on its conversation: a member dated earlier but
+    /// mirrored later would be left behind. Until the list carries a server-clock bound, a
+    /// conversation is expanded in full.
+    func testABulkArchiveFromTheListDoesNotBoundItsConversationsByARowsOwnTime() async {
         let backend = FakeMailListBackend()
         let newest = testReceivedBase.addingTimeInterval(120)
         backend.pageHandler = { _, _ in
@@ -155,7 +158,7 @@ final class MVIntentGuardTests: XCTestCase {
         await store.performBulk(.archive)
         await waitUntil { backend.bulkRequests.count == 1 }
 
-        XCTAssertEqual(backend.bulkRequests.first?.1.expandThreadsThrough, newest)
+        XCTAssertNil(backend.bulkRequests.first?.1.expandThreadsThrough)
         XCTAssertEqual(backend.bulkRequests.first?.1.expectedFolderIds?.count, 2)
     }
 }
@@ -192,5 +195,9 @@ final class SkippingBulkTransport: MVIntentTransport, @unchecked Sendable {
 
     func fetchMessageState(messageId: UUID, includeFlags: Bool, timeout: TimeInterval) async throws -> MVMessageState? {
         nil
+    }
+
+    func fetchFolders(accountId: UUID, timeout: TimeInterval) async throws -> [FolderResponse] {
+        testRoleFolderList(accountId: accountId)
     }
 }

@@ -17,7 +17,7 @@ final class MailboxesStoreTests: XCTestCase {
         let client = MVApiClient(requestFactory: factory, urlSession: MVStubURLProtocol.makeSession())
         let suite = try! XCTUnwrap(UserDefaults(suiteName: "mailboxes-store-\(UUID())"))
         return MailboxesStore(
-            apiClient: client, uiState: MailboxesUIState(defaults: suite),
+            apiClient: client, ledger: makeTestLedger(transport: client), uiState: MailboxesUIState(defaults: suite),
             diskCache: MailboxesDiskCache(
                 directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)),
             recentViews: MVRecentViewRecord(defaults: suite))
@@ -58,7 +58,7 @@ final class MailboxesStoreTests: XCTestCase {
         let factory = try! MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none })
         let client = MVApiClient(requestFactory: factory, urlSession: MVStubURLProtocol.makeSession())
         let relaunched = MailboxesStore(
-            apiClient: client, uiState: MailboxesUIState(defaults: suite),
+            apiClient: client, ledger: makeTestLedger(transport: client), uiState: MailboxesUIState(defaults: suite),
             diskCache: MailboxesDiskCache(
                 directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)),
             recentViews: MVRecentViewRecord(defaults: suite))

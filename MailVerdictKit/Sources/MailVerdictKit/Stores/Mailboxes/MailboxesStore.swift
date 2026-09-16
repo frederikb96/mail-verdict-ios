@@ -66,6 +66,7 @@ public final class MailboxesStore {
     public let membership: MailboxesUnifiedMembership
 
     private let apiClient: MVApiClient
+    private let ledger: MVIntentLedger
     private let uiState: MailboxesUIState
     private let diskCache: MailboxesDiskCache
     /// The same `UserDefaults`-backed record `MVMessagePlaceResolver` reads `lastViewWasUnified`
@@ -76,11 +77,12 @@ public final class MailboxesStore {
     private var liveSubscriptionToken: MVSubscriptionToken?
 
     public init(
-        apiClient: MVApiClient, uiState: MailboxesUIState = MailboxesUIState(),
+        apiClient: MVApiClient, ledger: MVIntentLedger, uiState: MailboxesUIState = MailboxesUIState(),
         diskCache: MailboxesDiskCache = MailboxesDiskCache(), recentViews: MVRecentViewRecord = MVRecentViewRecord(),
         membership: MailboxesUnifiedMembership = MailboxesUnifiedMembership()
     ) {
         self.apiClient = apiClient
+        self.ledger = ledger
         self.uiState = uiState
         self.diskCache = diskCache
         self.recentViews = recentViews
@@ -237,13 +239,21 @@ public final class MailboxesStore {
     /// Mints the selection snapshot "Empty Folder…" needs to confirm a count against, before the
     /// destructive alert is ever shown.
     public func mintEmptySelection(accountId: UUID, folderId: UUID) async throws -> SelectionSnapshotResponse {
-        try await apiClient.mintSelection(accountId: accountId, folderId: folderId, filter: "all")
+        if let refusal = ledger.folderDestructionRefusal(accountId: accountId) { throw refusal }
+        return try await apiClient.mintSelection(accountId: accountId, folderId: folderId, filter: "all")
+    }
+
+    /// Why a folder of this account may not be emptied or deleted right now — the check the
+    /// confirmation runs before it is shown, and the destructive call runs again.
+    public func folderDestructionRefusal(accountId: UUID) -> MVError? {
+        ledger.folderDestructionRefusal(accountId: accountId)
     }
 
     @discardableResult
     public func emptyFolder(
         accountId: UUID, folderId: UUID, confirmMessageCount: Int, snapshotAt: Date
     ) async throws -> BulkActionResponse {
+        if let refusal = ledger.folderDestructionRefusal(accountId: accountId) { throw refusal }
         let scope = BulkActionScope(folderId: folderId, filter: "all", snapshotAt: snapshotAt)
         let response = try await apiClient.bulkAction(
             accountId: accountId,
@@ -263,6 +273,7 @@ public final class MailboxesStore {
     }
 
     public func deleteFolder(accountId: UUID, folderId: UUID, confirmMessageCount: Int) async throws {
+        if let refusal = ledger.folderDestructionRefusal(accountId: accountId) { throw refusal }
         try await apiClient.deleteFolder(folderId: folderId, confirmMessageCount: confirmMessageCount)
         await refreshAccountSection(accountId: accountId)
     }

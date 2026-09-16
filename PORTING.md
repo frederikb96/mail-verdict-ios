@@ -324,3 +324,9 @@ deleted — "1 failed" appears in a capsule at the bottom of the list; Retry res
 row back. In airplane mode, archive a message and leave the phone for over an hour, then turn the
 network on — nothing is sent, the capsule reads "1 action not sent", Send Now archives it and Discard
 brings the row back. An idle reader shows no empty subtitle line under its title.
+
+### Folders are not emptied or deleted under unsent actions — web anchor: ui/src/components/sidebar/folder-manage-dialog.tsx
+Needs a device because: the Mailboxes context menu and toast. Confirm: in airplane mode, move a
+message out of a folder, then long-press that folder — Empty Folder… and Delete Folder… each show an
+error toast instead of their confirmation; back online, once the move has gone, both confirmations
+appear as usual.

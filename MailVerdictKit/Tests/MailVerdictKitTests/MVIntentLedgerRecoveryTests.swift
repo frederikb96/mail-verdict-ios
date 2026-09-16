@@ -146,6 +146,9 @@ final class MVIntentLedgerRecoveryTests: XCTestCase {
         await waitUntil { transport.calls.count == 2 }
         XCTAssertEqual(transport.calls, ["archive 1", "move 1"])
         XCTAssertEqual(ledger.intents.first?.targetFolderId, testFolder)
+        XCTAssertEqual(
+            transport.expected.last, [testUUID(1): testUUID(701)],
+            "the move back went out without saying where it expects the message")
     }
 
     func testUndoWhileTheRequestIsOutShowsTheRowAtOnce() async {
@@ -396,7 +399,9 @@ final class MVIntentLedgerRecoveryTests: XCTestCase {
         XCTAssertEqual(
             MVIntentDelivery.classify(MVError.detail("x", statusCode: 429)), .retry("x", mayHaveLanded: false))
         XCTAssertEqual(
-            MVIntentDelivery.classify(MVError.detail("x", statusCode: 503)), .retry("x", mayHaveLanded: true))
+            MVIntentDelivery.classify(MVError.detail("x", statusCode: 503)), .busy("x"))
+        XCTAssertEqual(
+            MVIntentDelivery.classify(MVError.detail("x", statusCode: 502)), .retry("x", mayHaveLanded: true))
         XCTAssertEqual(MVIntentDelivery.classify(MVError.detail("x", statusCode: 409)), .refused("x"))
         guard case .retry(_, false) = MVIntentDelivery.classify(URLError(.cannotConnectToHost)) else {
             return XCTFail("a request that never connected counted as maybe landed")

@@ -194,6 +194,10 @@ final class FakeMailListBackend: MVMailListBackend, MVIntentTransport, @unchecke
         throw MVError.detail("unused", statusCode: 500)
     }
 
+    func fetchFolders(accountId: UUID, timeout: TimeInterval) async throws -> [FolderResponse] {
+        testRoleFolderList(accountId: accountId)
+    }
+
     func deliverBulkAction(
         accountId: UUID, request: BulkActionRequest, timeout: TimeInterval
     ) async throws -> BulkActionResponse {
@@ -227,6 +231,19 @@ final class FakeMailListBackend: MVMailListBackend, MVIntentTransport, @unchecke
     func fetchDeadOutbox() async throws -> [OutboxResponse] { [] }
     func fetchContactPhotoIndex(accountId: UUID) async throws -> ContactPhotoIndexResponse {
         ContactPhotoIndexResponse(byEmail: [:])
+    }
+}
+
+/// The special-use folders test transports answer an account's folder list with.
+let testRoleFolders: [String: UUID] = [
+    "inbox": testFolder, "archive": testUUID(701), "trash": testUUID(703), "junk": testUUID(704),
+]
+
+func testRoleFolderList(accountId: UUID = testAccount) -> [FolderResponse] {
+    testRoleFolders.map { role, id in
+        FolderResponse(
+            id: id, accountId: accountId, imapName: role.capitalized, displayName: nil, specialUse: role,
+            mailboxId: nil, backfillTotal: nil, idleStatus: nil, lastSyncedAt: nil, syncError: nil, createdAt: nil)
     }
 }
 

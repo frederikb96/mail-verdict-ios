@@ -1078,8 +1078,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     messageIds: planIds, delivery: .bulk(expandThreads: plan.request.expandThreads),
                     originFolderIds: Dictionary(
                         planOriginals.map { ($0.id, $0.folderId) }, uniquingKeysWith: { first, _ in first }),
-                    snapshots: planOriginals,
-                    seenThrough: plan.request.expandThreads ? planOriginals.map(\.mirroredAt).max() : nil))
+                    snapshots: planOriginals))
         }
         if let phrase = action.bulkUndoPhrase, !intentIds.isEmpty {
             // Offered at once, like a single action's: undoing what has not been sent yet simply
@@ -1143,6 +1142,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     /// confirmed and the set deleted are the same snapshot.
     public func prepareEmptyFolder() async -> SelectionSnapshotResponse? {
         guard case .folder(let accountId, let folderId) = scope else { return nil }
+        if let refusal = ledger.folderDestructionRefusal(accountId: accountId) {
+            showError(refusal.userMessage)
+            return nil
+        }
         do {
             return try await backend.fetchSelectionSnapshot(accountId: accountId, folderId: folderId, filter: .all)
         } catch {
@@ -1153,6 +1156,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
 
     public func emptyFolder(confirmed snapshot: SelectionSnapshotResponse) async {
         guard case .folder(let accountId, let folderId) = scope else { return }
+        if let refusal = ledger.folderDestructionRefusal(accountId: accountId) {
+            showError(refusal.userMessage)
+            return
+        }
         do {
             _ = try await backend.sendBulkAction(
                 accountId: accountId,

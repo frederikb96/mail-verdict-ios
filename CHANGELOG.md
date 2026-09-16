@@ -25,8 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An expired sign-in holds outstanding actions until the app is signed in again, instead of losing
   them.
 - An action sent late, or an Undo, only moves a message still where it was seen: one filed somewhere
-  else in the meantime, on this device or another, stays there. Undo says so when there is nothing
-  left to undo. A late bulk action on conversations no longer sweeps in replies that arrived after.
+  else in the meantime, on this device or another, stays there — Undo and Discard included, even
+  when no answer ever said where the action put it. Undo says so when there is nothing left to undo.
+- Emptying or deleting a folder waits until every action on its account has reached the server, so a
+  message on its way into or out of the folder is never destroyed with it.
 
 ### Fixed
 
