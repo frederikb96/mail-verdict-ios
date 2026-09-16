@@ -315,3 +315,12 @@ the row comes back and nothing reaches the server. Move a message to a folder th
 another client — the row comes back with a red mark and an error toast offering Retry. The reader's
 subtitle reads "Waiting for the network" while its message's change is waiting. Row height does not
 change for either mark.
+
+### Actions that need a decision, and actions finishing in the background — web anchor: ui/src/components/mail/actions-indicator.tsx
+Needs a device because: the bottom capsule and confirmation dialog, `beginBackgroundTask`, and the
+subtitle chrome. Confirm: archive a message, lock the phone within a second — the archive reaches
+the server (check on the web) without unlocking. Move a message to a folder another client just
+deleted — "1 failed" appears in a capsule at the bottom of the list; Retry resends, Discard puts the
+row back. In airplane mode, archive a message and leave the phone for over an hour, then turn the
+network on — nothing is sent, the capsule reads "1 action not sent", Send Now archives it and Discard
+brings the row back. An idle reader shows no empty subtitle line under its title.

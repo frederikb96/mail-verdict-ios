@@ -121,6 +121,25 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         return rows
     }
 
+    /// "2 actions not sent · 1 failed" — actions that need the person, or `nil`.
+    public var actionAttentionSummary: String? { ledger.attentionSummary }
+    public var hasUnsentActions: Bool { !ledger.unsentIntents.isEmpty }
+    public var hasFailedActions: Bool { !ledger.failedIntents.isEmpty }
+
+    /// Actions held past their expiry, sent after all.
+    public func sendUnsentActions() {
+        ledger.confirmSend(ledger.unsentIntents.map(\.id))
+    }
+
+    public func retryFailedActions() {
+        ledger.retry(ledger.failedIntents.map(\.id))
+    }
+
+    /// Every unsent and failed action given up on, undoing whatever of them may have landed.
+    public func discardAttentionActions() {
+        ledger.discard((ledger.unsentIntents + ledger.failedIntents).map(\.id))
+    }
+
     /// Open intents on this list's rows that have been waiting long enough to show it.
     public var waitingIntentIds: Set<UUID> { ledger.waitingIds }
 

@@ -187,6 +187,32 @@ final class MVMailListStoreTests: XCTestCase {
         XCTAssertEqual(backend.bulkRequests.count, 0)
     }
 
+    func testActionsNeedingThePersonAreSummarisedAndCanBeRetriedOrDiscarded() async {
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...3)) }
+        backend.messageActionError = MVError.detail("Target folder does not exist", statusCode: 409)
+        let ledger = makeTestLedger(transport: backend)
+        let store = makeStore(backend, ledger: ledger)
+        await store.start()
+
+        store.perform(.archive, on: testUUID(1))
+        store.perform(.delete, on: testUUID(2))
+        await waitUntil { store.hasFailedActions && ledger.failedIntents.count == 2 }
+        XCTAssertEqual(store.actionAttentionSummary, "2 failed")
+
+        backend.messageActionError = nil
+        store.retryFailedActions()
+        await waitUntil { ledger.intents.allSatisfy { $0.state == .done } }
+        XCTAssertEqual(backend.messageActions.count, 4)
+
+        backend.messageActionError = MVError.detail("Target folder does not exist", statusCode: 409)
+        store.perform(.archive, on: testUUID(3))
+        await waitUntil { store.hasFailedActions }
+        store.discardAttentionActions()
+        XCTAssertNil(store.actionAttentionSummary)
+        XCTAssertTrue(store.rowIds.contains(testUUID(3)))
+    }
+
     /// Reading a row while only unread mail is listed must not snatch it away on the next
     /// refresh, which no longer returns it.
     func testARowReadInTheUnreadListStaysThroughARefresh() async {

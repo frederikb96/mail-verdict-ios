@@ -13,10 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   junking show at once and are delivered in the background: retried when the server or the network
   has a hiccup, held while offline and sent when the connection returns, and kept across a relaunch.
   A row still waiting shows a spinner, and the list's subtitle counts what is waiting; a change the
-  server refuses puts the message back, marks its row, and offers Retry.
-- Undo on an action that has not reached the server yet simply cancels it.
+  server refuses, or one still failing after several attempts, puts the message back, marks its row,
+  and offers Retry. Actions keep going for a while after the app goes to the background.
+- An action still unsent after an hour is no longer sent on its own: the list shows it, with Send
+  Now, Retry and Discard, since the mailbox may have changed in the meantime.
+- Undo on an action that has not reached the server yet simply cancels it; one whose answer was lost,
+  or that is still on its way, is reversed. Bulk actions offer Undo straight away.
 - Every action carries an idempotency key, so a retry after a lost response is never applied twice.
-  Needs a server that accepts `idempotency_key` on message and bulk actions.
+  An answer that never came back is also checked against the message before the action goes again,
+  which keeps a server without idempotency keys safe too.
+- An expired sign-in holds outstanding actions until the app is signed in again, instead of losing
+  them.
 
 ### Fixed
 

@@ -22,6 +22,7 @@ struct MailListScreen: View {
     @State private var deleteForeverRow: MessageSummary?
     @State private var bulkConfirmation: BulkConfirmation?
     @State private var emptyFolderSnapshot: SelectionSnapshotResponse?
+    @State private var reviewingActions = false
 
     init(scope: ListScope, aroundMessageId: UUID?, environment: AppEnvironment, connection: AppEnvironment.Connection) {
         self.scope = scope
@@ -47,6 +48,7 @@ struct MailListScreen: View {
             .ignoresSafeArea()
             .overlay { stateOverlay }
             .overlay(alignment: .top) { newMessagesCapsule }
+            .overlay(alignment: .bottom) { actionAttentionCapsule }
             .animation(.default, value: store.newMessagesCapsuleCount)
     }
 
@@ -382,6 +384,37 @@ struct MailListScreen: View {
         .background(Color(uiColor: .systemBackground))
         .allowsHitTesting(false)
         .accessibilityIdentifier("maillist-loading")
+    }
+
+    /// Actions that will not go out on their own — held past their expiry, or failed — with the
+    /// choice of sending, retrying or discarding them.
+    @ViewBuilder
+    private var actionAttentionCapsule: some View {
+        if let summary = store.actionAttentionSummary, !store.isSelecting {
+            Button {
+                reviewingActions = true
+            } label: {
+                Label(summary, systemImage: MVSymbols.actionFailed)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.glass)
+            .padding(.bottom, 12)
+            .accessibilityIdentifier("maillist-action-attention")
+            .confirmationDialog(summary, isPresented: $reviewingActions, titleVisibility: .visible) {
+                if store.hasUnsentActions {
+                    Button("Send Now") { store.sendUnsentActions() }
+                }
+                if store.hasFailedActions {
+                    Button("Retry") { store.retryFailedActions() }
+                }
+                Button("Discard", role: .destructive) { store.discardAttentionActions() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "These changes have not reached the server. Discarding one puts the message back where it was."
+                )
+            }
+        }
     }
 
     @ViewBuilder

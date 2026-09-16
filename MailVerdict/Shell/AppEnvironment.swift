@@ -2,6 +2,7 @@ import Foundation
 import MailVerdictKit
 import Observation
 import SwiftUI
+import UIKit
 
 /// Where the app's connection lives.
 ///
@@ -151,11 +152,40 @@ final class AppEnvironment {
     /// would read "Connecting…" for up to that long after returning.
     func handleScenePhaseChange(to phase: ScenePhase) {
         switch phase {
-        case .background: connection?.liveEventHub.pause()
+        case .background:
+            connection?.liveEventHub.pause()
+            finishActionsInBackground()
         case .active:
             connection?.liveEventHub.resume()
             connection?.intentLedger.resume()
         default: break
+        }
+    }
+
+    /// Keeps the app running for as long as iOS allows while actions are still on their way, so
+    /// an archive right before locking the phone reaches the server rather than waiting for the
+    /// next launch.
+    private func finishActionsInBackground() {
+        guard let ledger = connection?.intentLedger, ledger.hasOpenIntents else { return }
+        let assertion = BackgroundAssertion()
+        assertion.task = UIApplication.shared.beginBackgroundTask(withName: "MailVerdict.actions") {
+            MainActor.assumeIsolated { assertion.end() }
+        }
+        Task { @MainActor in
+            await ledger.waitUntilIdle()
+            assertion.end()
+        }
+    }
+
+    /// One background task, ended exactly once — by the ledger going idle or by iOS's own deadline.
+    @MainActor
+    private final class BackgroundAssertion {
+        var task = UIBackgroundTaskIdentifier.invalid
+
+        func end() {
+            guard task != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(task)
+            task = .invalid
         }
     }
 
