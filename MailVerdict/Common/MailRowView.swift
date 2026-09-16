@@ -46,8 +46,13 @@ struct MailRowView: View {
             Text(data.senderName)
                 .font(MVTypography.listSenderFont(isUnread: data.isUnread))
                 .lineLimit(1)
-            if data.pendingSync {
+            if data.pendingSync || data.actionState == .waiting {
                 ProgressView().controlSize(.mini)
+            } else if data.actionState == .failed {
+                Image(systemName: MVSymbols.actionFailed)
+                    .font(.caption2)
+                    .foregroundStyle(MVPalette.actionFailed)
+                    .accessibilityLabel("A change was not saved")
             }
             Spacer(minLength: 4)
             Text(data.dateText)

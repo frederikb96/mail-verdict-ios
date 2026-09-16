@@ -29,7 +29,9 @@ public enum ReaderActionOutcome: Sendable, Equatable {
 
 /// Everything behind a reader screen that is not a view: the conversation per page, the
 /// reference data, the per-message canvas choices and invitation cards, the rules that run when a
-/// page settles, every message action, and live updates.
+/// page settles, every message action, and live updates. Actions are intents on the connection's
+/// `MVIntentLedger`, and every conversation is read through it, so the reader and the list it came
+/// from show the same state from the same place.
 @Observable
 @MainActor
 public final class ReaderSession {
@@ -47,6 +49,9 @@ public final class ReaderSession {
     @ObservationIgnored public var onCurrentRemoved: (@MainActor (ReaderRemoval) -> Void)?
 
     @ObservationIgnored public let api: MVApiClient
+    @ObservationIgnored private let ledger: MVIntentLedger
+    /// The ledger's sequence when each page's conversation was read.
+    @ObservationIgnored private var pageSequences: [UUID: Int] = [:]
     @ObservationIgnored public let lookups: ReaderLookups
     /// The app's one \"where is this message now\" resolver — shared, so Show in Folder answers from
     /// the same unified-view membership the rest of the app uses.
@@ -72,14 +77,15 @@ public final class ReaderSession {
     @ObservationIgnored private let threadCache: MVThreadCache?
 
     public init(
-        context: ReaderContext, api: MVApiClient, placeResolver: MVMessagePlaceResolver, theme: MVCanvas,
-        registry: ReaderSourceRegistry = .shared,
+        context: ReaderContext, api: MVApiClient, ledger: MVIntentLedger, placeResolver: MVMessagePlaceResolver,
+        theme: MVCanvas, registry: ReaderSourceRegistry = .shared,
         tracker: MVExplicitUnreadTracker = .shared, canvasStore: MVCanvasPreferenceStore = MVCanvasPreferenceStore(),
         cacheDirectory: URL = FileManager.default.temporaryDirectory, threadCache: MVThreadCache? = nil,
         referenceCache: MVReferenceCache? = nil
     ) {
         self.context = context
         self.api = api
+        self.ledger = ledger
         self.placeResolver = placeResolver
         self.theme = theme
         self.registry = registry
@@ -91,11 +97,13 @@ public final class ReaderSession {
         self.cacheDirectory = cacheDirectory.appendingPathComponent("attachments", isDirectory: true)
         let source = registry.source(for: context.source)
         self.source = source
-        self.paging = ReaderPagingStore(openedId: context.messageId, source: source)
+        self.paging = ReaderPagingStore(
+            openedId: context.messageId, source: source, hiddenIds: { [weak ledger] in ledger?.hiddenMessageIds ?? [] })
         paging.onCurrentRemovedExternally = { [weak self] removal in
             self?.onCurrentRemoved?(removal)
         }
         paging.startObservingSource()
+        ledger.addObserver(self)
     }
 
     // MARK: Reading state
@@ -106,9 +114,31 @@ public final class ReaderSession {
 
     public var currentRowId: UUID { paging.currentId }
 
+    /// A page's conversation as it stands, with every outstanding change applied.
     public func conversation(for rowId: UUID) -> ReaderConversation? {
+        guard var conversation = storedConversation(for: rowId) else { return nil }
+        let sequence = pageSequences[rowId] ?? 0
+        conversation.messages = conversation.messages.map { ledger.project(message: $0, baseSequence: sequence) }
+        return conversation
+    }
+
+    /// As the server last gave it — what every write to `pages` starts from.
+    private func storedConversation(for rowId: UUID) -> ReaderConversation? {
         if case .loaded(let conversation) = pages[rowId] { return conversation }
         return nil
+    }
+
+    /// Whether a change to the current message is waiting on the network, or was refused.
+    public var currentActionState: MVIntentRowState {
+        currentPrimary.map { ledger.rowState(for: $0.id) } ?? .none
+    }
+
+    public var currentActionStatusText: String? {
+        switch currentActionState {
+        case .none: return nil
+        case .waiting: return "Waiting for the network"
+        case .failed: return "A change was not saved"
+        }
     }
 
     public var currentPrimary: MessageDetail? {
@@ -191,7 +221,7 @@ public final class ReaderSession {
             applyReferenceDataIfCached(for: cached.messages, rowId: rowId)
         {
             awaitingRevalidation.insert(rowId)
-            show(cached, for: rowId)
+            show(cached, for: rowId, readAt: 0)
             refresh(rowId) { [weak self] in
                 guard let self, self.awaitingRevalidation.remove(rowId) != nil else { return }
                 if rowId == self.settledRowId { self.applyReadRules(rowId) }
@@ -224,10 +254,11 @@ public final class ReaderSession {
         loadTasks[rowId]?.cancel()
         loadTasks[rowId] = Task { [weak self] in
             guard let self else { return }
+            let readAt = self.ledger.sequence
             do {
                 let thread = try await self.fetchThread(rowId)
                 guard !Task.isCancelled else { return }
-                await self.apply(thread, to: rowId)
+                await self.apply(thread, to: rowId, readAt: readAt)
             } catch {
                 guard !Task.isCancelled else { return }
                 self.loadFailed(rowId, error: error)
@@ -242,19 +273,21 @@ public final class ReaderSession {
         return try await threadCache.thread(for: rowId)
     }
 
-    private func apply(_ thread: ThreadResponse, to rowId: UUID) async {
+    private func apply(_ thread: ThreadResponse, to rowId: UUID, readAt: Int) async {
         guard !thread.messages.isEmpty else {
             loadFailed(rowId, error: MVError.http(statusCode: 404, reason: "Not Found"))
             return
         }
         await prepareReferenceData(for: thread.messages, rowId: rowId)
         guard pages[rowId] != nil else { return }
-        show(thread, for: rowId)
+        show(thread, for: rowId, readAt: readAt)
     }
 
-    private func show(_ thread: ThreadResponse, for rowId: UUID) {
+    /// `readAt` is the ledger's sequence when `thread` was read; a cached copy's is unknown, so 0.
+    private func show(_ thread: ThreadResponse, for rowId: UUID, readAt: Int) {
         let conversation = ReaderConversation(messages: thread.messages, openedId: rowId)
         pages[rowId] = .loaded(conversation)
+        pageSequences[rowId] = readAt
         revision += 1
         emit(
             rowId,
@@ -374,6 +407,7 @@ public final class ReaderSession {
                 for message in conversation.messages { invitations[message.id] = nil }
             }
             pages[rowId] = nil
+            pageSequences[rowId] = nil
             avatarSources[rowId] = nil
             readRulesApplied.remove(rowId)
             awaitingRevalidation.remove(rowId)
@@ -394,12 +428,10 @@ public final class ReaderSession {
                 let ids = ReaderReadPolicy.conversationIdsToMarkRead(
                     thread: conversation.messages, openedId: primary.id, folderIds: scopedFolders)
                 if !ids.isEmpty {
-                    for id in ids {
-                        self.updateMessage(id) { $0.isSeen = true }
-                        self.source?.readerDidChange(.changed(id, .markRead))
-                    }
-                    _ = try? await self.api.bulkAction(
-                        accountId: primary.accountId, request: BulkActionRequest(action: .markRead, ids: ids))
+                    self.ledger.enqueue(
+                        MVIntentRequest(
+                            accountId: primary.accountId, action: .markRead, messageIds: ids,
+                            delivery: .bulk(expandThreads: false)))
                 }
             }
             await self.dismissAlerts(for: primary.id)
@@ -413,7 +445,7 @@ public final class ReaderSession {
         let explicit = await tracker.isExplicit(message.id)
         if !explicit { await tracker.clear() }
         if ReaderReadPolicy.shouldMarkRead(message, explicitlyUnreadId: explicit ? message.id : nil) {
-            await send(.markRead, to: message.id, optimistic: { $0.isSeen = true }, revert: { $0.isSeen = false })
+            ledger.enqueue(MVIntentRequest(accountId: message.accountId, action: .markRead, messageIds: [message.id]))
         }
     }
 
@@ -431,7 +463,8 @@ public final class ReaderSession {
     /// the newly-open message's own read state follow it; the rest of the thread collapses above
     /// it, the same as a freshly loaded page.
     public func openMessage(_ id: UUID) {
-        guard let rowId = row(containing: id), var conversation = conversation(for: rowId), conversation.openedId != id
+        guard let rowId = row(containing: id), var conversation = storedConversation(for: rowId),
+            conversation.openedId != id
         else { return }
         conversation.openedId = id
         pages[rowId] = .loaded(conversation)
@@ -441,7 +474,7 @@ public final class ReaderSession {
             .document(
                 html: ConversationDocumentBuilder.document(for: conversation, options: options(for: rowId)),
                 revealsOpened: true))
-        if let message = conversation.messages.first(where: { $0.id == id }) {
+        if let message = self.conversation(for: rowId)?.messages.first(where: { $0.id == id }) {
             Task { [weak self] in
                 guard let self else { return }
                 await self.markReadIfNeeded(message)
@@ -454,68 +487,24 @@ public final class ReaderSession {
 
     /// Archive, Delete, Delete Forever, Junk, Not Junk and Move (with `targetFolderId`). When the
     /// primary is the row's own message, the page slides on to the neighbour in the direction last
-    /// paged straight away, the list the reader came from drops the row, and the request follows. But `openMessage` can make the primary a different message than the
-    /// row — acting on it then only takes that one message out of its folder; the row, and the
-    /// rest of the pager, stay exactly where they are, the same as the web, where the conversation
-    /// row survives and only the message leaves it. An undoable action offers Undo, which moves
-    /// the message back; a failed one puts it back where it was — in the pager when the row
-    /// itself moved, or just in its folder when only the message did.
+    /// paged straight away — the list it came from has already dropped the row. But `openMessage`
+    /// can make the primary a different message than the row — acting on it then only takes that
+    /// one message out of its folder; the row, and the rest of the pager, stay exactly where they
+    /// are, the same as the web, where the conversation row survives and only the message leaves
+    /// it. Undo, and a refused request, put the message back wherever it showed.
     public func remove(with action: MVMessageAction, targetFolderId: UUID? = nil) -> ReaderActionOutcome {
-        guard let message = currentPrimary else { return .stay }
+        guard let message = currentPrimary, let bulk = MVBulkAction(rawValue: action.rawValue) else { return .stay }
         let rowId = currentRowId
-        let originalFolderId = message.folderId
-        let removesRow = message.id == rowId
-        let removal = removesRow ? paging.remove(rowId) : nil
-        if removesRow { source?.readerDidChange(.removed(rowId)) }
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                _ = try await self.api.performMessageAction(
-                    messageId: message.id, action: action, targetFolderId: targetFolderId)
-                if !removesRow { self.refresh(rowId) }
-                if let label = MailActionLabels.undoToast(for: action) {
-                    self.onToast?(
-                        MVToast(
-                            variant: .success, message: label, duration: 6, actionTitle: "Undo",
-                            action: { [weak self] in
-                                Task { @MainActor in
-                                    await self?.undoMove(
-                                        message.id, rowId: rowId, to: originalFolderId, restoringRow: removesRow)
-                                }
-                            }))
-                }
-            } catch {
-                if removesRow {
-                    self.paging.restore(rowId)
-                    self.source?.readerDidChange(.restored(rowId))
-                }
-                self.onToast?(
-                    MVToast(
-                        variant: .error, message: MailActionLabels.failure(action, reason: error.mvUserMessage),
-                        duration: 0))
-            }
-        }
-        switch removal {
+        ledger.enqueue(
+            MVIntentRequest(
+                accountId: message.accountId, action: bulk, targetFolderId: targetFolderId, messageIds: [message.id],
+                originFolderIds: [message.id: message.folderId]),
+            undoToast: MailActionLabels.undoToast(for: action))
+        guard message.id == rowId else { return .stay }
+        switch paging.remove(rowId) {
         case .advance(let target, let direction)?: return .advance(to: target, direction: direction)
         case .exhausted?: return .close
         case nil: return .stay
-        }
-    }
-
-    private func undoMove(_ messageId: UUID, rowId: UUID, to folderId: UUID, restoringRow: Bool) async {
-        do {
-            _ = try await api.performMessageAction(messageId: messageId, action: .move, targetFolderId: folderId)
-            if restoringRow {
-                paging.restore(rowId)
-                source?.readerDidChange(.restored(rowId))
-            } else {
-                refresh(rowId)
-            }
-        } catch {
-            onToast?(
-                MVToast(
-                    variant: .error, message: MailActionLabels.failure(.move, reason: error.mvUserMessage),
-                    duration: 0))
         }
     }
 
@@ -528,16 +517,15 @@ public final class ReaderSession {
         } else {
             await tracker.markExplicit(message.id)
         }
-        await send(
-            read ? .markRead : .markUnread, to: message.id, optimistic: { $0.isSeen = read },
-            revert: { $0.isSeen = !read })
+        ledger.enqueue(
+            MVIntentRequest(
+                accountId: message.accountId, action: read ? .markRead : .markUnread, messageIds: [message.id]))
     }
 
     public func setStarred(_ starred: Bool) async {
         guard let message = currentPrimary else { return }
-        await send(
-            starred ? .flag : .unflag, to: message.id, optimistic: { $0.isFlagged = starred },
-            revert: { $0.isFlagged = !starred })
+        ledger.enqueue(
+            MVIntentRequest(accountId: message.accountId, action: starred ? .flag : .unflag, messageIds: [message.id]))
     }
 
     /// 👍 confirms the verdict, 👎 corrects it — one feedback call either way, as on the web. A
@@ -770,9 +758,10 @@ public final class ReaderSession {
         Task { [weak self] in
             guard let self else { return }
             defer { completion?() }
+            let readAt = self.ledger.sequence
             guard let thread = try? await self.api.getThread(messageId: rowId) else { return }
             self.threadCache?.store(thread, for: rowId)
-            guard let current = self.conversation(for: rowId),
+            guard let current = self.storedConversation(for: rowId),
                 current == previous || current.messageIds == previous.messageIds
             else { return }
             // `openMessage` may have moved `current.openedId` off the row's own id — carry it
@@ -785,6 +774,7 @@ public final class ReaderSession {
             if next.messageIds != current.messageIds {
                 await self.prepareReferenceData(for: next.messages, rowId: rowId)
                 self.pages[rowId] = .loaded(next)
+                self.pageSequences[rowId] = readAt
                 self.revision += 1
                 self.emit(rowId, .rebuild)
                 self.loadInvitations(for: next, rowId: rowId)
@@ -793,13 +783,14 @@ public final class ReaderSession {
             for message in next.messages {
                 self.replaceMessage(message, in: rowId)
             }
+            self.pageSequences[rowId] = readAt
         }
     }
 
     /// Swaps one message's model, redrawing its content block only when something the page shows
     /// changed — a read or star flip alone leaves the page untouched.
     private func replaceMessage(_ message: MessageDetail, in rowId: UUID) {
-        guard var conversation = conversation(for: rowId),
+        guard var conversation = storedConversation(for: rowId),
             let index = conversation.messages.firstIndex(where: { $0.id == message.id })
         else { return }
         let old = conversation.messages[index]
@@ -822,36 +813,6 @@ public final class ReaderSession {
 
     // MARK: Helpers
 
-    private func send(
-        _ action: MVMessageAction, to messageId: UUID, optimistic: (inout MessageDetail) -> Void,
-        revert: (inout MessageDetail) -> Void
-    ) async {
-        let change = MVBulkAction(rawValue: action.rawValue)
-        updateMessage(messageId, optimistic)
-        if let change { source?.readerDidChange(.changed(messageId, change)) }
-        do {
-            _ = try await api.performMessageAction(messageId: messageId, action: action)
-        } catch {
-            updateMessage(messageId, revert)
-            if let inverse = change?.inverse { source?.readerDidChange(.changed(messageId, inverse)) }
-            onToast?(
-                MVToast(
-                    variant: .error, message: MailActionLabels.failure(action, reason: error.mvUserMessage),
-                    duration: 0))
-        }
-    }
-
-    private func updateMessage(_ messageId: UUID, _ change: (inout MessageDetail) -> Void) {
-        for rowId in pages.keys {
-            guard var conversation = conversation(for: rowId),
-                let index = conversation.messages.firstIndex(where: { $0.id == messageId })
-            else { continue }
-            change(&conversation.messages[index])
-            pages[rowId] = .loaded(conversation)
-        }
-        revision += 1
-    }
-
     private func row(containing messageId: UUID) -> UUID? {
         if conversation(for: currentRowId)?.messageIds.contains(messageId) == true { return currentRowId }
         return pages.keys.first { conversation(for: $0)?.messageIds.contains(messageId) ?? false }
@@ -861,6 +822,35 @@ public final class ReaderSession {
         switch error as? MVError {
         case .detail(_, let status)?, .http(let status, _)?: return status == 404
         default: return false
+        }
+    }
+}
+
+extension ReaderSession: MVIntentObserver {
+    public var intentBaseSequence: Int {
+        pages.keys.compactMap { storedConversation(for: $0) != nil ? pageSequences[$0] : nil }.min() ?? .max
+    }
+
+    /// A page read before these settled keeps their read and star changes.
+    public func intentsWillRetire(_ intents: [MVMailIntent]) {
+        for rowId in pages.keys {
+            guard var conversation = storedConversation(for: rowId) else { continue }
+            let sequence = pageSequences[rowId] ?? 0
+            conversation.messages = conversation.messages.map {
+                MVIntentProjection.message($0, applying: intents, baseSequence: sequence)
+            }
+            pages[rowId] = .loaded(conversation)
+        }
+        revision += 1
+    }
+
+    /// A message that left its folder can change the conversation around it; the page reads it
+    /// again once the server has the move.
+    public func intentsDidSettle(_ intents: [MVMailIntent]) {
+        let moved = Set(intents.filter(\.leavesFolder).flatMap(\.messageIds))
+        guard !moved.isEmpty else { return }
+        for rowId in pages.keys where !moved.isDisjoint(with: storedConversation(for: rowId)?.messageIds ?? []) {
+            refresh(rowId)
         }
     }
 }

@@ -303,3 +303,15 @@ change are UIKit transitions. Confirm: open the only message in a folder and Arc
 closes onto a list that is already empty, with no row flashing and disappearing; star or mark a
 message unread in the reader and go Back — the row already shows it; Move to… from the reader slides
 on to the next message and the moved row is gone from the list.
+
+### Actions wait out a bad connection — web anchor: ui/src/hooks/use-mails.ts (useMailAction)
+Needs a device because: `NWPathMonitor`, a real network dropping, app relaunch and the row and
+reader chrome. Confirm: in airplane mode, archive a message and star another — the archived row
+leaves at once, the starred row shows a small spinner after a moment and the list subtitle reads
+"1 action waiting for the network"; turn the network back on — both reach the server within a few
+seconds with nothing left waiting. Archive offline, quit the app from the switcher, relaunch online
+— the message stays out of the list and is archived on the server. Archive offline and tap Undo —
+the row comes back and nothing reaches the server. Move a message to a folder that was deleted on
+another client — the row comes back with a red mark and an error toast offering Retry. The reader's
+subtitle reads "Waiting for the network" while its message's change is waiting. Row height does not
+change for either mark.

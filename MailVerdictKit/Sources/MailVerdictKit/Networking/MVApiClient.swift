@@ -35,15 +35,17 @@ public struct MVApiClient: Sendable {
 
     // MARK: Core request helper
 
+    /// `timeout` replaces the session's own request timeout for this one request.
     func send<T: Decodable>(
         path: String,
         method: String = "GET",
         query: [URLQueryItem] = [],
         body: Data? = nil,
-        contentType: String? = "application/json"
+        contentType: String? = "application/json",
+        timeout: TimeInterval? = nil
     ) async throws -> T {
         let (data, response) = try await rawSend(
-            path: path, method: method, query: query, body: body, contentType: contentType
+            path: path, method: method, query: query, body: body, contentType: contentType, timeout: timeout
         )
         try checkStatus(response: response, data: data)
         do {
@@ -155,11 +157,13 @@ public struct MVApiClient: Sendable {
     }
 
     func rawSend(
-        path: String, method: String, query: [URLQueryItem], body: Data?, contentType: String?
+        path: String, method: String, query: [URLQueryItem], body: Data?, contentType: String?,
+        timeout: TimeInterval? = nil
     ) async throws -> (Data, URLResponse) {
-        let request = try requestFactory.makeRequest(
+        var request = try requestFactory.makeRequest(
             path: path, method: method, query: query, body: body, contentType: contentType
         )
+        if let timeout { request.timeoutInterval = timeout }
         return try await urlSession.data(for: request)
     }
 

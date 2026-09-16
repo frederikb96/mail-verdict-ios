@@ -75,10 +75,10 @@ func waitUntil(
     }
 }
 
-/// A backend double for `MVMailListStore`. Every call is recorded; responses come from
-/// handlers a test replaces. Lock-protected rather than an actor so a test configures it
-/// synchronously.
-final class FakeMailListBackend: MVMailListBackend, @unchecked Sendable {
+/// A backend double for `MVMailListStore`, and the transport of the ledger its tests build. Every
+/// call is recorded; responses come from handlers a test replaces. Lock-protected rather than an
+/// actor so a test configures it synchronously.
+final class FakeMailListBackend: MVMailListBackend, MVIntentTransport, @unchecked Sendable {
     typealias PageHandler = @Sendable (MVListCursor, Int) async throws -> MessageListResponse
     typealias BulkHandler = @Sendable (UUID, BulkActionRequest) async throws -> BulkActionResponse
 
@@ -90,6 +90,7 @@ final class FakeMailListBackend: MVMailListBackend, @unchecked Sendable {
     private var _cursors: [MVListCursor] = []
     private var _messageActions: [(UUID, MVMessageAction, UUID?)] = []
     private var _messageActionError: Error?
+    private var _messageActionDelay: (@Sendable (UUID) async throws -> Void)?
     private var _bulkRequests: [(UUID, BulkActionRequest)] = []
     private var _selectionFilters: [MVSelectionFilter] = []
     private var _filterQueries: [String] = []
@@ -113,6 +114,11 @@ final class FakeMailListBackend: MVMailListBackend, @unchecked Sendable {
     var messageActionError: Error? {
         get { locked { _messageActionError } }
         set { locked { _messageActionError = newValue } }
+    }
+    /// Runs before a message action is answered — a test holds one open here, or fails it.
+    var messageActionDelay: (@Sendable (UUID) async throws -> Void)? {
+        get { locked { _messageActionDelay } }
+        set { locked { _messageActionDelay = newValue } }
     }
     var filterResults: [SearchResult] {
         get { locked { _filterResults } }
@@ -167,12 +173,21 @@ final class FakeMailListBackend: MVMailListBackend, @unchecked Sendable {
         ThreadResponse(messages: [])
     }
 
-    func sendMessageAction(messageId: UUID, action: MVMessageAction, targetFolderId: UUID?) async throws {
-        let error = locked {
+    func deliverMessageAction(
+        messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, timeout: TimeInterval
+    ) async throws {
+        let (error, delay) = locked {
             _messageActions.append((messageId, action, targetFolderId))
-            return _messageActionError
+            return (_messageActionError, _messageActionDelay)
         }
+        try await delay?(messageId)
         if let error { throw error }
+    }
+
+    func deliverBulkAction(
+        accountId: UUID, request: BulkActionRequest, timeout: TimeInterval
+    ) async throws -> BulkActionResponse {
+        try await sendBulkAction(accountId: accountId, request: request)
     }
 
     func sendBulkAction(accountId: UUID, request: BulkActionRequest) async throws -> BulkActionResponse {
@@ -202,5 +217,105 @@ final class FakeMailListBackend: MVMailListBackend, @unchecked Sendable {
     func fetchDeadOutbox() async throws -> [OutboxResponse] { [] }
     func fetchContactPhotoIndex(accountId: UUID) async throws -> ContactPhotoIndexResponse {
         ContactPhotoIndexResponse(byEmail: [:])
+    }
+}
+
+/// A ledger for a test: delivered through `transport`, kept in memory, and — unless a test says
+/// otherwise — always online on the real clock.
+@MainActor
+func makeTestLedger(
+    transport: any MVIntentTransport, toasts: MVToastStore? = nil, clock: any MVIntentClock = MVSystemIntentClock(),
+    connectivity: (any MVConnectivity)? = nil, persistence: any MVIntentPersistence = MVMemoryIntentPersistence(),
+    timing: MVIntentLedger.Timing = MVIntentLedger.Timing()
+) -> MVIntentLedger {
+    MVIntentLedger(
+        transport: transport, persistence: persistence, clock: clock,
+        connectivity: connectivity ?? MVAlwaysOnlineConnectivity(), toasts: toasts, timing: timing)
+}
+
+/// Time that moves only when a test advances it.
+final class TestIntentClock: MVIntentClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+    private var sleepers: [(id: UUID, deadline: Date, continuation: CheckedContinuation<Void, Error>)] = []
+    private var cancelled: Set<UUID> = []
+
+    init(now: Date = testReceivedBase) {
+        current = now
+    }
+
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+
+    var now: Date { locked { current } }
+
+    /// How many sleeps are waiting on the clock.
+    var sleeperCount: Int { locked { sleepers.count } }
+
+    /// Whether something sleeps until `deadline`.
+    func hasSleeper(endingAt deadline: Date) -> Bool {
+        locked { sleepers.contains { abs($0.deadline.timeIntervalSince(deadline)) < 0.000_1 } }
+    }
+
+    func sleep(for seconds: TimeInterval) async throws {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                enum Next { case wait, resume, cancel }
+                let next: Next = locked {
+                    if cancelled.remove(id) != nil { return .cancel }
+                    if seconds <= 0 { return .resume }
+                    sleepers.append((id, current.addingTimeInterval(seconds), continuation))
+                    return .wait
+                }
+                switch next {
+                case .wait: break
+                case .resume: continuation.resume()
+                case .cancel: continuation.resume(throwing: CancellationError())
+                }
+            }
+        } onCancel: {
+            let continuation: CheckedContinuation<Void, Error>? = locked {
+                guard let index = sleepers.firstIndex(where: { $0.id == id }) else {
+                    cancelled.insert(id)
+                    return nil
+                }
+                return sleepers.remove(at: index).continuation
+            }
+            continuation?.resume(throwing: CancellationError())
+        }
+    }
+
+    func advance(by seconds: TimeInterval) {
+        let due: [CheckedContinuation<Void, Error>] = locked {
+            current = current.addingTimeInterval(seconds)
+            let due = sleepers.filter { $0.deadline <= current }
+            sleepers.removeAll { $0.deadline <= current }
+            return due.map(\.continuation)
+        }
+        for continuation in due { continuation.resume() }
+    }
+}
+
+@MainActor
+final class TestConnectivity: MVConnectivity {
+    private var handlers: [@MainActor (Bool) -> Void] = []
+
+    var isOnline: Bool {
+        didSet {
+            guard isOnline != oldValue else { return }
+            for handler in handlers { handler(isOnline) }
+        }
+    }
+
+    init(online: Bool) {
+        isOnline = online
+    }
+
+    func observe(_ handler: @escaping @MainActor (Bool) -> Void) {
+        handlers.append(handler)
     }
 }

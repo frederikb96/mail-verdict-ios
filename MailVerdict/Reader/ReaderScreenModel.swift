@@ -60,7 +60,8 @@ final class ReaderScreenModel {
         self.close = close
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         session = ReaderSession(
-            context: context, api: connection.apiClient, placeResolver: connection.placeResolver, theme: theme,
+            context: context, api: connection.apiClient, ledger: connection.intentLedger,
+            placeResolver: connection.placeResolver, theme: theme,
             cacheDirectory: caches ?? FileManager.default.temporaryDirectory, threadCache: connection.threadCache,
             referenceCache: connection.referenceCache)
         // Held weakly by the hub, so the subscription ends with the reader.

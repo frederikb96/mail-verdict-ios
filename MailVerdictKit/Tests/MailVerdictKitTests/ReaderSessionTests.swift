@@ -86,7 +86,7 @@ final class ReaderSessionTests: XCTestCase {
 
     private func makeSession(
         rows: [UUID], opening: UUID, seen: Bool = false, tracker: MVExplicitUnreadTracker = MVExplicitUnreadTracker(),
-        threadCache: MVThreadCache? = nil, referenceCache: MVReferenceCache? = nil
+        threadCache: MVThreadCache? = nil, referenceCache: MVReferenceCache? = nil, toasts: MVToastStore? = nil
     ) throws -> (ReaderSession, ReaderTestSource) {
         for id in rows {
             ReaderRouteStub.route(
@@ -103,7 +103,8 @@ final class ReaderSessionTests: XCTestCase {
         let client = try makeClient()
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "reader-session-\(UUID())"))
         let session = ReaderSession(
-            context: context, api: client, placeResolver: MVMessagePlaceResolver(apiClient: client), theme: .light,
+            context: context, api: client, ledger: makeTestLedger(transport: client, toasts: toasts),
+            placeResolver: MVMessagePlaceResolver(apiClient: client), theme: .light,
             registry: registry, tracker: tracker,
             canvasStore: MVCanvasPreferenceStore(defaults: defaults),
             cacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
@@ -301,11 +302,10 @@ final class ReaderSessionTests: XCTestCase {
 
     func testArchivingAdvancesAtOnceAndAFailedRequestPutsTheMessageBack() async throws {
         ReaderRouteStub.route(
-            "POST", "/api/messages/\(b)/action", status: 500, body: Data(#"{"detail":"server down"}"#.utf8))
+            "POST", "/api/messages/\(b)/action", status: 409, body: Data(#"{"detail":"Message is locked"}"#.utf8))
         // Already read, so the only request this page makes to the failing route is the archive.
-        let (session, _) = try makeSession(rows: [a, b, c], opening: b, seen: true)
-        var toasts: [String] = []
-        session.onToast = { toasts.append($0.message) }
+        let toasts = MVToastStore()
+        let (session, _) = try makeSession(rows: [a, b, c], opening: b, seen: true, toasts: toasts)
         session.didSettle(on: b)
         let loaded = await waitUntil { session.conversation(for: self.b) != nil }
         XCTAssertTrue(loaded)
@@ -315,6 +315,6 @@ final class ReaderSessionTests: XCTestCase {
 
         let restored = await waitUntil { !session.paging.removedIds.contains(self.b) }
         XCTAssertTrue(restored, "a failed archive left the message out of the pager")
-        XCTAssertEqual(toasts, ["Could not archive: server down"])
+        XCTAssertEqual(toasts.current?.message, "Could not archive: Message is locked")
     }
 }

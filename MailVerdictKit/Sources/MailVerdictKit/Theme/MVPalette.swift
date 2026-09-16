@@ -24,6 +24,7 @@
 
         public static let destructive = Color.red
         public static let spamMark = Color.red
+        public static let actionFailed = Color.red
 
         public static let imageBannerBackground = Color(light: "#f59e0b", dark: "#fbbf24").opacity(0.1)
         public static let imageBannerText = Color(light: "#b45309", dark: "#fbbf24")

@@ -63,12 +63,13 @@ extension MVApiClient {
     // MARK: Action (single message)
 
     public func performMessageAction(
-        messageId: UUID, action: MVMessageAction, targetFolderId: UUID? = nil, keyword: String? = nil
+        messageId: UUID, action: MVMessageAction, targetFolderId: UUID? = nil, keyword: String? = nil,
+        timeout: TimeInterval? = nil
     ) async throws -> MessageActionResponse {
         let request = MessageActionRequest(action: action, targetFolderId: targetFolderId, keyword: keyword)
         return try await send(
             path: "/api/messages/\(messageId)/action", method: "POST",
-            body: try Self.encodeBody(request)
+            body: try Self.encodeBody(request), timeout: timeout
         )
     }
 
@@ -86,10 +87,12 @@ extension MVApiClient {
         )
     }
 
-    public func bulkAction(accountId: UUID, request: BulkActionRequest) async throws -> BulkActionResponse {
+    public func bulkAction(
+        accountId: UUID, request: BulkActionRequest, timeout: TimeInterval? = nil
+    ) async throws -> BulkActionResponse {
         try await send(
             path: "/api/accounts/\(accountId)/messages/bulk-action", method: "POST",
-            body: try Self.encodeBody(request)
+            body: try Self.encodeBody(request), timeout: timeout
         )
     }
 

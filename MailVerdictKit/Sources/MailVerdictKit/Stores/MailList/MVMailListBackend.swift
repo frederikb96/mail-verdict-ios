@@ -27,7 +27,6 @@ public protocol MVMailListBackend: Sendable {
     ) async throws -> SearchResponse
     func fetchLocation(messageId: UUID) async throws -> MessageLocation
     func fetchThread(messageId: UUID) async throws -> ThreadResponse
-    func sendMessageAction(messageId: UUID, action: MVMessageAction, targetFolderId: UUID?) async throws
     func sendBulkAction(accountId: UUID, request: BulkActionRequest) async throws -> BulkActionResponse
     func fetchSelectionSnapshot(
         accountId: UUID, folderId: UUID, filter: MVSelectionFilter
@@ -93,10 +92,6 @@ extension MVApiClient: MVMailListBackend {
 
     public func fetchThread(messageId: UUID) async throws -> ThreadResponse {
         try await getThread(messageId: messageId, loadImages: false)
-    }
-
-    public func sendMessageAction(messageId: UUID, action: MVMessageAction, targetFolderId: UUID?) async throws {
-        _ = try await performMessageAction(messageId: messageId, action: action, targetFolderId: targetFolderId)
     }
 
     public func sendBulkAction(accountId: UUID, request: BulkActionRequest) async throws -> BulkActionResponse {

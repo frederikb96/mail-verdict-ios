@@ -55,6 +55,7 @@ private struct ReaderContent: View {
         ReaderPager(model: model)
             .ignoresSafeArea()
             .navigationTitle(model.session.title ?? "")
+            .navigationSubtitle(model.session.currentActionStatusText ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbar }
             .toolbar(.visible, for: .bottomBar)

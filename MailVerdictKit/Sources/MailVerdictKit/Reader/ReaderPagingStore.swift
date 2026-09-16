@@ -44,7 +44,8 @@ public enum ReaderNeighbourResolver {
 }
 
 /// The pager's position in the list it pages through: the current row, what sits either side of
-/// it, the direction last paged in, and the rows the reader has removed itself.
+/// it, and the direction last paged in. Rows an intent has taken out of their folder are skipped
+/// (`hiddenIds`), whichever list the reader pages through.
 ///
 /// Only identities, never indices — a row inserted or archived above the current one re-derives
 /// the neighbours without ever moving the pager.
@@ -55,23 +56,28 @@ public final class ReaderPagingStore {
     public private(set) var older: ReaderSlot?
     public private(set) var newer: ReaderSlot?
     public private(set) var lastDirection: MVAutoAdvanceDirection = .older
-    public private(set) var removedIds: Set<UUID> = []
 
     /// Called when the list itself dropped the current row (a live delete, a move from another
     /// client) — the pager then slides on the same way as after its own archive.
     @ObservationIgnored public var onCurrentRemovedExternally: (@MainActor (ReaderRemoval) -> Void)?
 
     @ObservationIgnored private weak var source: (any ReaderListSource)?
+    @ObservationIgnored private let hiddenIds: @MainActor () -> Set<UUID>
     @ObservationIgnored private var knownRows: [UUID]
     @ObservationIgnored private var loadingOlder = false
     @ObservationIgnored private var loadingNewer = false
 
-    public init(openedId: UUID, source: (any ReaderListSource)?) {
+    public init(
+        openedId: UUID, source: (any ReaderListSource)?, hiddenIds: @escaping @MainActor () -> Set<UUID> = { [] }
+    ) {
         self.currentId = openedId
         self.source = source
+        self.hiddenIds = hiddenIds
         self.knownRows = source?.rowIds ?? []
         recomputeNeighbours(previousRows: knownRows)
     }
+
+    public var removedIds: Set<UUID> { hiddenIds() }
 
     public var olderId: UUID? {
         if case .message(let id) = older { return id }
@@ -89,7 +95,7 @@ public final class ReaderPagingStore {
         let previous = knownRows
         knownRows = source?.rowIds ?? []
         // A row the reader removed itself has already been left, or closed on.
-        if source != nil, !knownRows.contains(currentId), previous.contains(currentId), !removedIds.contains(currentId)
+        if source != nil, !knownRows.contains(currentId), previous.contains(currentId), !hiddenIds().contains(currentId)
         {
             recomputeNeighbours(previousRows: previous)
             return advanceAway(from: currentId)
@@ -108,21 +114,15 @@ public final class ReaderPagingStore {
         return true
     }
 
-    /// The reader removed `id` itself (archive, delete, junk). Removing the current row advances
-    /// in the last direction paged, falling back to the other side — the web's `neighbourInCache`.
+    /// The reader took `id` out of its folder (archive, delete, junk, move) and `hiddenIds`
+    /// already holds it. Removing the current row advances in the last direction paged, falling
+    /// back to the other side — the web's `neighbourInCache`.
     public func remove(_ id: UUID) -> ReaderRemoval? {
-        removedIds.insert(id)
         guard id == currentId else {
             recomputeNeighbours(previousRows: knownRows)
             return nil
         }
         return advanceAway(from: id)
-    }
-
-    /// Undoes `remove` — an Undo, or a request that failed.
-    public func restore(_ id: UUID) {
-        removedIds.remove(id)
-        recomputeNeighbours(previousRows: knownRows)
     }
 
     /// Fetches the next page of the source when a side slot is waiting on one.
@@ -142,12 +142,14 @@ public final class ReaderPagingStore {
         }
     }
 
-    /// Re-derives the neighbours whenever an observable source's rows change. A source that is
+    /// Re-derives the neighbours whenever an observable source's rows, or the hidden rows,
+    /// change — an undone or refused removal makes its row a neighbour again. A source that is
     /// not `@Observable` is simply never re-read on its own; paging still re-reads it on settle.
     public func startObservingSource() {
         guard let source else { return }
         withObservationTracking {
             _ = source.rowIds
+            _ = hiddenIds()
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -176,7 +178,7 @@ public final class ReaderPagingStore {
             return
         }
         let found = ReaderNeighbourResolver.neighbours(
-            of: currentId, rows: knownRows, previousRows: previousRows, removed: removedIds)
+            of: currentId, rows: knownRows, previousRows: previousRows, removed: hiddenIds())
         older = found.older.map(ReaderSlot.message) ?? (source?.hasOlder == true ? .loadingMore : nil)
         newer = found.newer.map(ReaderSlot.message) ?? (source?.hasNewer == true ? .loadingMore : nil)
     }

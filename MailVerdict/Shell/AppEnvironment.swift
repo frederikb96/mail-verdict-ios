@@ -80,6 +80,10 @@ final class AppEnvironment {
 
         /// Conversations fetched ahead of the reader — on touch-down and for the rows on screen.
         let threadCache: MVThreadCache
+
+        /// Every mail action on its way to the server — what the lists and the reader show on top
+        /// of what they read.
+        let intentLedger: MVIntentLedger
     }
 
     /// Internal, not private — `FixtureBootstrap` seeds this default too, so a fixture-mode
@@ -119,6 +123,7 @@ final class AppEnvironment {
     /// one — so it surfaces to whichever screen made the call instead of wiping the Keychain.
     func handleAuthenticationFailure(detail: String?) {
         connection?.liveEventHub.disconnect()
+        connection?.intentLedger.stop()
         credentials.write(nil)
         connection = nil
         lastAuthFailure = detail
@@ -127,6 +132,7 @@ final class AppEnvironment {
 
     func signOut() {
         connection?.liveEventHub.disconnect()
+        connection?.intentLedger.stop()
         credentials.write(nil)
         connection = nil
         lastAuthFailure = nil
@@ -146,7 +152,9 @@ final class AppEnvironment {
     func handleScenePhaseChange(to phase: ScenePhase) {
         switch phase {
         case .background: connection?.liveEventHub.pause()
-        case .active: connection?.liveEventHub.resume()
+        case .active:
+            connection?.liveEventHub.resume()
+            connection?.intentLedger.resume()
         default: break
         }
     }
@@ -180,14 +188,30 @@ final class AppEnvironment {
         // Held weakly by the hub; the connection owns both for as long as it exists.
         liveEventHub.subscribe(referenceCache)
         liveEventHub.subscribe(threadCache)
+        connection?.intentLedger.stop()
+        let intentLedger = MVIntentLedger(
+            transport: client, persistence: Self.intentPersistence(serverURL: backendURL),
+            connectivity: MVNetworkPathConnectivity(), toasts: toasts)
         connection = Connection(
             requestFactory: factory, apiClient: client, liveEventHub: liveEventHub,
             imageLoader: MVAuthenticatedImageLoader(apiClient: client), membership: membership,
             placeResolver: MVMessagePlaceResolver(apiClient: client, membershipLookup: membership),
-            referenceCache: referenceCache, threadCache: threadCache)
+            referenceCache: referenceCache, threadCache: threadCache, intentLedger: intentLedger)
         lastAuthFailure = nil
         router.gate = .ready
         return true
+    }
+
+    /// Application Support, so outstanding actions survive a relaunch; a fixture run keeps them in
+    /// memory, so one screenshot's actions never replay into the next.
+    private static func intentPersistence(serverURL: String) -> any MVIntentPersistence {
+        #if DEBUG
+            if MVFixtureLaunch.isEnabled() { return MVMemoryIntentPersistence() }
+        #endif
+        let directory =
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return MVFileIntentPersistence(directory: directory, serverURL: serverURL)
     }
 
     private static func colorScheme(from stored: String?) -> ColorScheme? {

@@ -31,7 +31,7 @@ struct MailListScreen: View {
         _store = State(
             initialValue: MVMailListStore(
                 scope: scope, aroundMessageId: aroundMessageId, backend: connection.apiClient,
-                toasts: environment.toasts, referenceCache: connection.referenceCache
+                ledger: connection.intentLedger, toasts: environment.toasts, referenceCache: connection.referenceCache
             )
         )
     }

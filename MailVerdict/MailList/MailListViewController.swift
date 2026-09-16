@@ -157,6 +157,7 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
     private func observeStore() {
         withObservationTracking {
             _ = store.rows
+            _ = store.waitingIntentIds
             _ = store.identity
             _ = store.hasNewer
             _ = store.hasOlder
@@ -203,14 +204,17 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
         let rows = store.rows.filter { seen.insert($0.id).inserted }
         let identity = store.identity
         let context = store.context
-        // What each row draws depends on the store's context as well as the row — account badges,
-        // contact photos and folder roles usually land after the rows do.
-        guard identity != appliedIdentity || rows != appliedRows || context != appliedContext else {
+        // What each row draws depends on the store's context and its outstanding actions as well as
+        // the row — account badges, contact photos and folder roles usually land after the rows do.
+        let rowData = Dictionary(rows.map { ($0.id, store.rowData(for: $0)) }, uniquingKeysWith: { first, _ in first })
+        guard
+            identity != appliedIdentity || rows != appliedRows || context != appliedContext
+                || rowData != renderedRowData
+        else {
             applyLanding()
             publishDebugState()
             return
         }
-        let rowData = Dictionary(rows.map { ($0.id, store.rowData(for: $0)) }, uniquingKeysWith: { first, _ in first })
         appliedContext = context
 
         let newIds = rows.map(\.id)

@@ -24,6 +24,13 @@ final class ReaderTestSource: ReaderListSource {
     func loadNewer() async {}
 }
 
+/// The ids an intent has hidden, as a test sets them.
+@MainActor
+final class HiddenIds {
+    var ids: Set<UUID>
+    init(_ ids: Set<UUID>) { self.ids = ids }
+}
+
 final class ReaderNeighbourTests: XCTestCase {
     private let ids = (0..<5).map { _ in UUID() }
 
@@ -77,12 +84,13 @@ final class ReaderPagingStoreTests: XCTestCase {
         XCTAssertEqual(store.remove(a), .exhausted)
     }
 
-    func testARestoredMessageIsANeighbourAgain() async {
+    func testAHiddenMessageIsSkippedAndANeighbourAgainOnceShown() async {
         let source = ReaderTestSource(rowIds: [a, b, c])
-        let store = ReaderPagingStore(openedId: b, source: source)
-        XCTAssertNil(store.remove(a))
+        let hidden = HiddenIds([a])
+        let store = ReaderPagingStore(openedId: b, source: source, hiddenIds: { hidden.ids })
         XCTAssertNil(store.newerId)
-        store.restore(a)
+        hidden.ids = []
+        store.refresh()
         XCTAssertEqual(store.newerId, a)
     }
 
@@ -105,7 +113,9 @@ final class ReaderPagingStoreTests: XCTestCase {
     /// reporting it would close the reader twice.
     func testTheListDroppingARowTheReaderRemovedItselfIsNotReportedAgain() async {
         let source = ReaderTestSource(rowIds: [a])
-        let store = ReaderPagingStore(openedId: a, source: source)
+        let hidden = HiddenIds([])
+        let store = ReaderPagingStore(openedId: a, source: source, hiddenIds: { hidden.ids })
+        hidden.ids = [a]
         XCTAssertEqual(store.remove(a), .exhausted)
         source.rowIds = []
         XCTAssertNil(store.refresh())
@@ -126,7 +136,8 @@ final class ReaderPagingStoreTests: XCTestCase {
         backend.pageHandler = { _, _ in testPage(testRows(1...5)) }
         let listStore = MVMailListStore(
             scope: .folder(accountId: testAccount, folderId: testFolder), aroundMessageId: nil, backend: backend,
-            toasts: nil, defaults: testDefaults(threaded: false), session: MVListSession()
+            ledger: makeTestLedger(transport: backend), toasts: nil, defaults: testDefaults(threaded: false),
+            session: MVListSession()
         )
         await listStore.start()
 

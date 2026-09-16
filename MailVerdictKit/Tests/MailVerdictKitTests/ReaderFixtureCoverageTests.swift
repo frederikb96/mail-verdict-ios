@@ -83,7 +83,8 @@
             for (settled, rowId) in ReaderFixtures.rowIds.enumerated() {
                 let session = ReaderSession(
                     context: ReaderFixtures.context(opening: rowId), api: client,
-                    placeResolver: MVMessagePlaceResolver(apiClient: client), theme: .light,
+                    ledger: makeTestLedger(transport: client), placeResolver: MVMessagePlaceResolver(apiClient: client),
+                    theme: .light,
                     canvasStore: MVCanvasPreferenceStore(defaults: defaults),
                     cacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
                 sessions.append(session)

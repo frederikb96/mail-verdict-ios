@@ -7,12 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Mail actions survive a bad connection. Marking read, starring, moving, archiving, deleting and
+  junking show at once and are delivered in the background: retried when the server or the network
+  has a hiccup, held while offline and sent when the connection returns, and kept across a relaunch.
+  A row still waiting shows a spinner, and the list's subtitle counts what is waiting; a change the
+  server refuses puts the message back, marks its row, and offers Retry.
+- Undo on an action that has not reached the server yet simply cancels it.
+
 ### Fixed
 
 - Archiving, deleting or moving a message from the reader takes it out of the list at once: closing
   onto the list after acting on its last message no longer shows the message for another second.
   Marking read or unread and starring from the reader update the list row the same way.
 - Moving a message from the reader slides on to the next message, the same as Archive.
+- A list refreshing while an action was on its way no longer shows the message back for a moment.
 
 ## [0.1.4] - 2026-09-15
 

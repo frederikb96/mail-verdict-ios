@@ -35,6 +35,8 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
     /// Set when more than one account can appear in the same list (search, unified) — shown as
     /// a trailing chip.
     public let accountChip: String?
+    /// A change to this message the server does not have yet, or refused.
+    public let actionState: MVIntentRowState
 
     public init(
         id: UUID, isUnread: Bool, senderName: String, dateText: String, pendingSync: Bool = false,
@@ -42,7 +44,7 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
         hasAttachments: Bool = false, verdictIsSpam: Bool = false, isStarred: Bool = false,
         line3: String?, line4: [MVTextSegment], avatarIdentity: String,
         avatarPhoto: MVAvatarPhotoSource? = nil, unifiedAccountEmoji: String? = nil,
-        accountChip: String? = nil
+        accountChip: String? = nil, actionState: MVIntentRowState = .none
     ) {
         self.id = id
         self.isUnread = isUnread
@@ -61,6 +63,7 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
         self.avatarPhoto = avatarPhoto
         self.unifiedAccountEmoji = unifiedAccountEmoji
         self.accountChip = accountChip
+        self.actionState = actionState
     }
 
     /// The ordinary (non-search) shape: the snippet alone, wrapping across both preview lines.
@@ -71,7 +74,8 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
         subject: String?, threadCount: Int? = nil, isAnswered: Bool = false,
         hasAttachments: Bool = false, verdictIsSpam: Bool = false, isStarred: Bool = false,
         snippet: String?, snippetMarksMatches: Bool = false, avatarIdentity: String,
-        avatarPhoto: MVAvatarPhotoSource? = nil, unifiedAccountEmoji: String? = nil
+        avatarPhoto: MVAvatarPhotoSource? = nil, unifiedAccountEmoji: String? = nil,
+        actionState: MVIntentRowState = .none
     ) -> MVMailRowData {
         let line4: [MVTextSegment]
         if let snippet {
@@ -85,7 +89,7 @@ public struct MVMailRowData: Identifiable, Equatable, Sendable {
             isAnswered: isAnswered, hasAttachments: hasAttachments, verdictIsSpam: verdictIsSpam,
             isStarred: isStarred, line3: nil, line4: line4,
             avatarIdentity: avatarIdentity, avatarPhoto: avatarPhoto,
-            unifiedAccountEmoji: unifiedAccountEmoji
+            unifiedAccountEmoji: unifiedAccountEmoji, actionState: actionState
         )
     }
 }

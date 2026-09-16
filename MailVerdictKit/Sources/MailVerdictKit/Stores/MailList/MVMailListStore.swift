@@ -3,14 +3,16 @@ import Observation
 
 /// One message list — a folder or a unified view. Owns the fetch window (a page around wherever
 /// the list opened, older and newer pages on demand, one bounded request to refresh all of it),
-/// the unread and quick filters, selection, and optimistic actions with Undo.
+/// the unread and quick filters, and selection. Actions go through the connection's
+/// `MVIntentLedger`: `rows` is the server's rows with every outstanding intent applied, so an
+/// action shows at once, wherever it was taken, and no read landing meanwhile can undo it.
 ///
 /// Scroll position is not here: the list controller owns the viewport and corrects it by the
-/// anchor delta (`MVListAnchoring`) on every change this store makes to `rows`. `identity`
-/// tells it when `rows` became a different list rather than the same list changed.
+/// anchor delta (`MVListAnchoring`) on every change to `rows`. `identity` tells it when `rows`
+/// became a different list rather than the same list changed.
 @Observable
 @MainActor
-public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
+public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVIntentObserver {
 
     public let scope: ListScope
     /// The toggle as the person set it. `identity.threaded` is what the loaded rows were
@@ -18,7 +20,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     public private(set) var threaded: Bool
     public private(set) var unreadOnly: Bool
     public private(set) var identity: MVListIdentity
-    public private(set) var rows: [MessageSummary] = []
+    /// The rows as the server last gave them.
+    private var baseRows: [MessageSummary] = []
+    /// The ledger's sequence when the oldest part of `baseRows` was read.
+    private var baseSequence = 0
     public private(set) var hasOlder = false
     /// The window does not start at the newest message — it opened around one, or was restored.
     public private(set) var hasNewer = false
@@ -42,6 +47,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     public private(set) var selection: MVSelection = .empty
 
     @ObservationIgnored private let backend: any MVMailListBackend
+    @ObservationIgnored private let ledger: MVIntentLedger
+    @ObservationIgnored private var projected: (key: ProjectionKey, rows: [MessageSummary])?
     /// The app-wide reference data, when there is one: the context starts from its last copy so
     /// a list opened again shows badges, avatars and counts at once, and fresh reads go through
     /// it so every screen shares them.
@@ -58,17 +65,12 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     @ObservationIgnored private var pageTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshAgain = false
-    /// Bumped by every optimistic change. A refresh that was in flight across one is discarded
-    /// and read again, so a stale response never puts back a row the reader just archived.
-    @ObservationIgnored private var mutationEpoch = 0
-    /// Rows the reader took out of this list, kept to put back if it undoes or fails.
-    @ObservationIgnored private var removedByReader: [UUID: MessageSummary] = [:]
     @ObservationIgnored private var filterDebounce: Task<Void, Never>?
     /// The query the filter was last asked for. A response for any other query is stale — typing
     /// back to a query already showing leaves a longer one's request still in flight.
     @ObservationIgnored private var latestFilterRequest: String?
     @ObservationIgnored private var unfiltered:
-        (rows: [MessageSummary], hasOlder: Bool, hasNewer: Bool, identity: MVListIdentity)?
+        (rows: [MessageSummary], sequence: Int, hasOlder: Bool, hasNewer: Bool, identity: MVListIdentity)?
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var wasConnected: Bool?
 
@@ -76,8 +78,9 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     static let filterDebounceNanos: UInt64 = 150_000_000
 
     public init(
-        scope: ListScope, aroundMessageId: UUID? = nil, backend: any MVMailListBackend, toasts: MVToastStore?,
-        defaults: UserDefaults = .standard, session: MVListSession? = nil, referenceCache: MVReferenceCache? = nil
+        scope: ListScope, aroundMessageId: UUID? = nil, backend: any MVMailListBackend, ledger: MVIntentLedger,
+        toasts: MVToastStore?, defaults: UserDefaults = .standard, session: MVListSession? = nil,
+        referenceCache: MVReferenceCache? = nil
     ) {
         let session = session ?? .shared
         let threaded = MVListPreferences.threaded(defaults: defaults)
@@ -89,12 +92,71 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             scope: scope, threaded: threaded, unreadOnly: unreadOnly, filterQuery: "", generation: 0
         )
         self.backend = backend
+        self.ledger = ledger
         self.referenceCache = referenceCache
         self.toasts = toasts
         self.defaults = defaults
         self.session = session
         self.positions = MVListPositionStore(defaults: defaults)
         self.initialAroundId = aroundMessageId
+        ledger.addObserver(self)
+    }
+
+    // MARK: - Rows
+
+    private struct ProjectionKey: Equatable {
+        let base: [MessageSummary]
+        let sequence: Int
+        let intents: [MVMailIntent]
+        let scope: MVProjectionScope
+    }
+
+    /// What the list shows: the server's rows with the ledger's intents applied.
+    public var rows: [MessageSummary] {
+        let key = ProjectionKey(base: baseRows, sequence: baseSequence, intents: ledger.intents, scope: projectionScope)
+        if let projected, projected.key == key { return projected.rows }
+        let rows = MVIntentProjection.rows(
+            key.base, applying: key.intents, baseSequence: key.sequence, scope: key.scope)
+        projected = (key, rows)
+        return rows
+    }
+
+    /// Open intents on this list's rows that have been waiting long enough to show it.
+    public var waitingIntentIds: Set<UUID> { ledger.waitingIds }
+
+    private var projectionScope: MVProjectionScope {
+        MVProjectionScope(
+            folderIds: Set(scopeFolderIds), threaded: identity.threaded, hasOlder: hasOlder, hasNewer: hasNewer)
+    }
+
+    /// The rows as a read that began at `sequence` gave them — the whole window.
+    private func setBase(_ rows: [MessageSummary], readAt sequence: Int) {
+        baseRows = rows
+        baseSequence = sequence
+    }
+
+    /// A page read at `sequence` joined to rows read earlier, which stay as old as they were.
+    private func extendBase(_ rows: [MessageSummary], readAt sequence: Int) {
+        baseRows = rows
+        baseSequence = min(baseSequence, sequence)
+    }
+
+    public var intentBaseSequence: Int { baseRows.isEmpty ? .max : baseSequence }
+
+    public func intentSnapshots(for messageIds: Set<UUID>) -> [MessageSummary] {
+        baseRows.filter { messageIds.contains($0.id) }
+    }
+
+    public func intentsWillRetire(_ intents: [MVMailIntent]) {
+        baseRows = MVIntentProjection.rows(
+            baseRows, applying: intents, baseSequence: baseSequence, scope: projectionScope)
+    }
+
+    /// Whatever the server derives from a change — counts, conversation rows, a ruling moving
+    /// mail — is read again once it has the change.
+    public func intentsDidSettle(_ intents: [MVMailIntent]) {
+        let accounts = Set(accountIdsInScope)
+        if intents.contains(where: { accounts.contains($0.accountId) }) { requestRefresh() }
     }
 
     // MARK: - ReaderListSource
@@ -127,25 +189,6 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         openedMessageId = messageId
     }
 
-    public func readerDidChange(_ change: ReaderRowChange) {
-        switch change {
-        case .removed(let id):
-            guard let row = row(id: id) else { return }
-            removedByReader[id] = row
-            mutationEpoch += 1
-            rows.removeAll { $0.id == id }
-        case .restored(let id):
-            guard let original = removedByReader.removeValue(forKey: id) else { return }
-            mutationEpoch += 1
-            rollBack([original])
-        case .changed(let id, let action):
-            guard containsRow(id) else { return }
-            mutationEpoch += 1
-            rows = rows.map { $0.id == id ? Self.applying(action, to: $0, threaded: identity.threaded) : $0 }
-            if action == .markRead { keptWhileUnread.insert(id) }
-        }
-    }
-
     // MARK: - Loading
 
     /// Loads the first page (around `aroundMessageId`, or around the saved position, or at the
@@ -176,6 +219,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         let target = aroundId ?? restoring.flatMap { $0.atTop ? nil : $0.anchor.rowId }
         let threaded = self.threaded
         let unreadOnly = self.unreadOnly
+        let readAt = ledger.sequence
         do {
             var page: MessageListResponse
             var landedAround = false
@@ -201,7 +245,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                 )
             }
             guard generation == expected else { return }
-            rows = page.messages
+            setBase(page.messages, readAt: readAt)
             hasOlder = page.hasMore
             hasNewer = page.hasMoreNewer
             identity = MVListIdentity(
@@ -253,6 +297,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
 
     private func fetchPage(_ direction: PageDirection) async {
         let started = identity
+        let readAt = ledger.sequence
         switch direction {
         case .older: isLoadingOlder = true
         case .newer: isLoadingNewer = true
@@ -265,31 +310,33 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             if isFilterActive {
                 let response = try await backend.fetchFilterPage(
                     query: started.filterQuery, accountId: filterAccountId, folderIds: filterFolderIds,
-                    unreadOnly: started.unreadOnly, before: rows.last?.id, limit: MVMailListWindow.pageSize
+                    unreadOnly: started.unreadOnly, before: baseRows.last?.id, limit: MVMailListWindow.pageSize
                 )
                 guard identity == started else { return }
-                rows = MVMailListWindow.appendingOlder(response.results.map(MessageSummary.init), to: rows)
+                extendBase(
+                    MVMailListWindow.appendingOlder(response.results.map(MessageSummary.init), to: baseRows),
+                    readAt: readAt)
                 hasOlder = response.hasMore
                 return
             }
             switch direction {
             case .older:
-                guard let last = rows.last else { return }
+                guard let last = baseRows.last else { return }
                 let response = try await backend.fetchListPage(
                     scope: scope, threaded: started.threaded, unreadOnly: started.unreadOnly,
                     cursor: .olderThan(last.id), limit: MVMailListWindow.pageSize
                 )
                 guard identity == started else { return }
-                rows = MVMailListWindow.appendingOlder(response.messages, to: rows)
+                extendBase(MVMailListWindow.appendingOlder(response.messages, to: baseRows), readAt: readAt)
                 hasOlder = response.hasMore
             case .newer:
-                guard let first = rows.first else { return }
+                guard let first = baseRows.first else { return }
                 let response = try await backend.fetchListPage(
                     scope: scope, threaded: started.threaded, unreadOnly: started.unreadOnly,
                     cursor: .newerThan(first.id), limit: MVMailListWindow.pageSize
                 )
                 guard identity == started else { return }
-                rows = MVMailListWindow.prependingNewer(response.messages, to: rows)
+                extendBase(MVMailListWindow.prependingNewer(response.messages, to: baseRows), readAt: readAt)
                 hasNewer = response.hasMoreNewer
                 if !hasNewer { await catchUpAfterReachingNewestEdge(started) }
             }
@@ -303,14 +350,15 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     private func catchUpAfterReachingNewestEdge(_ started: MVListIdentity) async {
         guard pendingArrivalCount > 0 else { return }
         pendingArrivalCount = 0
-        guard let first = rows.first,
+        let readAt = ledger.sequence
+        guard let first = baseRows.first,
             let response = try? await backend.fetchListPage(
                 scope: scope, threaded: started.threaded, unreadOnly: started.unreadOnly,
                 cursor: .newerThan(first.id), limit: MVMailListWindow.pageSize
             ),
             identity == started
         else { return }
-        rows = MVMailListWindow.prependingNewer(response.messages, to: rows)
+        extendBase(MVMailListWindow.prependingNewer(response.messages, to: baseRows), readAt: readAt)
     }
 
     // MARK: - Refreshing
@@ -341,28 +389,28 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     }
 
     private func refreshOnce() async {
-        guard phase == .loaded, !isFilterActive, !rows.isEmpty else { return }
+        guard phase == .loaded, !isFilterActive, !baseRows.isEmpty else { return }
         let started = identity
-        let epoch = mutationEpoch
+        let readAt = ledger.sequence
         let preserve = started.unreadOnly ? keptWhileUnread : []
-        let limit = MVMailListWindow.refreshLimit(loadedRows: rows.count)
+        // A row kept while the unread filter is on stays as the reader last saw it — read — even
+        // once the change that made it so has left the ledger.
+        let shown = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let current = baseRows.map { preserve.contains($0.id) ? shown[$0.id] ?? $0 : $0 }
+        let limit = MVMailListWindow.refreshLimit(loadedRows: baseRows.count)
         do {
             if hasNewer {
-                guard let last = rows.last else { return }
+                guard let last = baseRows.last else { return }
                 let response = try await backend.fetchListPage(
                     scope: scope, threaded: started.threaded, unreadOnly: started.unreadOnly,
                     cursor: .newerThan(last.id), limit: limit
                 )
                 guard identity == started else { return }
-                guard mutationEpoch == epoch else {
-                    refreshAgain = true
-                    return
-                }
                 let merged = MVMailListWindow.mergeRefreshedFromBelow(
-                    current: rows, freshAboveLast: response.messages, freshHasMoreNewer: response.hasMoreNewer,
+                    current: current, freshAboveLast: response.messages, freshHasMoreNewer: response.hasMoreNewer,
                     preserveIds: preserve
                 )
-                rows = merged.rows
+                setBase(merged.rows, readAt: readAt)
                 hasNewer = merged.hasNewer
             } else {
                 let response = try await backend.fetchListPage(
@@ -370,15 +418,11 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                     limit: limit
                 )
                 guard identity == started else { return }
-                guard mutationEpoch == epoch else {
-                    refreshAgain = true
-                    return
-                }
                 let merged = MVMailListWindow.mergeRefreshed(
-                    current: rows, fresh: response.messages, freshHasMore: response.hasMore,
+                    current: current, fresh: response.messages, freshHasMore: response.hasMore,
                     currentHasMore: hasOlder, preserveIds: preserve
                 )
-                rows = merged.rows
+                setBase(merged.rows, readAt: readAt)
                 hasOlder = merged.hasMore
             }
         } catch {
@@ -547,8 +591,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                 if concerns(folderId) || (messageId.map(containsRow) ?? false) { needsRefresh = true }
             case .mailDeleted(_, _, let messageId):
                 if let messageId, containsRow(messageId) {
-                    mutationEpoch += 1
-                    rows.removeAll { $0.id == messageId }
+                    baseRows.removeAll { $0.id == messageId }
                     needsRefresh = true
                 }
             case .folderSynced(_, let folderId):
@@ -672,7 +715,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             isFilterLoading = false
             guard let saved = unfiltered else { return }
             unfiltered = nil
-            rows = saved.rows
+            baseRows = saved.rows
+            baseSequence = saved.sequence
             hasOlder = saved.hasOlder
             hasNewer = saved.hasNewer
             identity = saved.identity
@@ -682,7 +726,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         }
         let folderIds = filterFolderIds
         guard !folderIds.isEmpty, phase == .loaded || unfiltered != nil else { return }
-        if unfiltered == nil { unfiltered = (rows, hasOlder, hasNewer, identity) }
+        if unfiltered == nil { unfiltered = (baseRows, baseSequence, hasOlder, hasNewer, identity) }
         generation += 1
         let started = MVListIdentity(
             scope: scope, threaded: identity.threaded, unreadOnly: unreadOnly, filterQuery: query,
@@ -690,6 +734,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         )
         selection = .empty
         isFilterLoading = true
+        let readAt = ledger.sequence
         do {
             let response = try await backend.fetchFilterPage(
                 query: query, accountId: filterAccountId, folderIds: folderIds, unreadOnly: unreadOnly, before: nil,
@@ -697,7 +742,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             )
             guard generation == started.generation, latestFilterRequest == query else { return }
             identity = started
-            rows = response.results.map(MessageSummary.init)
+            setBase(response.results.map(MessageSummary.init), readAt: readAt)
             hasOlder = response.hasMore
             hasNewer = false
             phase = .loaded
@@ -746,6 +791,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
         case .disconnected: return "Offline"
         case .connected: break
         }
+        if let waiting = ledger.waitingSummary { return waiting }
         if unreadOnly { return "Filtered by: Unread" }
         let synced = scopeFolderIds.compactMap { context.folders[$0]?.lastSyncedAt }.max()
         guard let synced else { return "" }
@@ -801,7 +847,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             isStarred: row.isFlagged, snippet: row.snippet, snippetMarksMatches: isFilterActive,
             avatarIdentity: row.fromAddr.map(extractEmail) ?? extractSenderName(row.fromAddr),
             avatarPhoto: context.avatarPhotos[extractEmail(row.fromAddr).lowercased()],
-            unifiedAccountEmoji: isUnified ? context.accounts[row.accountId]?.emoji : nil
+            unifiedAccountEmoji: isUnified ? context.accounts[row.accountId]?.emoji : nil,
+            actionState: ledger.rowState(for: row.id)
         )
     }
 
@@ -854,69 +901,24 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             break
         }
         let targetFolderId = target?.folderId(forAccount: row.accountId)
-        guard let bulk = MailActionService.bulkAction(for: action, targetFolderId: targetFolderId),
-            let wire = MVMessageAction(rawValue: bulk.rawValue)
-        else { return }
-
-        mutationEpoch += 1
-        if bulk.removesFromList {
-            rows.removeAll { $0.id == rowId }
-        } else {
-            rows = rows.map { $0.id == rowId ? Self.applying(bulk, to: $0, threaded: identity.threaded) : $0 }
-        }
+        guard let bulk = MailActionService.bulkAction(for: action, targetFolderId: targetFolderId) else { return }
         if bulk == .markRead { keptWhileUnread.insert(rowId) }
         if bulk == .markUnread { Task { await MVExplicitUnreadTracker.shared.markExplicit(rowId) } }
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.backend.sendMessageAction(messageId: rowId, action: wire, targetFolderId: targetFolderId)
-                if let title = bulk.undoToastTitle {
-                    self.showUndo(title) { [weak self] in
-                        await self?.undoSingleMove(messageId: rowId, originalFolderId: row.folderId)
-                    }
-                }
-            } catch {
-                self.rollBack([row])
-                self.showError("Could not \(bulk.phrase): \(error.mvUserMessage)")
-            }
-            self.requestRefresh()
-        }
-    }
-
-    private func undoSingleMove(messageId: UUID, originalFolderId: UUID) async {
-        do {
-            try await backend.sendMessageAction(messageId: messageId, action: .move, targetFolderId: originalFolderId)
-        } catch {
-            showError("Could not undo: \(error.mvUserMessage)")
-        }
-        await refresh()
+        ledger.enqueue(
+            MVIntentRequest(
+                accountId: row.accountId, action: bulk, targetFolderId: targetFolderId, messageIds: [rowId],
+                originFolderIds: [rowId: row.folderId], snapshots: [row]),
+            undoToast: bulk.undoToastTitle)
     }
 
     /// Reading a conversation row clears every unread message it counts, not only the newest one
     /// it stands for (port of the web's `useMarkConversationRead`).
     private func markConversationRead(_ row: MessageSummary) {
-        mutationEpoch += 1
-        rows = rows.map { $0.id == row.id ? $0.with(isSeen: true, unreadInThread: 0) : $0 }
         keptWhileUnread.insert(row.id)
-        let inScope = Set(scopeFolderIds)
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let thread = try await self.backend.fetchThread(messageId: row.id)
-                let ids = thread.messages.filter { inScope.contains($0.folderId) && !$0.isSeen }.map(\.id)
-                self.keptWhileUnread.formUnion(ids)
-                if !ids.isEmpty {
-                    _ = try await self.backend.sendBulkAction(
-                        accountId: row.accountId, request: BulkActionRequest(action: .markRead, ids: ids)
-                    )
-                }
-            } catch {
-                self.rollBack([row])
-                self.showError("Could not mark as read: \(error.mvUserMessage)")
-            }
-            self.requestRefresh()
-        }
+        ledger.enqueue(
+            MVIntentRequest(
+                accountId: row.accountId, action: .markRead, messageIds: [row.id],
+                delivery: .conversationRead(folderIds: scopeFolderIds), originFolderIds: [row.id: row.folderId]))
     }
 
     private func sendVerdictFeedback(_ row: MessageSummary, isSpam: Bool) {
@@ -937,36 +939,6 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     static func hasOtherUnreadInConversation(_ row: MessageSummary) -> Bool {
         let ownUnread = row.isSeen ? 0 : 1
         return (row.unreadInThread ?? 0) - ownUnread > 0
-    }
-
-    static func applying(_ action: MVBulkAction, to row: MessageSummary, threaded: Bool) -> MessageSummary {
-        switch action {
-        case .markRead:
-            let unread = threaded ? max((row.unreadInThread ?? 0) - (row.isSeen ? 0 : 1), 0) : row.unreadInThread
-            return row.with(isSeen: true, unreadInThread: unread)
-        case .markUnread:
-            let unread = threaded ? (row.unreadInThread ?? 0) + (row.isSeen ? 1 : 0) : row.unreadInThread
-            return row.with(isSeen: false, unreadInThread: unread)
-        case .flag: return row.with(isFlagged: true)
-        case .unflag: return row.with(isFlagged: false)
-        default: return row
-        }
-    }
-
-    /// Puts rows back as they were before an optimistic change that failed — a removed row back
-    /// in its sorted place, a changed one back to its old values — without discarding anything
-    /// else that changed meanwhile.
-    private func rollBack(_ originals: [MessageSummary]) {
-        var next = rows
-        for original in originals {
-            if let index = next.firstIndex(where: { $0.id == original.id }) {
-                next[index] = original
-            } else {
-                let position = next.firstIndex { MVMailListWindow.sitsAbove(original, $0) } ?? next.count
-                next.insert(original, at: position)
-            }
-        }
-        rows = next
     }
 
     // MARK: - Selection
@@ -1054,30 +1026,70 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
             )
         }
 
-        var originals: [MessageSummary] = []
-        if current.predicate == nil {
-            let ids = Set(current.included.keys)
-            originals = rows.filter { ids.contains($0.id) }
-            mutationEpoch += 1
-            if action.removesFromList {
-                rows.removeAll { ids.contains($0.id) }
-            } else {
-                rows = rows.map {
-                    ids.contains($0.id) ? Self.applying(action, to: $0, threaded: identity.threaded) : $0
-                }
-            }
-            if action == .markRead { keptWhileUnread.formUnion(ids) }
-            if action == .markUnread {
-                Task { for id in ids { await MVExplicitUnreadTracker.shared.markExplicit(id) } }
-            }
-        }
         selection = .empty
         isSelecting = false
+        if !built.skippedAccountIds.isEmpty {
+            toasts?.show(
+                MVToast(
+                    variant: .warning,
+                    message: "Some messages were not moved — the destination does not exist in every account",
+                    duration: 6
+                )
+            )
+        }
+        guard current.predicate == nil else {
+            await performPredicateBulk(action, plans: built.plans)
+            return
+        }
 
+        let ids = Set(current.included.keys)
+        let originals = rows.filter { ids.contains($0.id) }
+        if action == .markRead { keptWhileUnread.formUnion(ids) }
+        if action == .markUnread {
+            Task { for id in ids { await MVExplicitUnreadTracker.shared.markExplicit(id) } }
+        }
+        let tally = MVBulkTally(expected: built.plans.count)
+        var intentIds: [UUID] = []
+        for plan in built.plans {
+            let planIds = plan.request.ids ?? []
+            let planOriginals = originals.filter { planIds.contains($0.id) }
+            let id = ledger.enqueue(
+                MVIntentRequest(
+                    accountId: plan.accountId, action: action, targetFolderId: plan.request.targetFolderId,
+                    messageIds: planIds, delivery: .bulk(expandThreads: plan.request.expandThreads),
+                    originFolderIds: Dictionary(
+                        planOriginals.map { ($0.id, $0.folderId) }, uniquingKeysWith: { first, _ in first }),
+                    snapshots: planOriginals)
+            ) { [weak self] outcome in
+                guard let self, let result = tally.record(outcome, requested: planOriginals.count) else { return }
+                self.offerBulkUndo(action, result: result, intentIds: intentIds)
+            }
+            intentIds.append(id)
+        }
+    }
+
+    /// "N messages archived" with Undo, once every account's request has landed — the count is
+    /// the server's, since a conversation row stood for messages no row showed.
+    private func offerBulkUndo(_ action: MVBulkAction, result: MVBulkTally.Result, intentIds: [UUID]) {
+        guard !result.failed, let phrase = action.bulkUndoPhrase else { return }
+        let requested = result.requested
+        let partial = result.affected < requested
+        let noun = requested == 1 ? "message" : "messages"
+        let message =
+            partial ? "\(result.affected) of \(requested) \(noun) \(phrase)" : "\(requested) \(noun) \(phrase)"
+        toasts?.show(
+            MVToast(
+                variant: partial ? .warning : .success, message: message, duration: 6, actionTitle: "Undo",
+                action: { [weak self] in Task { @MainActor in self?.ledger.undo(intentIds) } }
+            )
+        )
+    }
+
+    /// A predicate is resolved server-side over however many messages match, so nothing is
+    /// projected: the list is read again from the newest edge once it has run.
+    private func performPredicateBulk(_ action: MVBulkAction, plans: [MVBulkRequestPlan]) async {
         do {
-            var sources: [MVMovedMessage] = []
-            var affected = 0
-            for plan in built.plans {
+            for plan in plans {
                 let response = try await backend.sendBulkAction(accountId: plan.accountId, request: plan.request)
                 guard response.success else {
                     throw MVError.detail(
@@ -1086,58 +1098,11 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
                         statusCode: 200
                     )
                 }
-                affected += response.affectedCount
-                sources += response.sources.map {
-                    MVMovedMessage(messageId: $0.id, accountId: plan.accountId, originalFolderId: $0.folderId)
-                }
-            }
-            if current.predicate == nil, let phrase = action.bulkUndoPhrase {
-                // A conversation row stood for messages no row ever showed; the server's
-                // `sources` name every one of them when it expanded threads.
-                let moved =
-                    sources.isEmpty
-                    ? originals.map {
-                        MVMovedMessage(messageId: $0.id, accountId: $0.accountId, originalFolderId: $0.folderId)
-                    } : sources
-                let requested = moved.count
-                let partial = affected < requested
-                let noun = requested == 1 ? "message" : "messages"
-                let message =
-                    partial ? "\(affected) of \(requested) \(noun) \(phrase)" : "\(requested) \(noun) \(phrase)"
-                showUndo(message, variant: partial ? .warning : .success) { [weak self] in
-                    await self?.undoBulkMove(moved)
-                }
-            }
-            if !built.skippedAccountIds.isEmpty {
-                toasts?.show(
-                    MVToast(
-                        variant: .warning,
-                        message: "Some messages were not moved — the destination does not exist in every account",
-                        duration: 6
-                    )
-                )
             }
         } catch {
-            rollBack(originals)
             showError("Could not \(action.phrase): \(error.mvUserMessage)")
         }
-
-        if current.predicate != nil {
-            await replaceList()
-        } else {
-            requestRefresh()
-        }
-    }
-
-    private func undoBulkMove(_ moved: [MVMovedMessage]) async {
-        do {
-            for plan in MVBulkRequestBuilder.undoPlans(for: moved) {
-                _ = try await backend.sendBulkAction(accountId: plan.accountId, request: plan.request)
-            }
-        } catch {
-            showError("Could not undo: \(error.mvUserMessage)")
-        }
-        await refresh()
+        await replaceList()
     }
 
     // MARK: - Whole-folder actions
@@ -1223,6 +1188,43 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber {
     }
 }
 
+/// Collects the outcome of every account's request in one bulk action.
+@MainActor
+final class MVBulkTally {
+    struct Result: Equatable {
+        /// Messages the server moved — or the rows asked for, when it named none.
+        let requested: Int
+        let affected: Int
+        let failed: Bool
+    }
+
+    private let expected: Int
+    private var settled = 0
+    private var requested = 0
+    private var affected = 0
+    private var failed = false
+
+    init(expected: Int) {
+        self.expected = expected
+    }
+
+    /// The whole result once the last request has settled, `nil` before.
+    func record(_ outcome: MVIntentOutcome, requested rows: Int) -> Result? {
+        settled += 1
+        switch outcome {
+        case .done(let count, let sources):
+            let moved = sources.isEmpty ? rows : sources.count
+            requested += moved
+            affected += count ?? moved
+        case .gone:
+            break
+        case .failed, .cancelled:
+            failed = true
+        }
+        return settled == expected ? Result(requested: requested, affected: affected, failed: failed) : nil
+    }
+}
+
 extension MVMailListStore: ReaderConversationScopedSource {
     /// Grouped by conversation, a row stands for its whole conversation within this list's
     /// folders; ungrouped, a row is one message.
@@ -1246,9 +1248,11 @@ extension MessageSummary {
         )
     }
 
-    func with(isSeen: Bool? = nil, isFlagged: Bool? = nil, unreadInThread: Int?? = nil) -> MessageSummary {
+    func with(
+        isSeen: Bool? = nil, isFlagged: Bool? = nil, unreadInThread: Int?? = nil, folderId: UUID? = nil
+    ) -> MessageSummary {
         MessageSummary(
-            id: id, accountId: accountId, folderId: folderId, threadId: threadId, subject: subject,
+            id: id, accountId: accountId, folderId: folderId ?? self.folderId, threadId: threadId, subject: subject,
             fromAddr: fromAddr, toAddrs: toAddrs, receivedAt: receivedAt, isSeen: isSeen ?? self.isSeen,
             isFlagged: isFlagged ?? self.isFlagged, isAnswered: isAnswered, isDraft: isDraft, snippet: snippet,
             pendingSync: pendingSync, isTruncated: isTruncated, threadCount: threadCount,

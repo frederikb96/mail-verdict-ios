@@ -29,25 +29,8 @@ public protocol ReaderListSource: AnyObject {
     /// default), never reaching a conformer's override — only a requirement dispatches
     /// dynamically to what the conformer actually implements.
     var readerTitle: String? { get }
-
-    /// The reader acted on one of this list's messages itself. The list shows the change in the
-    /// same turn rather than learning it from the server later — the reader closing onto a list
-    /// that still holds the message it just archived is exactly what this prevents. A requirement
-    /// for the same dispatch reason as `readerTitle`.
-    func readerDidChange(_ change: ReaderRowChange)
 }
 
 extension ReaderListSource {
     public var readerTitle: String? { nil }
-    public func readerDidChange(_ change: ReaderRowChange) {}
-}
-
-/// One change the reader made to a message, as a list applies it.
-public enum ReaderRowChange: Sendable, Equatable {
-    /// The message left the list — archived, deleted, junked or moved.
-    case removed(UUID)
-    /// A removal undone, or one whose request failed: the row goes back as it was.
-    case restored(UUID)
-    /// Read or star state changed — `.markRead`, `.markUnread`, `.flag` or `.unflag`.
-    case changed(UUID, MVBulkAction)
 }

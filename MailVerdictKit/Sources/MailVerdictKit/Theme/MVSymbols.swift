@@ -42,6 +42,8 @@ public enum MVSymbols {
     public static let answeredMark = "arrowshape.turn.up.left.fill"
     public static let attachmentMark = "paperclip"
     public static let spamMark = "exclamationmark.shield.fill"
+    /// A row whose last change the server refused.
+    public static let actionFailed = "exclamationmark.circle.fill"
     public static let bell = "bell"
     public static let spamReview = "shield.lefthalf.filled"
     public static let accounts = "person.crop.circle"

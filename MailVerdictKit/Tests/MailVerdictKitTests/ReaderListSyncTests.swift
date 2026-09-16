@@ -3,7 +3,8 @@ import XCTest
 @testable import MailVerdictKit
 
 /// The reader acting on a message the list shows: the list's row reflects it in the same turn —
-/// never a round trip and a live event later — and goes back when the request fails.
+/// never a round trip and a live event later — and goes back when the request fails. The two
+/// share the connection's one ledger, as in the app.
 @MainActor
 final class ReaderListSyncTests: XCTestCase {
     private let first = testUUID(1)
@@ -28,23 +29,25 @@ final class ReaderListSyncTests: XCTestCase {
         ReaderRouteStub.route("GET", "/api/contacts/photo-index", json: ContactPhotoIndexResponse(byEmail: [:]))
         ReaderRouteStub.route("GET", "/api/alerts", json: [AlertResponse]())
 
+        let client = MVApiClient(
+            requestFactory: try MVRequestFactory(baseURL: "https://mail.example", authProvider: { .none }),
+            urlSession: ReaderRouteStub.makeSession())
+        let ledger = makeTestLedger(transport: client)
         let backend = FakeMailListBackend()
         backend.pageHandler = { _, _ in testPage(rows) }
         let scope = ListScope.folder(accountId: testAccount, folderId: testFolder)
         let store = MVMailListStore(
-            scope: scope, backend: backend, toasts: nil, defaults: testDefaults(threaded: false),
+            scope: scope, backend: backend, ledger: ledger, toasts: nil, defaults: testDefaults(threaded: false),
             session: MVListSession())
         await store.start()
 
         let registry = ReaderSourceRegistry()
         let context = ReaderContext(source: .list(scope), messageId: opening)
         registry.register(store, for: context.source)
-        let client = MVApiClient(
-            requestFactory: try MVRequestFactory(baseURL: "https://mail.example", authProvider: { .none }),
-            urlSession: ReaderRouteStub.makeSession())
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "reader-list-sync-\(UUID())"))
         let session = ReaderSession(
-            context: context, api: client, placeResolver: MVMessagePlaceResolver(apiClient: client), theme: .light,
+            context: context, api: client, ledger: ledger, placeResolver: MVMessagePlaceResolver(apiClient: client),
+            theme: .light,
             registry: registry, tracker: MVExplicitUnreadTracker(),
             canvasStore: MVCanvasPreferenceStore(defaults: defaults),
             cacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
@@ -57,7 +60,7 @@ final class ReaderListSyncTests: XCTestCase {
     /// must already be without it.
     func testArchivingTheLastMessageTakesItOutOfTheListBeforeTheReaderCloses() async throws {
         ReaderRouteStub.route(
-            "POST", "/api/messages/\(first)/action", status: 500, body: Data(#"{"detail":"server down"}"#.utf8))
+            "POST", "/api/messages/\(first)/action", status: 409, body: Data(#"{"detail":"Message is locked"}"#.utf8))
         let (session, store) = try await makeReader(rows: [testRow(1)], opening: first)
 
         XCTAssertEqual(session.remove(with: .archive), .close)
@@ -70,19 +73,12 @@ final class ReaderListSyncTests: XCTestCase {
     func testStarringFromTheReaderStarsTheListRowAndAFailurePutsItBack() async throws {
         let (session, store) = try await makeReader(rows: [testRow(1), testRow(2)], opening: second)
         ReaderRouteStub.route(
-            "POST", "/api/messages/\(second)/action", status: 502, body: Data(#"{"detail":"IMAP refused"}"#.utf8))
-        var sawStarred = false
-        let watcher = Task { @MainActor in
-            while !Task.isCancelled {
-                if store.row(id: self.second)?.isFlagged == true { sawStarred = true }
-                await Task.yield()
-            }
-        }
+            "POST", "/api/messages/\(second)/action", status: 409, body: Data(#"{"detail":"Message is locked"}"#.utf8))
 
         await session.setStarred(true)
-        watcher.cancel()
 
-        XCTAssertTrue(sawStarred, "the list row was never starred while the request was out")
+        XCTAssertEqual(store.row(id: second)?.isFlagged, true, "the list row was not starred while the request was out")
+        await waitUntil { store.row(id: self.second)?.isFlagged == false }
         XCTAssertEqual(store.row(id: second)?.isFlagged, false, "a failed star left the list row starred")
     }
 

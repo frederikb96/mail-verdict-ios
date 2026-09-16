@@ -9,12 +9,13 @@ final class MVMailListStoreTests: XCTestCase {
 
     private func makeStore(
         _ backend: FakeMailListBackend, threaded: Bool = false, unreadOnly: Bool = false, around: UUID? = nil,
-        toasts: MVToastStore? = nil
+        toasts: MVToastStore? = nil, ledger: MVIntentLedger? = nil
     ) -> MVMailListStore {
         let session = MVListSession()
         session.setUnreadOnly(unreadOnly, for: scope)
         return MVMailListStore(
-            scope: scope, aroundMessageId: around, backend: backend, toasts: toasts,
+            scope: scope, aroundMessageId: around, backend: backend,
+            ledger: ledger ?? makeTestLedger(transport: backend, toasts: toasts), toasts: toasts,
             defaults: testDefaults(threaded: threaded), session: session
         )
     }
@@ -59,7 +60,7 @@ final class MVMailListStoreTests: XCTestCase {
     func testAFailedArchivePutsTheRowBackInItsPlace() async {
         let backend = FakeMailListBackend()
         backend.pageHandler = { _, _ in testPage(testRows(1...5)) }
-        backend.messageActionError = MVError.detail("IMAP refused", statusCode: 502)
+        backend.messageActionError = MVError.detail("Target folder does not exist", statusCode: 409)
         let toasts = MVToastStore()
         let store = makeStore(backend, toasts: toasts)
         await store.start()
@@ -72,9 +73,10 @@ final class MVMailListStoreTests: XCTestCase {
         XCTAssertEqual(toasts.current?.variant, .error)
     }
 
-    /// A refresh whose request left before an optimistic archive would put the archived row
-    /// back when it lands. It is read again instead, and the row never reappears.
-    func testARefreshInFlightAcrossAnArchiveIsDiscardedAndReadAgain() async {
+    /// A refresh whose request left before an archive reached the server lands after the server
+    /// had it, carrying the row. The row stays out: the archive still applies over a read older
+    /// than itself.
+    func testARefreshReadBeforeAnArchiveLandedNeverPutsTheRowBack() async {
         let staleGate = TestGate()
         let freshGate = TestGate()
         let backend = FakeMailListBackend()
@@ -90,13 +92,15 @@ final class MVMailListStoreTests: XCTestCase {
                 return testPage([testRow(1), testRow(2), testRow(4), testRow(5)])
             }
         }
-        let store = makeStore(backend)
+        let ledger = makeTestLedger(transport: backend)
+        let store = makeStore(backend, ledger: ledger)
         await store.start()
 
         store.requestRefresh()
         await waitUntil { backend.cursors.count == 2 }
         store.perform(.archive, on: testUUID(3))
-        await waitUntil { backend.messageActions.count == 1 }
+        XCTAssertFalse(store.rowIds.contains(testUUID(3)))
+        await waitUntil { ledger.intents.first?.state == .done }
         await staleGate.open()
         await waitUntil { backend.cursors.count == 3 }
 
@@ -105,6 +109,32 @@ final class MVMailListStoreTests: XCTestCase {
         await freshGate.open()
         await store.refresh()
         XCTAssertEqual(store.rowIds, [testUUID(1), testUUID(2), testUUID(4), testUUID(5)])
+    }
+
+    /// An archive leaves the ledger while the list still holds a read from before it — the refresh
+    /// its settling asked for has not answered. The row stays out for good.
+    func testARowStaysOutWhenItsArchiveRetiresBeforeTheListReadsAgain() async {
+        let refreshGate = TestGate()
+        let backend = FakeMailListBackend()
+        let calls = CallCounter()
+        backend.pageHandler = { _, _ in
+            if calls.next() == 1 { return testPage(testRows(1...3)) }
+            await refreshGate.wait()
+            return testPage([testRow(1), testRow(3)])
+        }
+        let clock = TestIntentClock()
+        let ledger = makeTestLedger(transport: backend, clock: clock)
+        let store = makeStore(backend, ledger: ledger)
+        await store.start()
+
+        store.perform(.archive, on: testUUID(2))
+        await waitUntil { ledger.intents.first?.state == .done }
+        await waitUntil { backend.cursors.count == 2 && clock.sleeperCount == 1 }
+        clock.advance(by: MVIntentLedger.Timing().doneRetention)
+        await waitUntil { ledger.intents.isEmpty }
+
+        XCTAssertEqual(store.rowIds, [testUUID(1), testUUID(3)])
+        await refreshGate.open()
     }
 
     /// Reading a row while only unread mail is listed must not snatch it away on the next
@@ -298,12 +328,18 @@ final class MVMailListStoreTests: XCTestCase {
         store.toggleSelection(of: testUUID(2))
         await store.performBulk(.archive)
 
-        XCTAssertEqual(backend.bulkRequests.first?.1.expandThreads, true)
-        XCTAssertEqual(backend.bulkRequests.first?.1.ids, [testUUID(1), testUUID(2)])
-        XCTAssertEqual(toasts.current?.message, "3 messages archived")
-        XCTAssertEqual(toasts.current?.actionTitle, "Undo")
         XCTAssertEqual(store.rowIds, [testUUID(3), testUUID(4)])
         XCTAssertFalse(store.isSelecting)
+        await waitUntil { toasts.current?.message == "3 messages archived" }
+        XCTAssertEqual(backend.bulkRequests.first?.1.expandThreads, true)
+        XCTAssertEqual(backend.bulkRequests.first?.1.ids, [testUUID(1), testUUID(2)])
+        XCTAssertEqual(toasts.current?.actionTitle, "Undo")
+
+        toasts.current?.action?()
+        await waitUntil { backend.bulkRequests.count == 2 }
+        XCTAssertEqual(backend.bulkRequests.last?.1.action, .move)
+        XCTAssertEqual(backend.bulkRequests.last?.1.targetFolderId, testFolder)
+        XCTAssertEqual(Set(backend.bulkRequests.last?.1.ids ?? []), [testUUID(1), testUUID(11), testUUID(2)])
     }
 
     /// `perform` maps each UI action to the exact wire action the backend receives — the swipe
