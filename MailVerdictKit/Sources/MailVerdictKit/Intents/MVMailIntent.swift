@@ -18,13 +18,13 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
     }
 
     public enum Phase: String, Codable, Sendable, Equatable {
-        /// Waiting its turn, for the network, or for a retry.
+        /// Waiting its turn, for the network, for a retry, or for the person to confirm it.
         case pending
         /// The request is out.
         case sending
         /// The server accepted it.
         case done
-        /// The server refused it. Kept, unapplied, until retried or retired.
+        /// The server refused it, or it kept failing. Kept, unapplied, until retried or retired.
         case failed
     }
 
@@ -56,6 +56,16 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
     /// A conversation read's unread messages, as resolved on its first attempt. Every retry sends
     /// exactly these, since the server refuses a repeated idempotency key with a different body.
     public internal(set) var resolvedMessageIds: [UUID]?
+    /// An earlier attempt may have reached the server without an answer coming back. Before
+    /// sending again, the ledger looks at the messages themselves.
+    public internal(set) var mayHaveLanded: Bool
+    /// Undone while its request was out: it no longer applies, and is reversed once the request
+    /// settles.
+    public internal(set) var undoRequested: Bool
+    /// Past `MVIntentLedger.Timing.pendingExpiry` unsent: held until the person sends or discards it.
+    public internal(set) var awaitingConfirmation: Bool
+    /// The person chose to send it after all.
+    public internal(set) var sendConfirmed: Bool
 
     init(request: MVIntentRequest, id: UUID, undoes: UUID?, createdAt: Date) {
         self.id = id
@@ -71,12 +81,48 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         self.state = .pending
         self.attempts = 0
         self.movedSources = []
+        self.mayHaveLanded = false
+        self.undoRequested = false
+        self.awaitingConfirmation = false
+        self.sendConfirmed = false
+    }
+
+    /// Everything but the identity and the action itself may be missing from a record an older or
+    /// newer build wrote, and a snapshot that no longer decodes is dropped rather than the intent.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        action = try container.decode(MVBulkAction.self, forKey: .action)
+        targetFolderId = try container.decodeIfPresent(UUID.self, forKey: .targetFolderId)
+        messageIds = try container.decode([UUID].self, forKey: .messageIds)
+        delivery = try container.decode(Delivery.self, forKey: .delivery)
+        originFolderIds = (try? container.decodeIfPresent([UUID: UUID].self, forKey: .originFolderIds)) ?? [:]
+        snapshots = (try? container.decodeIfPresent([MessageSummary].self, forKey: .snapshots)) ?? []
+        undoes = try container.decodeIfPresent(UUID.self, forKey: .undoes)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        state = try container.decode(Phase.self, forKey: .state)
+        attempts = try container.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
+        nextAttemptAt = try container.decodeIfPresent(Date.self, forKey: .nextAttemptAt)
+        lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
+        settledSequence = try container.decodeIfPresent(Int.self, forKey: .settledSequence)
+        settledAt = try container.decodeIfPresent(Date.self, forKey: .settledAt)
+        movedSources = (try? container.decodeIfPresent([BulkActionSource].self, forKey: .movedSources)) ?? []
+        resolvedMessageIds = try container.decodeIfPresent([UUID].self, forKey: .resolvedMessageIds)
+        mayHaveLanded = try container.decodeIfPresent(Bool.self, forKey: .mayHaveLanded) ?? false
+        undoRequested = try container.decodeIfPresent(Bool.self, forKey: .undoRequested) ?? false
+        awaitingConfirmation = try container.decodeIfPresent(Bool.self, forKey: .awaitingConfirmation) ?? false
+        sendConfirmed = try container.decodeIfPresent(Bool.self, forKey: .sendConfirmed) ?? false
     }
 
     /// Outstanding: not yet known to the server.
     public var isOpen: Bool { state == .pending || state == .sending }
 
     public var leavesFolder: Bool { action.removesFromList }
+
+    /// The messages this intent's request can touch — ordering holds later intents naming any of
+    /// them back until this one is done.
+    var touchedMessageIds: [UUID] { messageIds + (resolvedMessageIds ?? []) }
 }
 
 /// What a surface asks the ledger to do — an intent before it has an identity or a state.
@@ -111,15 +157,16 @@ public enum MVIntentOutcome: Sendable, Equatable {
     /// The message no longer exists on the server.
     case gone
     case failed(String)
-    /// Undone before it was ever sent.
+    /// Undone or discarded before the server had it.
     case cancelled
 }
 
 /// What a row or the reader shows for the intents naming a message.
 public enum MVIntentRowState: Sendable, Equatable {
     case none
-    /// A change has been waiting longer than a moment — slow, offline or retrying.
+    /// A change has been waiting longer than a moment — slow, offline, retrying, or held for
+    /// the person to confirm.
     case waiting
-    /// The server refused a change.
+    /// The server refused a change, or it kept failing.
     case failed
 }

@@ -47,7 +47,8 @@ public final class MVAlwaysOnlineConnectivity: MVConnectivity {
 
         public init() {
             monitor.pathUpdateHandler = { [weak self] path in
-                let online = path.status == .satisfied
+                // `requiresConnection` is an on-demand VPN or cellular link a request brings up.
+                let online = path.status != .unsatisfied
                 Task { @MainActor [weak self] in self?.update(online) }
             }
             monitor.start(queue: DispatchQueue(label: "MailVerdict.connectivity"))
@@ -75,33 +76,83 @@ public protocol MVIntentPersistence: Sendable {
     func save(_ intents: [MVMailIntent])
 }
 
-/// One JSON file per server, so intents never replay against a different backend.
+/// One JSON file per server, so intents never replay against a different backend. Records are
+/// read one at a time: a record this build cannot read is skipped rather than taking every other
+/// intent with it, and a file it cannot read at all is set aside, never overwritten.
 public struct MVFileIntentPersistence: MVIntentPersistence {
     public let url: URL
+
+    static let formatVersion = 1
 
     public init(url: URL) {
         self.url = url
     }
 
-    /// `directory/intents-<server>.json`, the server reduced to a safe file name.
+    /// `directory/intents-<hash>.json`, keyed on the server URL with case and a trailing slash
+    /// ignored, so one server always maps to one file and two servers never share one.
     public init(directory: URL, serverURL: String) {
-        let name = serverURL.lowercased().map { $0.isLetter || $0.isNumber ? $0 : "_" }
-        self.url = directory.appendingPathComponent("intents-\(String(name)).json")
+        self.url = directory.appendingPathComponent("intents-\(Self.fileKey(serverURL)).json")
+    }
+
+    static func fileKey(_ serverURL: String) -> String {
+        var normalized = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while normalized.hasSuffix("/") { normalized.removeLast() }
+        // FNV-1a, 64 bit: stable across launches and platforms, unlike `Hasher`.
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in normalized.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return String(hash, radix: 16)
+    }
+
+    private struct File: Codable {
+        let version: Int
+        let intents: [Record]
+    }
+
+    private struct Record: Codable {
+        let intent: MVMailIntent?
+
+        init(_ intent: MVMailIntent) {
+            self.intent = intent
+        }
+
+        init(from decoder: any Decoder) throws {
+            intent = try? MVMailIntent(from: decoder)
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            try intent?.encode(to: encoder)
+        }
     }
 
     public func load() -> [MVMailIntent] {
         guard let data = try? Data(contentsOf: url) else { return [] }
-        return (try? JSONDecoder.mvDefault.decode([MVMailIntent].self, from: data)) ?? []
+        guard let file = try? JSONDecoder.mvDefault.decode(File.self, from: data),
+            file.version <= Self.formatVersion
+        else {
+            setAside()
+            return []
+        }
+        return file.intents.compactMap(\.intent)
     }
 
     public func save(_ intents: [MVMailIntent]) {
         do {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder.mvDefault.encode(intents).write(to: url, options: .atomic)
+            let file = File(version: Self.formatVersion, intents: intents.map(Record.init))
+            try JSONEncoder.mvDefault.encode(file).write(to: url, options: .atomic)
         } catch {
             // Kept in memory regardless; only a relaunch before the next successful save loses it.
         }
+    }
+
+    private func setAside() {
+        let aside = url.appendingPathExtension("unreadable")
+        try? FileManager.default.removeItem(at: aside)
+        try? FileManager.default.moveItem(at: url, to: aside)
     }
 }
 

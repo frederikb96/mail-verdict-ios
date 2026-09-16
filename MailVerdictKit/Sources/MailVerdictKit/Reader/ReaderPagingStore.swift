@@ -44,8 +44,8 @@ public enum ReaderNeighbourResolver {
 }
 
 /// The pager's position in the list it pages through: the current row, what sits either side of
-/// it, and the direction last paged in. Rows an intent has taken out of their folder are skipped
-/// (`hiddenIds`), whichever list the reader pages through.
+/// it, and the direction last paged in. A list that projects intents already leaves out what an
+/// intent took from it; for any other, the rows `hiddenIds` names are skipped.
 ///
 /// Only identities, never indices — a row inserted or archived above the current one re-derives
 /// the neighbours without ever moving the pager.
@@ -63,6 +63,8 @@ public final class ReaderPagingStore {
 
     @ObservationIgnored private weak var source: (any ReaderListSource)?
     @ObservationIgnored private let hiddenIds: @MainActor () -> Set<UUID>
+    /// Rows the reader removed itself — the list catching up with one is not a second removal.
+    @ObservationIgnored private var removedByReader: Set<UUID> = []
     @ObservationIgnored private var knownRows: [UUID]
     @ObservationIgnored private var loadingOlder = false
     @ObservationIgnored private var loadingNewer = false
@@ -77,7 +79,10 @@ public final class ReaderPagingStore {
         recomputeNeighbours(previousRows: knownRows)
     }
 
-    public var removedIds: Set<UUID> { hiddenIds() }
+    /// What neighbours skip: nothing extra for a list that projects intents itself.
+    public var removedIds: Set<UUID> {
+        source?.projectsIntents == true ? [] : hiddenIds()
+    }
 
     public var olderId: UUID? {
         if case .message(let id) = older { return id }
@@ -95,7 +100,8 @@ public final class ReaderPagingStore {
         let previous = knownRows
         knownRows = source?.rowIds ?? []
         // A row the reader removed itself has already been left, or closed on.
-        if source != nil, !knownRows.contains(currentId), previous.contains(currentId), !hiddenIds().contains(currentId)
+        if source != nil, !knownRows.contains(currentId), previous.contains(currentId),
+            !removedByReader.contains(currentId)
         {
             recomputeNeighbours(previousRows: previous)
             return advanceAway(from: currentId)
@@ -118,6 +124,7 @@ public final class ReaderPagingStore {
     /// already holds it. Removing the current row advances in the last direction paged, falling
     /// back to the other side — the web's `neighbourInCache`.
     public func remove(_ id: UUID) -> ReaderRemoval? {
+        removedByReader.insert(id)
         guard id == currentId else {
             recomputeNeighbours(previousRows: knownRows)
             return nil
@@ -149,7 +156,7 @@ public final class ReaderPagingStore {
         guard let source else { return }
         withObservationTracking {
             _ = source.rowIds
-            _ = hiddenIds()
+            _ = removedIds
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -178,7 +185,7 @@ public final class ReaderPagingStore {
             return
         }
         let found = ReaderNeighbourResolver.neighbours(
-            of: currentId, rows: knownRows, previousRows: previousRows, removed: hiddenIds())
+            of: currentId, rows: knownRows, previousRows: previousRows, removed: removedIds)
         older = found.older.map(ReaderSlot.message) ?? (source?.hasOlder == true ? .loadingMore : nil)
         newer = found.newer.map(ReaderSlot.message) ?? (source?.hasNewer == true ? .loadingMore : nil)
     }

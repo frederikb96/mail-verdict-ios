@@ -121,6 +121,28 @@ final class ReaderPagingStoreTests: XCTestCase {
         XCTAssertNil(store.refresh())
     }
 
+    /// Archived from Inbox, then Archive opened: its list already reflects the archive, and the
+    /// reader pages through the archived message there rather than skipping it.
+    func testAListThatProjectsIntentsIsNotSkippedByAnotherListsRemovals() async {
+        let transport = RecordingIntentTransport()
+        let ledger = makeTestLedger(transport: transport)
+        ledger.enqueue(
+            MVIntentRequest(
+                accountId: testAccount, action: .archive, messageIds: [testUUID(2)],
+                originFolderIds: [testUUID(2): testUUID(700)]))
+        await waitUntil { ledger.intents.first?.state == .done }
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...3)) }
+        let archive = MVMailListStore(
+            scope: .folder(accountId: testAccount, folderId: testFolder), backend: backend, ledger: ledger, toasts: nil,
+            defaults: testDefaults(threaded: false), session: MVListSession())
+        await archive.start()
+
+        let store = ReaderPagingStore(openedId: testUUID(1), source: archive, hiddenIds: { ledger.hiddenMessageIds })
+
+        XCTAssertEqual(store.olderId, testUUID(2))
+    }
+
     func testWithoutASourceThereIsNothingToPageTo() async {
         let store = ReaderPagingStore(openedId: a, source: nil)
         XCTAssertNil(store.older)

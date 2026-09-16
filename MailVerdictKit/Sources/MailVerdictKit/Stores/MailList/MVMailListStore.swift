@@ -141,8 +141,6 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         baseSequence = min(baseSequence, sequence)
     }
 
-    public var intentBaseSequence: Int { baseRows.isEmpty ? .max : baseSequence }
-
     public func intentSnapshots(for messageIds: Set<UUID>) -> [MessageSummary] {
         baseRows.filter { messageIds.contains($0.id) }
     }
@@ -183,6 +181,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         }
         return count.map { "\($0) \($0 == 1 ? "Message" : "Messages")" }
     }
+
+    /// Rows are projected through the ledger, so a reader paging this list needs no other record of
+    /// what an intent has taken out of it.
+    public var projectsIntents: Bool { true }
 
     /// A row was opened from this list.
     public func didOpen(_ messageId: UUID) {
@@ -1048,41 +1050,26 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         if action == .markUnread {
             Task { for id in ids { await MVExplicitUnreadTracker.shared.markExplicit(id) } }
         }
-        let tally = MVBulkTally(expected: built.plans.count)
-        var intentIds: [UUID] = []
-        for plan in built.plans {
+        let intentIds = built.plans.map { plan in
             let planIds = plan.request.ids ?? []
             let planOriginals = originals.filter { planIds.contains($0.id) }
-            let id = ledger.enqueue(
+            return ledger.enqueue(
                 MVIntentRequest(
                     accountId: plan.accountId, action: action, targetFolderId: plan.request.targetFolderId,
                     messageIds: planIds, delivery: .bulk(expandThreads: plan.request.expandThreads),
                     originFolderIds: Dictionary(
                         planOriginals.map { ($0.id, $0.folderId) }, uniquingKeysWith: { first, _ in first }),
-                    snapshots: planOriginals)
-            ) { [weak self] outcome in
-                guard let self, let result = tally.record(outcome, requested: planOriginals.count) else { return }
-                self.offerBulkUndo(action, result: result, intentIds: intentIds)
-            }
-            intentIds.append(id)
+                    snapshots: planOriginals))
         }
-    }
-
-    /// "N messages archived" with Undo, once every account's request has landed — the count is
-    /// the server's, since a conversation row stood for messages no row showed.
-    private func offerBulkUndo(_ action: MVBulkAction, result: MVBulkTally.Result, intentIds: [UUID]) {
-        guard !result.failed, let phrase = action.bulkUndoPhrase else { return }
-        let requested = result.requested
-        let partial = result.affected < requested
-        let noun = requested == 1 ? "message" : "messages"
-        let message =
-            partial ? "\(result.affected) of \(requested) \(noun) \(phrase)" : "\(requested) \(noun) \(phrase)"
-        toasts?.show(
-            MVToast(
-                variant: partial ? .warning : .success, message: message, duration: 6, actionTitle: "Undo",
-                action: { [weak self] in Task { @MainActor in self?.ledger.undo(intentIds) } }
-            )
-        )
+        if let phrase = action.bulkUndoPhrase, !intentIds.isEmpty {
+            // Offered at once, like a single action's: undoing what has not been sent yet simply
+            // cancels it. A conversation row counts as one conversation, whatever it expands to.
+            let count = ids.count
+            let noun =
+                identity.threaded
+                ? (count == 1 ? "conversation" : "conversations") : (count == 1 ? "message" : "messages")
+            ledger.showUndo("\(count) \(noun) \(phrase)", for: intentIds)
+        }
     }
 
     /// A predicate is resolved server-side over however many messages match, so nothing is
@@ -1164,17 +1151,6 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
 
     // MARK: - Toasts and errors
 
-    private func showUndo(
-        _ message: String, variant: MVToastVariant = .success, undo: @escaping @Sendable @MainActor () async -> Void
-    ) {
-        toasts?.show(
-            MVToast(
-                variant: variant, message: message, duration: 6, actionTitle: "Undo",
-                action: { Task { @MainActor in await undo() } }
-            )
-        )
-    }
-
     private func showError(_ message: String) {
         toasts?.show(MVToast(variant: .error, message: message, duration: 0))
     }
@@ -1185,43 +1161,6 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         case .http(let statusCode, _)?: return statusCode == 404
         default: return false
         }
-    }
-}
-
-/// Collects the outcome of every account's request in one bulk action.
-@MainActor
-final class MVBulkTally {
-    struct Result: Equatable {
-        /// Messages the server moved — or the rows asked for, when it named none.
-        let requested: Int
-        let affected: Int
-        let failed: Bool
-    }
-
-    private let expected: Int
-    private var settled = 0
-    private var requested = 0
-    private var affected = 0
-    private var failed = false
-
-    init(expected: Int) {
-        self.expected = expected
-    }
-
-    /// The whole result once the last request has settled, `nil` before.
-    func record(_ outcome: MVIntentOutcome, requested rows: Int) -> Result? {
-        settled += 1
-        switch outcome {
-        case .done(let count, let sources):
-            let moved = sources.isEmpty ? rows : sources.count
-            requested += moved
-            affected += count ?? moved
-        case .gone:
-            break
-        case .failed, .cancelled:
-            failed = true
-        }
-        return settled == expected ? Result(requested: requested, affected: affected, failed: failed) : nil
     }
 }
 

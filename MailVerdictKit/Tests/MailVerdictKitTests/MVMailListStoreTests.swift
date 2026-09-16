@@ -137,6 +137,56 @@ final class MVMailListStoreTests: XCTestCase {
         await refreshGate.open()
     }
 
+    /// An older page read after an archive landed joins rows read before it: those rows stay as
+    /// old as they were, so the archive still applies to them.
+    func testAnOlderPageDoesNotMakeRowsReadBeforeAnArchiveLookNewer() async {
+        let refreshGate = TestGate()
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { cursor, _ in
+            switch cursor {
+            case .olderThan: return testPage([testRow(4), testRow(5)])
+            case .newest where backend.cursors.count > 1:
+                await refreshGate.wait()
+                return testPage(testRows(1...3), hasMore: true)
+            default: return testPage(testRows(1...3), hasMore: true)
+            }
+        }
+        let ledger = makeTestLedger(transport: backend)
+        let store = makeStore(backend, ledger: ledger)
+        await store.start()
+
+        store.perform(.archive, on: testUUID(3))
+        await waitUntil { ledger.intents.first?.state == .done }
+        await store.loadOlder()
+
+        XCTAssertEqual(store.rowIds, [testUUID(1), testUUID(2), testUUID(4), testUUID(5)])
+        await refreshGate.open()
+    }
+
+    /// Undo on a bulk action that has not reached the server yet cancels it: the rows come back
+    /// and nothing is ever sent.
+    func testUndoingABulkArchiveBeforeItIsSentSendsNothing() async {
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...3)) }
+        let toasts = MVToastStore()
+        let connectivity = TestConnectivity(online: false)
+        let ledger = makeTestLedger(transport: backend, toasts: toasts, connectivity: connectivity)
+        let store = makeStore(backend, toasts: toasts, ledger: ledger)
+        await store.start()
+
+        store.toggleSelection(of: testUUID(1))
+        store.toggleSelection(of: testUUID(2))
+        await store.performBulk(.archive)
+        XCTAssertEqual(store.rowIds, [testUUID(3)])
+        XCTAssertEqual(toasts.current?.message, "2 messages archived")
+        toasts.current?.action?()
+        await waitUntil { store.rowIds.count == 3 }
+        connectivity.isOnline = true
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(backend.bulkRequests.count, 0)
+    }
+
     /// Reading a row while only unread mail is listed must not snatch it away on the next
     /// refresh, which no longer returns it.
     func testARowReadInTheUnreadListStaysThroughARefresh() async {
@@ -305,8 +355,8 @@ final class MVMailListStoreTests: XCTestCase {
         XCTAssertEqual(store.selectionTitle, "All 42 Unread")
     }
 
-    /// A conversation row stands for messages no row showed; Undo must move all of them back,
-    /// so its count comes from what the server says it moved.
+    /// A conversation row stands for messages no row showed; Undo must move all of them back —
+    /// every message the server says it moved, not only the rows ticked.
     func testArchivingTickedConversationsOffersUndoForEveryMessageMoved() async {
         let backend = FakeMailListBackend()
         backend.pageHandler = { _, _ in testPage(testRows(1...4)) }
@@ -321,7 +371,8 @@ final class MVMailListStoreTests: XCTestCase {
             )
         }
         let toasts = MVToastStore()
-        let store = makeStore(backend, threaded: true, toasts: toasts)
+        let ledger = makeTestLedger(transport: backend, toasts: toasts)
+        let store = makeStore(backend, threaded: true, toasts: toasts, ledger: ledger)
         await store.start()
 
         store.toggleSelection(of: testUUID(1))
@@ -330,7 +381,8 @@ final class MVMailListStoreTests: XCTestCase {
 
         XCTAssertEqual(store.rowIds, [testUUID(3), testUUID(4)])
         XCTAssertFalse(store.isSelecting)
-        await waitUntil { toasts.current?.message == "3 messages archived" }
+        XCTAssertEqual(toasts.current?.message, "2 conversations archived")
+        await waitUntil { ledger.intents.first?.state == .done }
         XCTAssertEqual(backend.bulkRequests.first?.1.expandThreads, true)
         XCTAssertEqual(backend.bulkRequests.first?.1.ids, [testUUID(1), testUUID(2)])
         XCTAssertEqual(toasts.current?.actionTitle, "Undo")

@@ -128,25 +128,6 @@ final class MVBulkRequestBuilderTests: XCTestCase {
         XCTAssertEqual(built.skippedAccountIds, [otherAccount])
     }
 
-    func testUndoMovesEveryMessageBackToItsOwnFolderPerAccount() {
-        let folderA = testUUID(700)
-        let folderB = testUUID(701)
-        let moved = [
-            MVMovedMessage(messageId: testUUID(1), accountId: testAccount, originalFolderId: folderA),
-            MVMovedMessage(messageId: testUUID(2), accountId: testAccount, originalFolderId: folderB),
-            MVMovedMessage(messageId: testUUID(3), accountId: testAccount, originalFolderId: folderA),
-            MVMovedMessage(messageId: testUUID(4), accountId: otherAccount, originalFolderId: folderA),
-        ]
-
-        let plans = MVBulkRequestBuilder.undoPlans(for: moved)
-
-        XCTAssertEqual(plans.count, 3)
-        XCTAssertTrue(plans.allSatisfy { $0.request.action == .move })
-        let backToA = plans.first { $0.accountId == testAccount && $0.request.targetFolderId == folderA }
-        XCTAssertEqual(backToA?.request.ids, [testUUID(1), testUUID(3)])
-        XCTAssertEqual(plans.first { $0.accountId == otherAccount }?.request.ids, [testUUID(4)])
-    }
-
     /// A predicate has nothing to undo from, so the moves that cannot be taken back ask first;
     /// an explicit selection never does, because it gets Undo.
     func testOnlyIrreversiblePredicateActionsAskForConfirmation() {

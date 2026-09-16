@@ -61,8 +61,11 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
 
     func deliverMessageAction(
         messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, idempotencyKey: UUID, timeout: TimeInterval
-    ) async throws {
+    ) async throws -> MessageActionResponse {
         try await record(Self.label(action.rawValue, messageId), key: idempotencyKey, timeout: timeout)
+        return MessageActionResponse(
+            success: messageResponseSuccess, action: action.rawValue, messageId: messageId,
+            message: messageResponseSuccess ? nil : "Feedback processing failed")
     }
 
     func deliverBulkAction(
@@ -75,10 +78,33 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
             success: true, action: request.action.rawValue, affectedCount: request.ids?.count ?? 0)
     }
 
-    func fetchThread(messageId: UUID) async throws -> ThreadResponse {
+    func fetchConversation(messageId: UUID, timeout: TimeInterval) async throws -> ThreadResponse {
         locked {
             _threadFetches += 1
+            _timeouts.append(timeout)
             return _thread
+        }
+    }
+
+    /// What `fetchMessageState` answers per message; a message absent here is gone.
+    var states: [UUID: MVMessageState] {
+        get { locked { _states } }
+        set { locked { _states = newValue } }
+    }
+    private var _states: [UUID: MVMessageState] = [:]
+    /// Every state lookup, as `"state <n>"`, in order.
+    var lookups: [String] { locked { _lookups } }
+    private var _lookups: [String] = []
+    var messageResponseSuccess: Bool {
+        get { locked { _messageResponseSuccess } }
+        set { locked { _messageResponseSuccess = newValue } }
+    }
+    private var _messageResponseSuccess = true
+
+    func fetchMessageState(messageId: UUID, includeFlags: Bool, timeout: TimeInterval) async throws -> MVMessageState? {
+        locked {
+            _lookups.append(Self.label("state", messageId))
+            return _states[messageId]
         }
     }
 }
@@ -123,7 +149,7 @@ final class MVIntentLedgerTests: XCTestCase {
         let transport = RecordingIntentTransport()
         let failures = CallCounter()
         transport.handler = { call in
-            if call == "mark_read 1", failures.next() == 1 { throw MVError.detail("busy", statusCode: 503) }
+            if call == "mark_read 1", failures.next() == 1 { throw MVError.detail("slow down", statusCode: 429) }
         }
         let ledger = makeTestLedger(transport: transport, clock: clock)
 
@@ -143,7 +169,7 @@ final class MVIntentLedgerTests: XCTestCase {
     func testRetriesBackOffExponentiallyAndShowAsWaiting() async {
         let clock = TestIntentClock()
         let transport = RecordingIntentTransport()
-        transport.handler = { _ in throw MVError.http(statusCode: 502, reason: "Bad Gateway") }
+        transport.handler = { _ in throw MVError.http(statusCode: 429, reason: "Too Many Requests") }
         let ledger = makeTestLedger(transport: transport, clock: clock)
 
         let id = ledger.enqueue(request(.archive, 1))
@@ -236,7 +262,7 @@ final class MVIntentLedgerTests: XCTestCase {
         transport.thread = ThreadResponse(messages: [message(testUUID(1), false), message(testUUID(2), false)])
         let attempts = CallCounter()
         transport.handler = { _ in
-            if attempts.next() == 1 { throw MVError.detail("still applying", statusCode: 503) }
+            if attempts.next() == 1 { throw MVError.detail("slow down", statusCode: 429) }
         }
         let ledger = makeTestLedger(transport: transport, clock: clock)
 
@@ -296,18 +322,21 @@ final class MVIntentLedgerTests: XCTestCase {
         XCTAssertEqual(transport.keys, [id], "the relaunch sent a request the server cannot match to the first")
     }
 
-    func testARelaunchSendsWhatWasOutAgainAndDropsWhatWasDone() async {
-        var sending = MVMailIntent(
-            request: request(.flag, 1), id: testUUID(801), undoes: nil, createdAt: testReceivedBase)
+    /// A request that was out when the app died may have landed: the message is looked at first,
+    /// and the action sent again only because it does not show it yet.
+    func testARelaunchChecksWhatWasOutBeforeSendingItAgainAndDropsWhatWasDone() async {
+        var sending = MVMailIntent(request: request(.flag, 1), id: testUUID(801), undoes: nil, createdAt: Date())
         sending.state = .sending
-        var done = MVMailIntent(request: request(.flag, 2), id: testUUID(802), undoes: nil, createdAt: testReceivedBase)
+        var done = MVMailIntent(request: request(.flag, 2), id: testUUID(802), undoes: nil, createdAt: Date())
         done.state = .done
         let transport = RecordingIntentTransport()
+        transport.states = [testUUID(1): MVMessageState(folderId: testFolder, isSeen: false, isFlagged: false)]
 
         let ledger = makeTestLedger(transport: transport, persistence: MVMemoryIntentPersistence([sending, done]))
 
         XCTAssertEqual(ledger.intents.map(\.id), [testUUID(801)])
         await waitUntil { transport.calls == ["flag 1"] }
+        XCTAssertEqual(transport.lookups, ["state 1"])
     }
 
     // MARK: - Undo
@@ -441,8 +470,6 @@ final class TestIntentObserver: MVIntentObserver {
         self.sequence = sequence
     }
 
-    var intentBaseSequence: Int { sequence }
-
     func intentSnapshots(for messageIds: Set<UUID>) -> [MessageSummary] {
         rows.filter { messageIds.contains($0.id) }
     }
@@ -517,6 +544,13 @@ final class MVIntentProjectionTests: XCTestCase {
         let window = MVProjectionScope(folderIds: [testFolder], threaded: false, hasOlder: true)
         let rows = MVIntentProjection.rows(testRows(1...2), applying: [back], baseSequence: 0, scope: window)
         XCTAssertEqual(rows.map(\.id), [testUUID(1), testUUID(2)])
+    }
+
+    func testASnapshotAboveAWindowWithNewerRowsUnloadedIsNotPutBack() {
+        let back = intent(.move, [1], target: testFolder, snapshots: [testRow(1)])
+        let window = MVProjectionScope(folderIds: [testFolder], threaded: false, hasNewer: true)
+        let rows = MVIntentProjection.rows(testRows(2...3), applying: [back], baseSequence: 0, scope: window)
+        XCTAssertEqual(rows.map(\.id), [testUUID(2), testUUID(3)])
     }
 
     func testAMoveElsewhereHidesTheRow() {

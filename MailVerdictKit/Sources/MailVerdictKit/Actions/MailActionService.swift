@@ -7,29 +7,6 @@ public enum MVAutoAdvanceDirection: Sendable, Equatable {
     case newer
 }
 
-/// What an Undo tap replays: `POST /messages/{id}/action {move, target_folder_id: original}` for
-/// each message — built at the moment the original (optimistic) action is applied, since that is
-/// the only moment every message's *previous* folder is known.
-public struct MVActionUndoPayload: Sendable, Equatable {
-    /// `(messageId, folderId before the action)` pairs — a bulk action's own `sources` shape
-    /// (`BulkActionResponse.sources`), reused here for a single action too so both paths build an
-    /// Undo the same way.
-    public let sources: [(messageId: UUID, originalFolderId: UUID)]
-    public let action: MVBulkAction
-
-    public init(sources: [(messageId: UUID, originalFolderId: UUID)], action: MVBulkAction) {
-        self.sources = sources
-        self.action = action
-    }
-
-    public static func == (lhs: MVActionUndoPayload, rhs: MVActionUndoPayload) -> Bool {
-        lhs.action == rhs.action
-            && lhs.sources.elementsEqual(rhs.sources) {
-                $0.messageId == $1.messageId && $0.originalFolderId == $1.originalFolderId
-            }
-    }
-}
-
 /// Keeps the one id a person explicitly marked unread — `explicitlyUnreadMailIdAtom`'s port.
 /// Reading the same message again marks it read as always; only this one id is exempt from the
 /// reader's own "mark read on settle" rule, and only until something else marks it read or marks

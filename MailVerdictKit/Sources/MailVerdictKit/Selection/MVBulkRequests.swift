@@ -62,27 +62,6 @@ public enum MVBulkRequestBuilder {
         return (plans, skipped)
     }
 
-    /// Undo for an explicit bulk move out of a folder: every message back to the folder it came
-    /// from, one request per account and folder — a unified-view undo spans accounts the same
-    /// way the action it reverses did.
-    public static func undoPlans(for sources: [MVMovedMessage]) -> [MVBulkRequestPlan] {
-        var grouped: [UUID: [UUID: [UUID]]] = [:]
-        for source in sources {
-            grouped[source.accountId, default: [:]][source.originalFolderId, default: []].append(source.messageId)
-        }
-        var plans: [MVBulkRequestPlan] = []
-        for accountId in sortedIds(grouped.keys) {
-            let byFolder = grouped[accountId] ?? [:]
-            for folderId in sortedIds(byFolder.keys) {
-                let request = BulkActionRequest(
-                    action: .move, targetFolderId: folderId, ids: sortedIds(byFolder[folderId] ?? [])
-                )
-                plans.append(MVBulkRequestPlan(accountId: accountId, request: request))
-            }
-        }
-        return plans
-    }
-
     /// A batch over a predicate is resolved server-side and cannot be undone — there is nothing
     /// client-side to enumerate a source folder from — so these confirm with a count instead.
     public static func needsConfirmation(_ selection: MVSelection, action: MVBulkAction) -> Bool {
@@ -92,18 +71,5 @@ public enum MVBulkRequestBuilder {
 
     private static func sortedIds<S: Sequence>(_ ids: S) -> [UUID] where S.Element == UUID {
         ids.sorted { $0.uuidString < $1.uuidString }
-    }
-}
-
-/// One message a move carried out of a folder — what an Undo has to move back.
-public struct MVMovedMessage: Equatable, Sendable {
-    public let messageId: UUID
-    public let accountId: UUID
-    public let originalFolderId: UUID
-
-    public init(messageId: UUID, accountId: UUID, originalFolderId: UUID) {
-        self.messageId = messageId
-        self.accountId = accountId
-        self.originalFolderId = originalFolderId
     }
 }

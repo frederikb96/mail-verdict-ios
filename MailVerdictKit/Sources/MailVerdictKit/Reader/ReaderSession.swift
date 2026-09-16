@@ -254,7 +254,9 @@ public final class ReaderSession {
         loadTasks[rowId]?.cancel()
         loadTasks[rowId] = Task { [weak self] in
             guard let self else { return }
-            let readAt = self.ledger.sequence
+            // A thread cache may hand over a fetch that began before this one, at a sequence
+            // unknown here; 0 keeps every intent not yet retired applying over it.
+            let readAt = self.threadCache == nil ? self.ledger.sequence : 0
             do {
                 let thread = try await self.fetchThread(rowId)
                 guard !Task.isCancelled else { return }
@@ -827,10 +829,6 @@ public final class ReaderSession {
 }
 
 extension ReaderSession: MVIntentObserver {
-    public var intentBaseSequence: Int {
-        pages.keys.compactMap { storedConversation(for: $0) != nil ? pageSequences[$0] : nil }.min() ?? .max
-    }
-
     /// A page read before these settled keeps their read and star changes.
     public func intentsWillRetire(_ intents: [MVMailIntent]) {
         for rowId in pages.keys {

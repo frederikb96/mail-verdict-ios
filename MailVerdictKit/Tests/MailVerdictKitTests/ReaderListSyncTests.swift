@@ -20,7 +20,15 @@ final class ReaderListSyncTests: XCTestCase {
             isSeen: true)
     }
 
-    private func makeReader(rows: [MessageSummary], opening: UUID) async throws -> (ReaderSession, MVMailListStore) {
+    private func makeClient() throws -> MVApiClient {
+        MVApiClient(
+            requestFactory: try MVRequestFactory(baseURL: "https://mail.example", authProvider: { .none }),
+            urlSession: ReaderRouteStub.makeSession())
+    }
+
+    private func makeReader(
+        rows: [MessageSummary], opening: UUID, ledger: MVIntentLedger? = nil
+    ) async throws -> (ReaderSession, MVMailListStore) {
         for row in rows {
             ReaderRouteStub.route(
                 "GET", "/api/messages/\(row.id)/thread", json: ThreadResponse(messages: [detail(row.id)]))
@@ -29,10 +37,8 @@ final class ReaderListSyncTests: XCTestCase {
         ReaderRouteStub.route("GET", "/api/contacts/photo-index", json: ContactPhotoIndexResponse(byEmail: [:]))
         ReaderRouteStub.route("GET", "/api/alerts", json: [AlertResponse]())
 
-        let client = MVApiClient(
-            requestFactory: try MVRequestFactory(baseURL: "https://mail.example", authProvider: { .none }),
-            urlSession: ReaderRouteStub.makeSession())
-        let ledger = makeTestLedger(transport: client)
+        let client = try makeClient()
+        let ledger = ledger ?? makeTestLedger(transport: client)
         let backend = FakeMailListBackend()
         backend.pageHandler = { _, _ in testPage(rows) }
         let scope = ListScope.folder(accountId: testAccount, folderId: testFolder)
@@ -103,5 +109,86 @@ final class ReaderListSyncTests: XCTestCase {
             session.remove(with: .move, targetFolderId: testUUID(42)), .advance(to: first, direction: .newer))
 
         XCTAssertEqual(store.rowIds, [first])
+    }
+
+    /// What the reader shows reads through the ledger as well as the list: its Options menu says
+    /// Unstar the moment Star is tapped.
+    func testTheReaderShowsItsOwnStarAtOnce() async throws {
+        let gate = TestGate()
+        let transport = RecordingIntentTransport()
+        transport.handler = { _ in await gate.wait() }
+        let (session, _) = try await makeReader(
+            rows: [testRow(1)], opening: first, ledger: makeTestLedger(transport: transport))
+
+        await session.setStarred(true)
+
+        XCTAssertEqual(session.currentPrimary?.isFlagged, true)
+        XCTAssertEqual(session.optionsContext()?.isStarred, true)
+        await gate.open()
+    }
+
+    func testUndoingAnArchiveFromTheReaderMovesTheMessageBackToItsFolder() async throws {
+        let toasts = MVToastStore()
+        let transport = RecordingIntentTransport()
+        let ledger = makeTestLedger(transport: transport, toasts: toasts)
+        let (session, _) = try await makeReader(rows: [testRow(1), testRow(2)], opening: first, ledger: ledger)
+
+        _ = session.remove(with: .archive)
+        await waitUntil { ledger.intents.first?.state == .done }
+        XCTAssertEqual(toasts.current?.actionTitle, "Undo")
+        toasts.current?.action?()
+        await waitUntil { transport.calls.count == 2 }
+
+        XCTAssertEqual(transport.calls, ["archive 1", "move 1"])
+        XCTAssertEqual(ledger.intents.last?.targetFolderId, ReaderFixtures.inboxId)
+    }
+
+    /// A page read before a star reached the server keeps showing it after the star leaves the
+    /// ledger, rather than dropping back to what that older read said.
+    func testAPageKeepsAStarOnceItsIntentRetires() async throws {
+        let clock = TestIntentClock()
+        let transport = RecordingIntentTransport()
+        let ledger = makeTestLedger(transport: transport, clock: clock)
+        let (session, _) = try await makeReader(rows: [testRow(1)], opening: first, ledger: ledger)
+
+        await session.setStarred(true)
+        await waitUntil { ledger.intents.first?.state == .done && clock.sleeperCount == 1 }
+        clock.advance(by: MVIntentLedger.Timing().doneRetention)
+        await waitUntil { ledger.intents.isEmpty }
+
+        XCTAssertEqual(session.currentPrimary?.isFlagged, true)
+    }
+
+    /// The reader opening a message joins a prefetch that left before a star reached the server;
+    /// what that fetch brings back predates the star, so the star still applies over it.
+    func testAConversationFetchedBeforeAStarLandedStillShowsTheStar() async throws {
+        let gate = TestGate()
+        let fetchedBefore = ThreadResponse(messages: [detail(first)])
+        let threadCache = MVThreadCache(fetch: { _ in
+            await gate.wait()
+            return fetchedBefore
+        })
+        ReaderRouteStub.route("GET", "/api/accounts/\(ReaderFixtures.accountId)/folders", json: [FolderResponse]())
+        ReaderRouteStub.route("GET", "/api/contacts/photo-index", json: ContactPhotoIndexResponse(byEmail: [:]))
+        let client = try makeClient()
+        let transport = RecordingIntentTransport()
+        let ledger = makeTestLedger(transport: transport)
+
+        threadCache.prefetchUrgently(first)
+        ledger.enqueue(
+            MVIntentRequest(accountId: ReaderFixtures.accountId, action: .flag, messageIds: [first]))
+        await waitUntil { ledger.intents.first?.state == .done }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "reader-list-sync-\(UUID())"))
+        let session = ReaderSession(
+            context: ReaderContext(source: .spamReview, messageId: first), api: client, ledger: ledger,
+            placeResolver: MVMessagePlaceResolver(apiClient: client), theme: .light, registry: ReaderSourceRegistry(),
+            tracker: MVExplicitUnreadTracker(), canvasStore: MVCanvasPreferenceStore(defaults: defaults),
+            cacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
+            threadCache: threadCache)
+        session.ensureLoaded(first)
+        await gate.open()
+        await waitUntil { session.conversation(for: self.first) != nil }
+
+        XCTAssertEqual(session.conversation(for: first)?.primary?.isFlagged, true)
     }
 }

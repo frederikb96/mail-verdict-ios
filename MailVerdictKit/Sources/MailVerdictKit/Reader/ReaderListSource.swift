@@ -29,8 +29,14 @@ public protocol ReaderListSource: AnyObject {
     /// default), never reaching a conformer's override — only a requirement dispatches
     /// dynamically to what the conformer actually implements.
     var readerTitle: String? { get }
+
+    /// Whether `rowIds` already has the intent ledger applied. When not, the reader skips what an
+    /// intent has taken out of its folder itself. A requirement for the same dispatch reason as
+    /// `readerTitle`.
+    var projectsIntents: Bool { get }
 }
 
 extension ReaderListSource {
     public var readerTitle: String? { nil }
+    public var projectsIntents: Bool { false }
 }

@@ -22,12 +22,12 @@ public struct MVProjectionScope: Equatable, Sendable {
 /// through, so no screen patches its own copy.
 public enum MVIntentProjection {
 
-    /// Whether `intent` applies over data read when the ledger stood at `baseSequence`: always
-    /// while outstanding; once done, only over a read that began before the server had it, since
-    /// a later read already carries it; never once refused.
+    /// Whether `intent` applies over data read when the ledger stood at `baseSequence`: while
+    /// outstanding and not undone; once done, only over a read that began before the server had
+    /// it, since a later read already carries it; never once refused.
     public static func applies(_ intent: MVMailIntent, over baseSequence: Int) -> Bool {
         switch intent.state {
-        case .pending, .sending: return true
+        case .pending, .sending: return !intent.undoRequested
         case .done: return (intent.settledSequence ?? .max) > baseSequence
         case .failed: return false
         }

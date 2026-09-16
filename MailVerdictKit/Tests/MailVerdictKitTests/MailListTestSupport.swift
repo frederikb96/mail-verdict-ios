@@ -175,13 +175,22 @@ final class FakeMailListBackend: MVMailListBackend, MVIntentTransport, @unchecke
 
     func deliverMessageAction(
         messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, idempotencyKey: UUID, timeout: TimeInterval
-    ) async throws {
+    ) async throws -> MessageActionResponse {
         let (error, delay) = locked {
             _messageActions.append((messageId, action, targetFolderId))
             return (_messageActionError, _messageActionDelay)
         }
         try await delay?(messageId)
         if let error { throw error }
+        return MessageActionResponse(success: true, action: action.rawValue, messageId: messageId, message: nil)
+    }
+
+    func fetchConversation(messageId: UUID, timeout: TimeInterval) async throws -> ThreadResponse {
+        try await fetchThread(messageId: messageId)
+    }
+
+    func fetchMessageState(messageId: UUID, includeFlags: Bool, timeout: TimeInterval) async throws -> MVMessageState? {
+        throw MVError.detail("unused", statusCode: 500)
     }
 
     func deliverBulkAction(

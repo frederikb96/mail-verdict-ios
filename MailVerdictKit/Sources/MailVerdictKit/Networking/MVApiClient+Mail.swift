@@ -24,22 +24,26 @@ extension MVApiClient {
         return try await send(path: "/api/accounts/\(accountId)/messages", query: query)
     }
 
-    public func getMessage(id: UUID, loadImages: Bool = false) async throws -> MessageDetail {
+    public func getMessage(id: UUID, loadImages: Bool = false, timeout: TimeInterval? = nil) async throws
+        -> MessageDetail
+    {
         try await send(
             path: "/api/messages/\(id)",
-            query: [URLQueryItem(name: "load_images", value: loadImages ? "true" : "false")]
+            query: [URLQueryItem(name: "load_images", value: loadImages ? "true" : "false")], timeout: timeout
         )
     }
 
-    public func getThread(messageId: UUID, loadImages: Bool = true) async throws -> ThreadResponse {
+    public func getThread(
+        messageId: UUID, loadImages: Bool = true, timeout: TimeInterval? = nil
+    ) async throws -> ThreadResponse {
         try await send(
             path: "/api/messages/\(messageId)/thread",
-            query: [URLQueryItem(name: "load_images", value: loadImages ? "true" : "false")]
+            query: [URLQueryItem(name: "load_images", value: loadImages ? "true" : "false")], timeout: timeout
         )
     }
 
-    public func locateMessage(id: UUID) async throws -> MessageLocation {
-        try await send(path: "/api/messages/\(id)/location")
+    public func locateMessage(id: UUID, timeout: TimeInterval? = nil) async throws -> MessageLocation {
+        try await send(path: "/api/messages/\(id)/location", timeout: timeout)
     }
 
     public func getMessageQuote(id: UUID) async throws -> MessageQuoteResponse {
