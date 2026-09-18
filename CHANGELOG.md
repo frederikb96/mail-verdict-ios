@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-18
+
 ### Fixed
 
 - The app holds one connection to the server again, however long it is used. It was starting a
