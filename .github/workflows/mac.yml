@@ -363,10 +363,13 @@ jobs:
               # invisible on screen — it shows up as the server being hammered and the app's own
               # requests timing out behind the extra streams. Two are legitimate: the shell's, and
               # the short-lived stand-in push registration builds when no shell has attached yet.
+              # An unanswered route must read as a failure, not as a zero: a check that cannot
+              # reach its measurement proves nothing and looks exactly like a pass.
               envs=$(curl -sS --max-time 3 "http://127.0.0.1:8765/shell/state" 2>/dev/null \
-                | python3 -c "import json,sys; print(json.load(sys.stdin).get('environmentsCreated', 0))" 2>/dev/null || echo "0")
-              if [ "$envs" -gt 2 ]; then
-                echo "::error::screen '$id' ran with $envs app environments — each one is another live stream and ledger"
+                | python3 -c "import json,sys; print(json.load(sys.stdin)['environmentsCreated'])" 2>/dev/null || echo "")
+              echo "$id: $envs app environment(s)"
+              if [ -z "$envs" ] || [ "$envs" -gt 2 ]; then
+                echo "::error::screen '$id' reported '$envs' app environments — each one is another live stream and ledger"
                 fail=1
               fi
             fi
