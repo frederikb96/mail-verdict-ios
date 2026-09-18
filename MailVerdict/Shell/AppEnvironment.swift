@@ -16,6 +16,16 @@ import UIKit
 @MainActor
 final class AppEnvironment {
 
+    /// The app's one environment.
+    ///
+    /// 🚨 Building one is not free and not repeatable: it opens the live stream and starts the
+    /// intent ledger draining the actions stored for this server. SwiftUI evaluates a `@State`
+    /// property's initial value every time the view struct is instantiated, which is far more
+    /// often than once — so `@State var environment = AppEnvironment()` quietly accumulates live
+    /// streams and ledgers, each of which outlives the instance SwiftUI discarded. Everything that
+    /// needs the environment reads this.
+    static let shared = AppEnvironment()
+
     private(set) var router: Router
     private(set) var connection: Connection?
 
@@ -103,6 +113,10 @@ final class AppEnvironment {
         self.backendURL = defaults.string(forKey: Self.backendURLKey) ?? ""
         self.router = Router(gate: .needsConfiguration)
         self.navigationPath = MVPersistedPath.load(from: defaults)
+
+        #if DEBUG
+            ShellDebugState.shared.noteEnvironmentCreated()
+        #endif
 
         if credentials.read() != nil {
             connect()

@@ -26,8 +26,10 @@ final class PushCoordinator {
     private var pendingTap: PushTapTarget?
     private var isRefreshing = false
     private var settings: (origin: String, store: NotificationSettingsStore)?
-    /// Stands in for the shell while none is attached. Its live-event stream is closed at once:
-    /// background work needs only the API client, and a stream nobody reads would stay open.
+    /// Stands in for the shell while none is attached. Its live-event stream and its intent ledger
+    /// are both closed at once: background work needs only the API client, a stream nobody reads
+    /// would stay open, and a second ledger would deliver — and re-count the attempts of — the same
+    /// stored actions the shell's own ledger is delivering.
     private var backgroundEnvironment: AppEnvironment?
     private weak var subscribedHub: LiveEventHub?
     private var hubToken: MVSubscriptionToken?
@@ -52,6 +54,7 @@ final class PushCoordinator {
         if let backgroundEnvironment { return backgroundEnvironment }
         let environment = AppEnvironment()
         environment.connection?.liveEventHub.disconnect()
+        environment.connection?.intentLedger.stop()
         backgroundEnvironment = environment
         return environment
     }

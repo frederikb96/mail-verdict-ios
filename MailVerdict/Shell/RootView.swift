@@ -4,7 +4,7 @@ import SwiftUI
 /// The app's outermost screen: the gate, and — once connected — the one `NavigationStack` every
 /// pushed `Route` lives on.
 struct RootView: View {
-    @State private var environment = AppEnvironment()
+    @State private var environment = AppEnvironment.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {

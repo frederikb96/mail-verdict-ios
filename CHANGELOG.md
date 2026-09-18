@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The app holds one connection to the server again, however long it is used. It was starting a
+  fresh live stream, and a fresh copy of the queue that delivers mail actions, every time the
+  screen behind everything was rebuilt — and the old ones carried on running, so a busy session
+  ended up with hundreds of connections open at once. The app's own requests then queued behind
+  them and timed out: a mail list stuck on grey placeholders, a subtitle reading "Connecting…",
+  and an action that counted thousands of attempts and could never finish. A stream nobody is
+  reading any more now closes itself rather than reconnecting forever.
+
 ## [0.2.2] - 2026-09-18
 
 ### Fixed

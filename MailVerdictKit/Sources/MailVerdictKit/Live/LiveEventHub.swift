@@ -112,6 +112,9 @@ public final class LiveEventHub {
             urlSessionConfiguration: urlSessionConfiguration
         )
         box.hub = self
+        // Nothing but this hub reads the stream, and nothing but this hub can close it: a hub that
+        // goes away without disconnecting would leave a connection open on the server forever.
+        sseClient.setOwner(self)
     }
 
     public func connect() {

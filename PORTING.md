@@ -338,3 +338,11 @@ several times, then count `GET /api/events` in the server's own log for that per
 seconds apart and back off, never hundreds in a few seconds, and the list reconnects and shows new
 mail afterwards without a relaunch.
 
+
+### One live stream for the whole app, not one per rebuild — server anchor: GET /api/events
+Needs a device because: only a real session — moving between screens, leaving and returning to the
+app, a push arriving — rebuilds the shell often enough for a second connection to accumulate, and
+the extra ones are invisible on screen. Confirm: use the app normally for a few minutes, then count
+`GET /api/events` and `GET /api/accounts/<id>/folders` in the server's own log over that period —
+single figures, never hundreds inside one second — and check that the mail list keeps loading while
+an action is waiting for the network.

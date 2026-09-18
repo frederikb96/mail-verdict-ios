@@ -266,4 +266,47 @@ final class MVSseClientLifecycleTests: XCTestCase {
             "connect() after disconnect() opened a stream — the client is revivable after all")
         XCTAssertEqual(MVHoldOpenStubProtocol.live, 0)
     }
+
+    /// The task running a stream holds the client, so a client nobody references any more is not
+    /// collected — it keeps a connection on the server for the rest of the process, and there is
+    /// no reference left to tell it to stop. A named owner going away is what ends it.
+    func testAClientWhoseOwnerIsGoneClosesTheStreamItIsStillHolding() async {
+        let client = makeClient()
+        var owner: NSObject? = NSObject()
+        client.setOwner(owner!)
+        client.connect()
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        XCTAssertEqual(MVHoldOpenStubProtocol.live, 1, "the stream never came up, so the test proves nothing")
+
+        owner = nil
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+        let live = MVHoldOpenStubProtocol.live
+        client.disconnect()
+        XCTAssertEqual(live, 0, "an abandoned client held \(live) streams open")
+    }
+
+    /// The same client against a link that accepts and drops: an abandoned one must stop asking,
+    /// not go on reconnecting forever. Several of these together are what a connection storm is
+    /// made of.
+    func testAnAbandonedClientStopsReconnecting() async {
+        MVHoldOpenStubProtocol.dieImmediately = true
+        let client = makeClient()
+        var owner: NSObject? = NSObject()
+        client.setOwner(owner!)
+        client.connect()
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        XCTAssertGreaterThan(
+            MVHoldOpenStubProtocol.starts, 1, "the client was not retrying yet, so the test proves nothing")
+
+        owner = nil
+        let atAbandonment = MVHoldOpenStubProtocol.starts
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+
+        let after = MVHoldOpenStubProtocol.starts
+        client.disconnect()
+        XCTAssertEqual(
+            after, atAbandonment,
+            "an abandoned client opened \(after - atAbandonment) more streams after its owner was gone")
+    }
 }

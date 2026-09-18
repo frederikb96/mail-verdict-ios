@@ -43,7 +43,7 @@ struct MailVerdictApp: App {
         private static let featureRegistrars: [@Sendable (inout DebugRouter) -> Void] = [
             MailboxesDebugRoutes.register, SearchDebugRoutes.register, SpamReviewDebugRoutes.register,
             NotificationsDebugRoutes.register, PushDebugRoutes.register, MailListDebugRoutes.register,
-            ComposerDebugRoutes.register, ReaderDebugRoutes.register,
+            ComposerDebugRoutes.register, ReaderDebugRoutes.register, ShellDebugRoutes.register,
         ]
 
         static func make() -> DebugRouter {

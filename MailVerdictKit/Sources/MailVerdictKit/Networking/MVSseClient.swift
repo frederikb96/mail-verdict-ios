@@ -95,6 +95,16 @@ public final class MVSseClient {
     /// server, so this is the number a test asserts on when it is asking whether the client can
     /// be made to open more streams than it should.
     private(set) var attemptsStarted = 0
+    /// Whoever asked for this stream, held weakly once `setOwner` has been called. The task
+    /// running a stream holds the client for as long as that stream is open, and a reconnect
+    /// schedules the next one — so a client nobody references any more keeps a connection on the
+    /// server for the rest of the process unless it is told that its owner is gone.
+    private var ownerBox: WeakOwnerBox?
+
+    private final class WeakOwnerBox {
+        weak var owner: AnyObject?
+        init(_ owner: AnyObject) { self.owner = owner }
+    }
 
     public init(
         accountId: String? = nil,
@@ -106,6 +116,20 @@ public final class MVSseClient {
         self.requestFactory = requestFactory
         self.callbacks = callbacks
         self.urlSessionConfiguration = urlSessionConfiguration
+    }
+
+    /// Names what this stream is being kept open for. Once set, the stream closes and stops
+    /// retrying as soon as that object is gone: nothing else can reach an abandoned client to
+    /// tell it to stop, and its own retry loop would otherwise hold a connection open for the
+    /// rest of the process.
+    public func setOwner(_ owner: AnyObject) {
+        ownerBox = WeakOwnerBox(owner)
+    }
+
+    /// True only once an owner was named and has since been released.
+    private var isAbandoned: Bool {
+        guard let ownerBox else { return false }
+        return ownerBox.owner == nil
     }
 
     /// Idempotent: asking for a stream that is already open, or already scheduled, leaves it
@@ -166,6 +190,11 @@ public final class MVSseClient {
     }
 
     private func startAttempt(generation attempt: UInt64) {
+        guard !isAbandoned else {
+            stopped = true
+            cancelInFlight()
+            return
+        }
         guard !stopped, !paused, attempt == generation else { return }
         lastAttemptAt = Date()
         connectionOpenedAt = nil
@@ -218,6 +247,13 @@ public final class MVSseClient {
         do {
             for try await event in byteStream.start(request: request, configuration: urlSessionConfiguration) {
                 if Task.isCancelled || attempt != generation { break }
+                // A stream that is open and healthy never reaches `startAttempt` again, so this is
+                // the only place an abandoned client notices while its connection still works.
+                if isAbandoned {
+                    stopped = true
+                    cancelInFlight()
+                    return
+                }
                 switch event {
                 case .connected:
                     connectionOpenedAt = Date()
