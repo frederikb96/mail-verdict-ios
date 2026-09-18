@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The live-update stream no longer opens a burst of connections when the network is unreliable. A
+  connection that is accepted and dropped straight away is treated as the failure it is rather than
+  as a healthy one, retries are spaced out and jittered, every attempt goes through one gate that
+  keeps them apart, and asking for a stream that is already open leaves it alone.
+
 ## [0.2.1] - 2026-09-16
 
 ### Added

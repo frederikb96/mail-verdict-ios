@@ -218,6 +218,10 @@ final class AppEnvironment {
         // Held weakly by the hub; the connection owns both for as long as it exists.
         liveEventHub.subscribe(referenceCache)
         liveEventHub.subscribe(threadCache)
+        // The outgoing connection's own hub keeps retrying its stream for as long as something
+        // holds it, so replacing a connection without closing it leaves a second live stream
+        // nothing reads.
+        connection?.liveEventHub.disconnect()
         connection?.intentLedger.stop()
         let intentLedger = MVIntentLedger(
             transport: client, persistence: Self.intentPersistence(serverURL: backendURL),

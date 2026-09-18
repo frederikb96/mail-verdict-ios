@@ -330,3 +330,11 @@ Needs a device because: the Mailboxes context menu and toast. Confirm: in airpla
 message out of a folder, then long-press that folder — Empty Folder… and Delete Folder… each show an
 error toast instead of their confirmation; back online, once the move has gone, both confirmations
 appear as usual.
+
+### Live stream reconnects sanely on a weak connection — server anchor: GET /api/events
+Needs a device because: only a real mobile link accepts a connection and drops it again. Confirm:
+with the app open on mobile data, move between coverage and none (or leave and rejoin a network)
+several times, then count `GET /api/events` in the server's own log for that period — attempts are
+seconds apart and back off, never hundreds in a few seconds, and the list reconnects and shows new
+mail afterwards without a relaunch.
+

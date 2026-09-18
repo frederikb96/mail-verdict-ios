@@ -24,6 +24,7 @@ final class MVStubURLProtocol: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var _stub: Stub?
     nonisolated(unsafe) private static var _capturedRequest: URLRequest?
+    nonisolated(unsafe) private static var _requestTimes: [Date] = []
 
     static var stub: Stub? {
         get { lock.lock(); defer { lock.unlock() }; return _stub }
@@ -35,9 +36,20 @@ final class MVStubURLProtocol: URLProtocol {
         set { lock.lock(); defer { lock.unlock() }; _capturedRequest = newValue }
     }
 
+    /// When each request reached the stub, so a test can assert on how often a reconnecting
+    /// client opens the stream and how far apart the attempts are.
+    static var requestTimes: [Date] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _requestTimes
+    }
+
     static func reset() {
         stub = nil
         capturedRequest = nil
+        lock.lock()
+        _requestTimes = []
+        lock.unlock()
     }
 
     /// Shared by every stub-backed test, including the delegate-based streaming client — that
@@ -58,6 +70,9 @@ final class MVStubURLProtocol: URLProtocol {
 
     override func startLoading() {
         Self.capturedRequest = request
+        Self.lock.lock()
+        Self._requestTimes.append(Date())
+        Self.lock.unlock()
 
         guard let stub = Self.stub, let url = request.url else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
