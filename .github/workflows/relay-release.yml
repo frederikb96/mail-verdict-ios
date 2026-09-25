@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with: { version: v3.17.0 }
       - run: helm lint charts/mail-verdict-push-relay
 
@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with: { version: v3.17.0 }
 
       - name: Log in to GHCR
