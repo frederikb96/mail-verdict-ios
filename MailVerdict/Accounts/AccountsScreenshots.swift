@@ -24,15 +24,43 @@ import MailVerdictKit
                 prepare: prepareAccountEditGlacier),
         ]
 
-        /// The same account fixture as `account-detail`, plus opening its Edit… sheet — the
-        /// screen where the glacier switch and automatic-sweep days field actually live.
+        /// The same account fixture as `account-detail`, plus opening its Edit… sheet and
+        /// scrolling it to the Glacier section — the switch and days field sit below the fold in
+        /// an ordinary Form, so nothing short of scrolling to them ever shows up in a screenshot.
+        ///
+        /// Each wait fails visibly (hangs, the same `neverReady()` shape `ReaderScreenshots` uses)
+        /// rather than reporting the screen ready anyway: a stage this entry's own two flags never
+        /// reach would otherwise pass silently as whatever the screen already looked like, which
+        /// is exactly how the sheet not opening at all went unnoticed once already.
         @MainActor
         private static func prepareAccountEditGlacier(
             _ environment: AppEnvironment, _ connection: AppEnvironment.Connection
         ) async {
             await prepareAccountDetail(environment, connection)
             AccountsDebugServices.shared.showEditSheetRequested = true
-            _ = await poll { AccountsDebugServices.shared.editSheetVisible ? true : nil }
+            guard await poll({ AccountsDebugServices.shared.editSheetVisible ? true : nil }) != nil else {
+                DebugLogBuffer.shared.append(.info, "screenshot", "account-edit-glacier: sheet never appeared")
+                await neverReady()
+                return
+            }
+            AccountsDebugServices.shared.scrollToGlacierSectionRequested = true
+            guard await poll({ AccountsDebugServices.shared.glacierSectionScrolled ? true : nil }) != nil else {
+                DebugLogBuffer.shared.append(
+                    .info, "screenshot", "account-edit-glacier: never scrolled to the glacier section")
+                await neverReady()
+                return
+            }
+            // `scrollTo` schedules the scroll; it does not itself wait for the layout pass that
+            // actually moves content on screen.
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+
+        /// A genuine timeout means the stage never reached the state it claims to — hanging here
+        /// keeps `screenshotReady` from ever reporting this screen ready, so the sweep's own poll
+        /// of `/screen/current` times out and fails the run honestly instead of publishing a
+        /// screenshot of whatever was already on screen.
+        private static func neverReady() async {
+            while true { try? await Task.sleep(nanoseconds: 60 * 60 * 1_000_000_000) }
         }
 
         @MainActor

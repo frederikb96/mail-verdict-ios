@@ -286,8 +286,14 @@ public enum ConversationDocumentBuilder {
         #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 7.5L12 3l4.5 4.5M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>"#
     static let locateGlyph =
         #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>"#
+    // Twelve separate `<path>` elements, not one merged `d` — each of lucide's own subpaths opens
+    // with a *relative* moveto whose first-command exception (absolute, per the SVG spec) only
+    // holds for the first path in a document. Concatenating them into one `d` turns every
+    // subsequent `m` into an offset from wherever the previous subpath ended rather than from the
+    // canvas origin, which scrambles the whole icon into disconnected fragments — confirmed by
+    // rendering both forms.
     static let snowflakeGlyph =
-        #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m10 20-1.25-2.5L6 18M10 4 8.75 6.5 6 6m14 20 1.25-2.5L18 18m14 4 1.25 2.5L18 6m17 21-3-6h-4m17 3-3 6 1.5 3M2 12h6.5L10 9m20 10-1.5 2 1.5 2M22 12h-6.5L14 15m4 10 1.5 2L4 14m7 21 3-6-1.5-3m7 3 3 6h4"/></svg>"#
+        #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg>"#
 
     /// The chrome's own stylesheet — iOS system colours per theme, Dynamic Type text styles, and
     /// `overflow-x: hidden` at the root so that at rest zoom the page never scrolls sideways and

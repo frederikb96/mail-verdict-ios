@@ -65,6 +65,17 @@ final class ConversationDocumentBuilderTests: XCTestCase {
         XCTAssertTrue(doc.contains(ConversationDocumentBuilder.bodyElementId(m.id)), "the body must still render")
     }
 
+    /// Merging lucide's twelve subpaths into one `d` string breaks it -- every `m` after the first
+    /// is relative to the previous subpath's own end point rather than to the canvas origin, which
+    /// scrambles the icon into disconnected fragments (confirmed by rendering both forms outside
+    /// this test). Twelve separate `<path>` elements is what actually stays correct.
+    func testSnowflakeGlyphIsTwelveSeparatePathElementsNotOneMergedPath() {
+        let glyph = ConversationDocumentBuilder.snowflakeGlyph
+        XCTAssertEqual(glyph.components(separatedBy: "<path").count - 1, 12)
+        XCTAssertEqual(glyph.components(separatedBy: "</path>").count - 1, 0, "self-closing, not paired")
+        XCTAssertTrue(glyph.contains(#"<svg class="mv-glyph" viewBox="0 0 24 24""#))
+    }
+
     /// No origin folder name (a copy made before that column existed, say) drops the parenthetical
     /// rather than rendering an empty one.
     func testGlacieredMessageWithNoOriginFolderOmitsTheParenthetical() {

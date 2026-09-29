@@ -24,6 +24,11 @@
         /// Set once the Edit… sheet has actually appeared — `prepare` waits on this rather than a
         /// guessed duration, the same shape `MailListScreenshotStage.isOptionsSheetVisible` uses.
         var editSheetVisible = false
+        /// Flipped by `prepare`, once the sheet is visible, to scroll the form to its Glacier
+        /// section — the fields a screenshot of the plain top of the form would never show.
+        var scrollToGlacierSectionRequested = false
+        /// Set by `AccountFormView` once it has actually called `scrollTo` for that section.
+        var glacierSectionScrolled = false
 
         private init() {}
     }
