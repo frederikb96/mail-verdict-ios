@@ -116,6 +116,10 @@ private struct ConnectedShell: View {
             SearchScreen(initialQuery: initialQuery, environment: environment, connection: connection)
         case .spamReview:
             SpamReviewScreen(environment: environment, connection: connection)
+        case .orders:
+            OrdersScreen(environment: environment, connection: connection)
+        case .order(let orderId):
+            OrderDetailScreen(orderId: orderId, environment: environment, connection: connection)
         case .notifications:
             NotificationsScreen(environment: environment, connection: connection)
         case .settings:
