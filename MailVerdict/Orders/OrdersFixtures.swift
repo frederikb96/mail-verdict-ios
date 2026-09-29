@@ -59,7 +59,7 @@ import MailVerdictKit
                     OrderListItem(
                         id: packageOrderId, merchant: "Nordlicht Keramik", subject: "Handcrafted blue glazed vase",
                         status: "shipped", title: "Handcrafted blue glazed vase — shipped", isOpen: true,
-                        icon: "package", summaryPreview: "Ordered on 21 Apr, shipped on 23 Apr with tracking NK-48213.",
+                        icon: "package", summaryPreview: "Ordered and shipped, tracking NK-48213, on its way.",
                         firstMailAt: Date(timeIntervalSinceNow: -86400 * 4),
                         lastMailAt: Date(timeIntervalSinceNow: -86400 * 2), mailCount: 3,
                         accountIds: [MailboxesFixtures.accountId],
@@ -83,12 +83,12 @@ import MailVerdictKit
             OrderDetail(
                 id: packageOrderId, merchant: "Nordlicht Keramik", subject: "Handcrafted blue glazed vase",
                 status: "shipped", title: "Handcrafted blue glazed vase — shipped", isOpen: true, icon: "package",
-                summaryPreview: "Ordered on 21 Apr, shipped on 23 Apr with tracking NK-48213.",
+                summaryPreview: "Ordered and shipped, tracking NK-48213, on its way.",
                 firstMailAt: Date(timeIntervalSinceNow: -86400 * 4), lastMailAt: Date(timeIntervalSinceNow: -86400 * 2),
                 mailCount: 3, accountIds: [MailboxesFixtures.accountId], textStale: false,
                 updatedAt: Date(timeIntervalSinceNow: -86400 * 2),
                 summary: "Ordered a **Handcrafted blue glazed vase** for EUR 49.90.\n\n"
-                    + "- Order number NK-48213\n- Shipped 23 Apr with tracking\n- Delivery expected within 3 days",
+                    + "- Order number NK-48213\n- Shipped with tracking\n- Delivery expected within 3 days",
                 identifiers: [
                     OrderIdentifierOut(kind: "order_number", value: "NK-48213"),
                     OrderIdentifierOut(kind: "tracking_number", value: "NK-TRACK-99201"),

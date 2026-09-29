@@ -13,7 +13,11 @@ struct OrdersScreen: View {
     init(environment: AppEnvironment, connection: AppEnvironment.Connection) {
         self.environment = environment
         self.connection = connection
-        self._store = State(initialValue: OrderListStore(apiClient: connection.apiClient))
+        let freshStore = OrderListStore(apiClient: connection.apiClient)
+        self._store = State(initialValue: freshStore)
+        #if DEBUG
+            OrdersFixtures.activeListStore = freshStore
+        #endif
     }
 
     var body: some View {
@@ -40,9 +44,6 @@ struct OrdersScreen: View {
                 }
             }
             .task {
-                #if DEBUG
-                    OrdersFixtures.activeListStore = store
-                #endif
                 store.subscribeToLive(connection.liveEventHub)
                 await store.load()
             }

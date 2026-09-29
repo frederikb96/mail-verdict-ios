@@ -20,7 +20,11 @@ struct OrderDetailScreen: View {
         self.orderId = orderId
         self.environment = environment
         self.connection = connection
-        self._store = State(initialValue: OrderDetailStore(orderId: orderId, apiClient: connection.apiClient))
+        let freshStore = OrderDetailStore(orderId: orderId, apiClient: connection.apiClient)
+        self._store = State(initialValue: freshStore)
+        #if DEBUG
+            OrdersFixtures.activeDetailStore = freshStore
+        #endif
     }
 
     var body: some View {
@@ -28,14 +32,19 @@ struct OrderDetailScreen: View {
             .navigationTitle(store.order?.merchant ?? "Order")
             .navigationBarTitleDisplayMode(.inline)
             .accessibilityIdentifier("order-detail-screen")
+            #if DEBUG
+                // Ahead of the data-loading `.task` below, on purpose: a fixture-mode sweep's own
+                // screenshot-readiness task registers this screen's routes, and it has to win the
+                // race against this screen's own load -- an unregistered route falls back to a
+                // 404, which this store reads as "the order is gone" and dismisses the screen
+                // before it or its own readiness task ever settles.
+                .screenshotReady(route: .order(orderId), environment: environment, connection: connection)
+            #endif
             .toolbar { toolbarContent }
             .quickLookPreview($quickLookURL)
             .removeMailDialog(pendingRemove: $pendingRemove) { mail in Task { await remove(mail) } }
             .deleteOrderAlert(isPresented: $confirmDelete) { Task { await delete() } }
             .task {
-                #if DEBUG
-                    OrdersFixtures.activeDetailStore = store
-                #endif
                 ReaderSourceRegistry.shared.register(store, for: .order(orderId))
                 store.subscribeToLive(connection.liveEventHub)
                 await store.load()
@@ -48,9 +57,6 @@ struct OrderDetailScreen: View {
                 }
                 dismiss()
             }
-            #if DEBUG
-                .screenshotReady(route: .order(orderId), environment: environment, connection: connection)
-            #endif
     }
 
     @ToolbarContentBuilder
@@ -67,9 +73,7 @@ struct OrderDetailScreen: View {
 
     @ViewBuilder
     private var content: some View {
-        if store.isLoading && store.order == nil {
-            ProgressView()
-        } else if let errorMessage = store.errorMessage {
+        if let errorMessage = store.errorMessage {
             ErrorStateView(message: errorMessage) { Task { await store.load() } }
         } else if let order = store.order {
             List {
@@ -85,6 +89,11 @@ struct OrderDetailScreen: View {
                     mails: order.mails, orderId: orderId, environment: environment, pendingRemove: $pendingRemove)
             }
             .listStyle(.insetGrouped)
+        } else {
+            // Covers both the genuine loading state and the brief instant before `.task` has
+            // run at all -- `store.isLoading` starts `false`, so without this fallback the very
+            // first render (no error, no order, not yet loading) would draw nothing.
+            ProgressView()
         }
     }
 
