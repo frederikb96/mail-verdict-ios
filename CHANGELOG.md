@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- The Settings screen's AI provider key section now also offers a Custom (OpenAI-compatible)
+  server, alongside Anthropic and OpenAI, matching the server's own selectable provider.
+
 ## [0.2.3] - 2026-09-18
 
 ### Fixed

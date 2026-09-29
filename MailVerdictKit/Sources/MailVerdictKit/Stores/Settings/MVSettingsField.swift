@@ -42,17 +42,19 @@ public struct MVProviderKeyStatus: Equatable, Sendable {
     }
 }
 
-/// `anthropic` / `openai` — the providers `ai` settings holds a key for (`PROVIDER_ENV_VARS` in
-/// the backend's credentials module). A new provider needs a case added here; nothing else in
-/// this package hardcodes the pair.
+/// `anthropic` / `openai` / `custom` — the providers `ai` (and, minus `anthropic`, `semantic`)
+/// settings hold a key for (`PROVIDER_ENV_VARS` in the backend's credentials module). A new
+/// provider needs a case added here; nothing else in this package hardcodes the set.
 public enum MVSettingsProvider: String, CaseIterable, Sendable {
     case anthropic
     case openai
+    case custom
 
     public var label: String {
         switch self {
         case .anthropic: return "Anthropic"
         case .openai: return "OpenAI"
+        case .custom: return "Custom (OpenAI-compatible)"
         }
     }
 }

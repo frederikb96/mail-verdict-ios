@@ -44,6 +44,16 @@ final class MVSettingsCategoryStoreTests: XCTestCase {
         XCTAssertEqual(store.providerStatus[.openai], MVProviderKeyStatus(configured: false, hint: nil))
     }
 
+    /// A compatible server's key status is read the same generic way as the two named vendors'.
+    func testAiCategoryReadsTheCustomProviderStatusToo() async throws {
+        let data = Data(
+            #"{"custom_api_key_configured": true, "custom_api_key_hint": "wxyz", "model": "m"}"#
+                .utf8)
+        let store = try makeStore(category: .ai)
+        try store.apply(data)
+        XCTAssertEqual(store.providerStatus[.custom], MVProviderKeyStatus(configured: true, hint: "wxyz"))
+    }
+
     /// Only the `ai` category carries provider keys — a category switch must not leave a stale
     /// status behind from whatever was loaded before it.
     func testNonAiCategoriesHaveNoProviderStatus() async throws {
@@ -51,5 +61,18 @@ final class MVSettingsCategoryStoreTests: XCTestCase {
         let store = try makeStore(category: .retry)
         try store.apply(data)
         XCTAssertTrue(store.providerStatus.isEmpty)
+    }
+
+    /// active_model/active_provider/active_base_url are managed by the backend's backfill
+    /// reconciler during a re-embed, never something to type into.
+    func testSemanticCategoryExcludesTheManagedCutoverFields() async throws {
+        let data = Data(
+            #"""
+            {"model": "new-model", "active_model": "old-model",
+             "active_provider": "openai", "active_base_url": null}
+            """#.utf8)
+        let store = try makeStore(category: .semantic)
+        try store.apply(data)
+        XCTAssertEqual(store.fields.map(\.key), ["model"])
     }
 }
