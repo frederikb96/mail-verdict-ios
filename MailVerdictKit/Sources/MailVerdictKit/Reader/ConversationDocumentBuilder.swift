@@ -287,7 +287,7 @@ public enum ConversationDocumentBuilder {
     static let locateGlyph =
         #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>"#
     static let snowflakeGlyph =
-        #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M2 7l20 10M2 17l20-10"/></svg>"#
+        #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m10 20-1.25-2.5L6 18M10 4 8.75 6.5 6 6m14 20 1.25-2.5L18 18m14 4 1.25 2.5L18 6m17 21-3-6h-4m17 3-3 6 1.5 3M2 12h6.5L10 9m20 10-1.5 2 1.5 2M22 12h-6.5L14 15m4 10 1.5 2L4 14m7 21 3-6-1.5-3m7 3 3 6h4"/></svg>"#
 
     /// The chrome's own stylesheet — iOS system colours per theme, Dynamic Type text styles, and
     /// `overflow-x: hidden` at the root so that at rest zoom the page never scrolls sideways and
