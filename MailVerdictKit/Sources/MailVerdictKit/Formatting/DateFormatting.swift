@@ -61,6 +61,25 @@ public enum MVDateFormat {
         guard let date else { return "" }
         return fullFormatter.string(from: date)
     }
+
+    /// An order row's own dates: "21 Apr – 23 Apr", the year appended only once it is not the
+    /// current one, one date when both fall on the same day. Either bound can be missing (an
+    /// order with no written text yet) -- the other one alone is shown.
+    public static func dateRange(
+        _ first: Date?, _ last: Date?, now: Date = Date(), calendar: Calendar = .current
+    ) -> String {
+        guard let first else { return last.map { day($0, now: now, calendar: calendar) } ?? "" }
+        guard let last else { return day(first, now: now, calendar: calendar) }
+        if calendar.isDate(first, inSameDayAs: last) {
+            return day(first, now: now, calendar: calendar)
+        }
+        return "\(day(first, now: now, calendar: calendar)) – \(day(last, now: now, calendar: calendar))"
+    }
+
+    private static func day(_ date: Date, now: Date, calendar: Calendar) -> String {
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+        return (sameYear ? dayMonthFormatter : dayMonthYearFormatter).string(from: date)
+    }
 }
 
 /// Human-readable file size.

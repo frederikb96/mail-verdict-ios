@@ -166,6 +166,7 @@ public final class ReaderSession {
         case .list: actionSource = .list
         case .search: actionSource = .search
         case .spamReview: actionSource = .spamReview
+        case .order: actionSource = .order
         }
         return MVMessageContext(
             surface: .readerOptionsMenu, source: actionSource, isRead: message.isSeen, isStarred: message.isFlagged,

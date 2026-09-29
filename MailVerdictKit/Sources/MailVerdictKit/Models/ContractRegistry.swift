@@ -102,5 +102,16 @@ public enum ContractRegistry {
         NativeSubscriptionCreate.self,
         AlertLookupRequest.self,
         AlertBadgeResponse.self,
+        // Order.swift
+        OrderListItem.self,
+        OrderListResponse.self,
+        OrderIdentifierOut.self,
+        OrderMailOut.self,
+        OrderDocumentOut.self,
+        OrderDetail.self,
+        OrderMergeRequest.self,
+        OrderDetachRequest.self,
+        OrderCatchUpRequest.self,
+        OrderCatchUpResponse.self,
     ]
 }

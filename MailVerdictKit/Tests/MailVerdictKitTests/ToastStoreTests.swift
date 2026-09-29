@@ -54,4 +54,11 @@ final class SymbolsTests: XCTestCase {
         XCTAssertEqual(MVSymbols.folderIcon(specialUse: nil), "folder")
         XCTAssertEqual(MVSymbols.folderIcon(specialUse: "something-else"), "folder")
     }
+
+    func testOrderIconByServerValue() {
+        XCTAssertEqual(MVSymbols.orderIcon("package"), "shippingbox")
+        XCTAssertEqual(MVSymbols.orderIcon("plane"), "airplane")
+        XCTAssertEqual(MVSymbols.orderIcon("receipt"), "doc.text")
+        XCTAssertEqual(MVSymbols.orderIcon("something-unknown"), "doc.text")
+    }
 }

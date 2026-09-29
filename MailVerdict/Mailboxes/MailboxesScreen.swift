@@ -279,6 +279,9 @@ struct MailboxesScreen: View {
 
     private var mailVerdictSection: some View {
         Section("MailVerdict") {
+            NavigationLink(value: Route.orders) {
+                Label("Orders & Tickets", systemImage: MVSymbols.orders)
+            }
             NavigationLink(value: Route.spamReview) {
                 Label("Spam Review", systemImage: MVSymbols.spamReview)
             }

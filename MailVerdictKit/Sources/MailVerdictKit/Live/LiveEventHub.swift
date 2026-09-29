@@ -293,6 +293,8 @@ public final class LiveEventHub {
             return .settingsChanged(category: json.string("category"))
         case .identityChanged:
             return .identitiesChanged(accountId: json.uuid("account_id"))
+        case .orderUpdated:
+            return .orderChanged(orderId: json.uuid("order_id"), change: json.string("change"))
         case .calendarObject:
             return .invitationOrEventChanged
         case .calendarAccount, .calendarCollection, .calendarLinksChanged, .contactCollection,

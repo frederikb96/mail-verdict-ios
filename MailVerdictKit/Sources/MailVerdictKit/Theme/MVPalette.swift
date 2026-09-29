@@ -38,6 +38,25 @@
         public static func avatarColor(for identity: String) -> Color {
             Color(hex: avatarColorHex(for: identity))
         }
+
+        /// Which system colour an order's own `icon` value tints its tile with -- mirrors the
+        /// web's identical table (`order-icon.tsx`); an unrecognized value falls back to
+        /// `receipt`'s own colour, the same fallback the server itself uses.
+        public static func orderTint(_ icon: String) -> Color {
+            switch icon {
+            case "package": return .brown
+            case "ticket": return .purple
+            case "train": return .red
+            case "plane": return .blue
+            case "bus": return .green
+            case "car": return .teal
+            case "bed": return .indigo
+            case "food": return .orange
+            case "download": return .cyan
+            case "wrench": return .gray
+            default: return .gray
+            }
+        }
     }
 
     extension Color {
