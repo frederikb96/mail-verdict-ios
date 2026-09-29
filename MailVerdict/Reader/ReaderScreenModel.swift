@@ -45,6 +45,9 @@ final class ReaderScreenModel {
     /// A tapped `tel:`/`sms:` link, or a detected phone number, awaiting the user's confirmation
     /// before it leaves the app.
     var confirmingPhoneHandoff: URL?
+    /// A tapped `http`/`https` link, awaiting the choice of opening it inside the app or handing
+    /// it to the system.
+    var confirmingLinkOpen: URL?
     /// Debug screenshots only: the Options menu's content in a sheet, since a system menu
     /// cannot be opened without a touch.
     var optionsPreview = false
@@ -172,7 +175,7 @@ final class ReaderScreenModel {
         case .control(let link):
             handle(link)
         case .web(let url):
-            pager?.presentSafari(url)
+            confirmingLinkOpen = url
         case .mailto(let url):
             if let link = parseMailto(url.absoluteString) {
                 environment.presentedCompose = ComposeIntent(kind: .mailto(link))
@@ -189,6 +192,18 @@ final class ReaderScreenModel {
     func confirmPhoneHandoff() {
         guard let url = confirmingPhoneHandoff else { return }
         confirmingPhoneHandoff = nil
+        UIApplication.shared.open(url)
+    }
+
+    func openLinkInApp() {
+        guard let url = confirmingLinkOpen else { return }
+        confirmingLinkOpen = nil
+        pager?.presentSafari(url)
+    }
+
+    func openLinkInSystemBrowser() {
+        guard let url = confirmingLinkOpen else { return }
+        confirmingLinkOpen = nil
         UIApplication.shared.open(url)
     }
 

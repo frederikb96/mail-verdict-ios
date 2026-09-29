@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Tapping a link in a message now offers a choice — open it inside the app, or hand it to
+  whatever browser is set as the system default — instead of always opening it in the app's own
+  browser view.
+
 ## [0.2.3] - 2026-09-18
 
 ### Fixed

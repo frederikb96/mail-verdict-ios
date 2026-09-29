@@ -94,6 +94,13 @@ private struct ReaderContent: View {
             } message: {
                 Text(model.confirmingPhoneHandoff?.absoluteString.split(separator: ":").last.map(String.init) ?? "")
             }
+            .confirmationDialog(
+                model.confirmingLinkOpen?.host ?? "Open Link",
+                isPresented: isPresented($model.confirmingLinkOpen), titleVisibility: .visible
+            ) {
+                Button("Open in App") { model.openLinkInApp() }
+                Button("Open in Browser") { model.openLinkInSystemBrowser() }
+            }
             .alert("Note to the Organizer", isPresented: isPresented($model.noteMessageId)) {
                 TextField("Note", text: $model.noteText, axis: .vertical)
                 Button("Save") { model.saveNote() }
