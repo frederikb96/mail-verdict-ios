@@ -99,6 +99,17 @@ final class OrderDetailStoreTests: XCTestCase {
         let store = makeStore(orderId: orderId)
         try await store.delete()
         XCTAssertTrue(store.wasDeleted)
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "DELETE")
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.path, "/api/orders/\(orderId)")
+    }
+
+    func testRewriteSendsThePostRouteTheServerExpects() async throws {
+        let orderId = UUID()
+        MVStubURLProtocol.stub = .init(statusCode: 202, headers: [:], body: Data())
+        let store = makeStore(orderId: orderId)
+        try await store.rewrite()
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "POST")
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.path, "/api/orders/\(orderId)/rewrite")
     }
 
     func testDetachingTheLastMailReportsTheOrderDeleted() async throws {
@@ -114,6 +125,11 @@ final class OrderDetailStoreTests: XCTestCase {
         MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data("null".utf8))
         try await store.detachMail(store.order!.mails[0])
         XCTAssertTrue(store.wasDeleted)
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "POST")
+        XCTAssertEqual(
+            MVStubURLProtocol.capturedRequest?.url?.path, "/api/orders/\(orderId)/mails/\(mailKey)/detach")
+        let body = try XCTUnwrap(MVStubURLProtocol.capturedRequest?.httpBody)
+        XCTAssertNil(try JSONDecoder().decode(OrderDetachRequest.self, from: body).moveTo)
     }
 
     func testDetachingOneOfSeveralMailsUpdatesTheOrderInPlace() async throws {

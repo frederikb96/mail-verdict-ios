@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Orders & tickets: a new screen bundles all mail about one purchase, ticket or booking into one
+  entry with its title, summary, numbers and documents, and the mails it was built from in time
+  order. A mail can be removed from an order, a summary rewritten, and an order deleted. Switched
+  on per account from the account editor.
 - The Settings screen's AI provider key section now also offers a Custom (OpenAI-compatible)
   server, alongside Anthropic and OpenAI, matching the server's own selectable provider.
 

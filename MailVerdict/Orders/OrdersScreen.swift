@@ -90,8 +90,7 @@ struct OrdersScreen: View {
         }
     }
 
-    /// Reaching the top also takes over whatever is held -- the design's own rule for the pill,
-    /// not only a tap on it.
+    /// Reaching the top also takes over whatever is held, not only a tap on the pill itself.
     private func setAtTop(_ atTop: Bool) {
         isFirstRowVisible = atTop
         store.isAtTop = atTop

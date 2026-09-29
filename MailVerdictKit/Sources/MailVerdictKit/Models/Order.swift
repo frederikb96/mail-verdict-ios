@@ -125,8 +125,7 @@ public struct OrderMailOut: ContractModel, Codable, Sendable, Equatable, Identif
         self.attachedBy = attachedBy
     }
 
-    /// A mail neither in the mailbox nor in glacier storage -- dimmed, not clickable, per the
-    /// design's own row spec.
+    /// A mail neither in the mailbox nor in glacier storage -- shown dimmed and not clickable.
     public var isGone: Bool { location == "gone" }
 }
 

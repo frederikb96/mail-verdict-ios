@@ -13,7 +13,7 @@ public final class OrderDetailStore {
     public private(set) var errorMessage: String?
     /// Set once the order is confirmed gone -- a 404 on load, a live `"deleted"` event, or this
     /// store's own `delete()`/`detachMail(...)` emptying it. The screen reads this to show "This
-    /// order no longer exists" and clear the selection, per the design's own detail state table.
+    /// order no longer exists" and clear the selection.
     public private(set) var wasDeleted = false
 
     private let apiClient: MVApiClient
