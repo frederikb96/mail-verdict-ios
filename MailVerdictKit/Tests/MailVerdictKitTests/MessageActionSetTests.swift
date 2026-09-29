@@ -53,10 +53,29 @@ final class MessageActionSetTests: XCTestCase {
     }
 
     /// Spam/not-spam rulings against a glaciered message are not supported server-side yet --
-    /// everything else in the state group stays.
-    func testJunkToggleIsAbsentOnAGlacieredMessage() {
-        let groups = MessageActionSet.actions(for: context(surface: .swipeSheet, isInGlacier: true))
-        XCTAssertEqual(actions(groups, in: .state), [.markRead, .star, .moveTo, .archive])
+    /// everything else in the state group stays. Checked on every surface the Options set is
+    /// shown on: the swipe sheet, the context menu and the reader's own Options menu.
+    func testJunkToggleIsAbsentOnAGlacieredMessageOnEverySurface() {
+        let swipeSheet = MessageActionSet.actions(for: context(surface: .swipeSheet, isInGlacier: true))
+        XCTAssertEqual(actions(swipeSheet, in: .state), [.markRead, .star, .moveTo, .archive])
+
+        let contextMenu = MessageActionSet.actions(for: context(surface: .contextMenu, isInGlacier: true))
+        XCTAssertEqual(actions(contextMenu, in: .state), [.markRead, .star, .moveTo, .archive])
+
+        // The reader's Options menu never repeats Archive (it lives in the bottom bar there), so
+        // the glaciered state group is one item shorter than the other two surfaces'.
+        let readerOptions = MessageActionSet.actions(for: context(surface: .readerOptionsMenu, isInGlacier: true))
+        XCTAssertEqual(actions(readerOptions, in: .state), [.markRead, .star, .moveTo])
+    }
+
+    /// Reply, reply-all and forward need only the outbox, never the original message on the mail
+    /// server -- so they stay offered for a glaciered message exactly as for a live one, on every
+    /// surface.
+    func testRespondGroupIsUnchangedOnAGlacieredMessageOnEverySurface() {
+        for surface in [MVMessageActionSurface.swipeSheet, .contextMenu, .readerOptionsMenu] {
+            let groups = MessageActionSet.actions(for: context(surface: surface, isInGlacier: true))
+            XCTAssertEqual(actions(groups, in: .respond), [.reply, .replyAll, .forward], "\(surface)")
+        }
     }
 
     /// Archive lives in the swipe sheet and context menu only — the reader has it in its own

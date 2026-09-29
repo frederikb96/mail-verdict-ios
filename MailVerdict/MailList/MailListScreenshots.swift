@@ -27,6 +27,15 @@
                 MailListScreenshotStage.shared.optionsRowId = row.id
                 _ = await waitFor { MailListScreenshotStage.shared.isOptionsSheetVisible }
             },
+            MVScreenshotEntry(id: "list-move-picker", destination: .route(route)) { _, _ in
+                guard let store = await loadedStore(), let row = store.rows.first else { return }
+                MailListScreenshotStage.shared.movePickerRowId = row.id
+                _ = await waitFor { MailListScreenshotStage.shared.isMovePickerVisible }
+                // `MovePickerSheet` loads its own target list asynchronously from a fixture
+                // response after it appears — `isMovePickerVisible` only means the sheet is on
+                // screen, not that its list (the glacier row among the targets) has painted yet.
+                try? await Task.sleep(for: .milliseconds(300))
+            },
         ]
 
         private static let route = Route.list(MVMailListFixtures.scope, aroundMessageId: nil)
@@ -62,6 +71,11 @@
         @ObservationIgnored weak var store: MVMailListStore?
         var optionsRowId: UUID?
         var isOptionsSheetVisible = false
+        /// Which row's Move picker to open with no touch available, and whether it has appeared —
+        /// the fixture folder order carries a glacier target, so this is what the sweep uses to
+        /// show it.
+        var movePickerRowId: UUID?
+        var isMovePickerVisible = false
     }
 
 #endif

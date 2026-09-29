@@ -66,3 +66,32 @@ final class MailboxesStoreTests: XCTestCase {
         XCTAssertTrue(relaunched.isCollapsed(key), "a relaunch lost collapse state persisted by an earlier instance")
     }
 }
+
+final class MailboxesFolderRowTests: XCTestCase {
+
+    /// The default matches every real IMAP folder, the overwhelming majority of rows -- a call
+    /// site that never heard of the glacier still builds an ordinary row.
+    func testKindDefaultsToImap() {
+        let row = MailboxesFolderRow(
+            id: UUID(), accountId: UUID(), displayName: "Projects", specialUse: nil, badgeCount: 0, totalCount: 0)
+        XCTAssertEqual(row.kind, "imap")
+        XCTAssertFalse(row.isGlacier)
+    }
+
+    func testGlacierKindIsFlagged() {
+        let row = MailboxesFolderRow(
+            id: UUID(), accountId: UUID(), displayName: "Glacier", specialUse: nil, badgeCount: 0, totalCount: 0,
+            kind: "glacier")
+        XCTAssertTrue(row.isGlacier)
+    }
+
+    /// A disk cache written before `kind` existed has no such key -- decoding it must not throw,
+    /// and the row it produces reads as an ordinary folder rather than crashing the cache load.
+    func testACachedFolderWithNoStoredKindDecodesAsImap() throws {
+        let json = Data(
+            #"{"id":"\#(UUID().uuidString)","displayName":"Projects","specialUse":null,"badgeCount":0,"totalCount":0}"#
+                .utf8)
+        let cached = try JSONDecoder().decode(MVMailboxesCachedFolder.self, from: json)
+        XCTAssertEqual(cached.kind, "imap")
+    }
+}

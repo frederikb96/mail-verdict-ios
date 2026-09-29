@@ -14,14 +14,21 @@ public struct MVMoveTarget: Identifiable, Equatable, Sendable {
     public let name: String
     public let symbol: String
     public let kind: Kind
+    /// The account's own glacier row, offered like any other folder target — choosing it moves
+    /// the message off the mail server for good, which is why every caller that lets a person
+    /// pick a target confirms before sending the move (`GlacierMoveWarning`). Always `false` for
+    /// a unified-view target: that row stands for several accounts' folders at once, never for
+    /// one account's glacier specifically.
+    public let isGlacier: Bool
 
     public init(folder: FolderOrderItem, accountId: UUID) {
         id = folder.folderId.uuidString
         name = folderDisplayName(
             imapName: folder.imapName, displayName: folder.displayName, specialUse: folder.specialUse
         )
-        symbol = MVSymbols.folderIcon(specialUse: folder.specialUse)
+        symbol = MVSymbols.folderIcon(specialUse: folder.specialUse, kind: folder.kind)
         kind = .folder(accountId: accountId, folderId: folder.folderId)
+        isGlacier = folder.kind == "glacier"
     }
 
     public init(unifiedView: UnifiedFolderResponse) {
@@ -29,6 +36,7 @@ public struct MVMoveTarget: Identifiable, Equatable, Sendable {
         name = [unifiedView.emoji, unifiedView.unifiedName].compactMap { $0 }.joined(separator: " ")
         symbol = MVSymbols.unifiedViewDefault
         kind = .unifiedView(unifiedView)
+        isGlacier = false
     }
 
     /// The folder this target means in `accountId`, or `nil` when a unified view has no member
@@ -38,6 +46,23 @@ public struct MVMoveTarget: Identifiable, Equatable, Sendable {
         case .folder(let owner, let folderId): return owner == accountId ? folderId : nil
         case .unifiedView(let view): return view.folders.first { $0.accountId == accountId }?.folderId
         }
+    }
+}
+
+/// The confirmation shown before a move actually lands on the glacier — the one Move-picker
+/// target whose destination is not on the mail server at all, so the count and the consequence
+/// both need saying before it happens. Shared by the list (swipe sheet, context menu, select
+/// mode) and the reader's own Options "Move to…", which is what keeps the wording one string
+/// rather than four.
+public enum GlacierMoveWarning {
+    public static func title(count: Int) -> String {
+        count == 1 ? "Move to Glacier?" : "Move \(count) Messages to Glacier?"
+    }
+
+    public static func message(count: Int) -> String {
+        let subject = count == 1 ? "This message" : "These \(count) messages"
+        return
+            "\(subject) will leave the mail server for good and live on only in MailVerdict. This cannot be undone."
     }
 }
 

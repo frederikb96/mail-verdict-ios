@@ -20,6 +20,15 @@ final class ReaderScreenModel {
         let currentFolderId: UUID
     }
 
+    /// A chosen move target that is the glacier, waiting on the confirmation `GlacierMoveWarning`
+    /// requires before it is actually sent — the reader moves one message at a time, so the count
+    /// is always 1.
+    struct PendingGlacierMove: Identifiable {
+        let id = UUID()
+        let target: MVMoveTarget
+        let accountId: UUID
+    }
+
     struct EventDetailsRequest: Identifiable {
         let id: UUID
         let calendars: [MVCalendar]
@@ -36,6 +45,7 @@ final class ReaderScreenModel {
 
     var addressChoice: AddressChoice?
     var moveRequest: MoveRequest?
+    var pendingGlacierMove: PendingGlacierMove?
     var eventDetails: EventDetailsRequest?
     var calendarChoice: CalendarChoice?
     var noteMessageId: UUID?
@@ -161,6 +171,24 @@ final class ReaderScreenModel {
     }
 
     func move(to target: MVMoveTarget, accountId: UUID) {
+        guard target.folderId(forAccount: accountId) != nil else { return }
+        // The glacier is the one Move-picker target that is not on the mail server at all —
+        // confirmed before it happens, naming the count, rather than performed straight away like
+        // every other target.
+        if target.isGlacier {
+            pendingGlacierMove = PendingGlacierMove(target: target, accountId: accountId)
+            return
+        }
+        performMove(target: target, accountId: accountId)
+    }
+
+    func confirmGlacierMove() {
+        guard let pending = pendingGlacierMove else { return }
+        pendingGlacierMove = nil
+        performMove(target: pending.target, accountId: pending.accountId)
+    }
+
+    private func performMove(target: MVMoveTarget, accountId: UUID) {
         guard let folderId = target.folderId(forAccount: accountId) else { return }
         apply(session.remove(with: .move, targetFolderId: folderId))
     }

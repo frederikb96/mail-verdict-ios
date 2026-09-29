@@ -339,19 +339,29 @@ seconds apart and back off, never hundreds in a few seconds, and the list reconn
 mail afterwards without a relaunch.
 
 
-### Glacier storage: sidebar row, move picker, account settings — web anchor: ui/src/components/layout/app-sidebar.tsx, ui/src/components/mail/move-to-folder-popover.tsx, ui/src/components/accounts/accounts-page.tsx
-Needs a device because: this is view and store wiring, not package logic. The model fields
-(`FolderResponse.kind`, `MessageSummary/Detail.isGlacier`, `MessageDetail.originFolderName`,
-`Account.glacierEnabled`/`glacierFolderId`/`glacierAutoDays`, `AccountUpdateRequest.glacierAutoDays`)
-and the action-set logic (`MessageActionSet.actions(for:)` hides the spam/not-spam toggle when
-`isInGlacier`) are already ported and covered by package tests. Not yet done: Mailboxes' sidebar
-doesn't show the glacier row (web: a Snowflake icon, `getFolderIcon`); MovePicker doesn't offer it
-as a target or show a confirmation naming the count before moving a message in; the account
-settings screen has no switch or days field; there is no `MVScreenshotEntry` for either. Confirm:
-enable a glacier on an account through the web UI, then on the phone open Mailboxes for that
-account and see the Glacier row with its own icon; open the move picker on a message and confirm it
-lists Glacier with a "leaves the server for good" warning; open account settings and see the switch
-and days field, matching what the web form shows.
+### Glacier storage: every screen built, needs a real device pass — web anchor: ui/src/components/layout/app-sidebar.tsx, ui/src/components/mail/move-to-folder-popover.tsx, ui/src/components/accounts/accounts-page.tsx
+Needs a device because: package tests prove the logic, but nothing on Linux renders a SwiftUI
+view. Every piece is built and unit-tested at the package level: Mailboxes' sidebar shows the
+glacier row with its own snowflake icon and offers neither "New Folder Inside…" nor "Delete
+Folder…" on it; the Move picker (swipe sheet, context menu, select-mode bulk move, and the
+reader's own "Move to…") offers the glacier as a target and confirms with the count and "leaves
+the mail server for good" before sending the move, for a single message and for a selection
+alike; account settings has the switch and the automatic-sweep-days field, editable only once the
+account exists, with the same leave/clear/set shape trash and junk retention already use; Account
+Detail's own summary line reads "On, sweeps after N days" / "On, manual only" / "Off"; the sync
+toggle's optimistic update no longer drops the glacier fields (a real bug, covered by a package
+test that was watched failing first). Registered for the screenshot sweep: `list-move-picker`
+(the picker with the glacier row visible) and `account-edit-glacier` (the edit sheet with the
+switch and field visible); the existing `mailboxes` and `account-detail` entries also show a
+glacier-enabled account/folder now. Confirm: enable a glacier on an account (through the web UI or
+the app's own edit sheet), open Mailboxes for that account and see the Glacier row with its
+snowflake icon and no rename/delete in its menu; open the move picker on a message, choose
+Glacier, and confirm the alert names the count and says the mail leaves the server for good, both
+for a single message and for a multi-select bulk move, and both from the list and from the
+reader's own Options "Move to…"; open Search, tap the Folders chip for that account and confirm
+"Glacier" is offered as a scope (needs no app code — the server already returns it, so this is a
+smoke check of the wiring, not new logic); open account settings and see the switch and days
+field, matching what the web form shows, and confirm saving it round-trips.
 
 ### One live stream for the whole app, not one per rebuild — server anchor: GET /api/events
 Needs a device because: only a real session — moving between screens, leaving and returning to the

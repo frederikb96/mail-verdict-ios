@@ -254,10 +254,12 @@ struct MailboxesScreen: View {
                 )
             }
         }
-        Button("New Folder Inside…") {
-            createFolderContext = FolderCreateContext(accountId: accountId, parentId: folder.id)
+        if !folder.isGlacier {
+            Button("New Folder Inside…") {
+                createFolderContext = FolderCreateContext(accountId: accountId, parentId: folder.id)
+            }
         }
-        if folder.specialUse == nil {
+        if folder.specialUse == nil && !folder.isGlacier {
             Button("Delete Folder…", role: .destructive) {
                 if let refusal = store.folderDestructionRefusal(accountId: accountId) {
                     showError(refusal)
@@ -371,7 +373,7 @@ private struct FolderRowLabel: View {
 
     var body: some View {
         HStack {
-            Image(systemName: MVSymbols.folderIcon(specialUse: folder.specialUse))
+            Image(systemName: MVSymbols.folderIcon(specialUse: folder.specialUse, kind: folder.kind))
             Text(folder.displayName)
             Spacer()
             if folder.badgeCount > 0 {

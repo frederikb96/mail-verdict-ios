@@ -18,8 +18,25 @@ public struct MailboxesFolderRow: Identifiable, Sendable, Equatable {
     /// or the total for Drafts): Empty/Delete Folder's confirm text always names the total,
     /// regardless of what the badge happens to be showing.
     public let totalCount: Int
+    /// "glacier" for the one synthetic per-account row; every real IMAP folder is "imap".
+    public let kind: String
+
+    public var isGlacier: Bool { kind == "glacier" }
 
     public var anchorId: String { "folder:\(id)" }
+
+    public init(
+        id: UUID, accountId: UUID, displayName: String, specialUse: String?, badgeCount: Int,
+        totalCount: Int, kind: String = "imap"
+    ) {
+        self.id = id
+        self.accountId = accountId
+        self.displayName = displayName
+        self.specialUse = specialUse
+        self.badgeCount = badgeCount
+        self.totalCount = totalCount
+        self.kind = kind
+    }
 }
 
 public struct MailboxesAccountSection: Identifiable, Sendable, Equatable {
@@ -211,7 +228,7 @@ public final class MailboxesStore {
                     ), specialUse: item.specialUse,
                     badgeCount: MailboxesSupport.folderBadgeCount(
                         specialUse: item.specialUse, unreadCount: item.unreadCount, totalCount: item.totalCount
-                    ), totalCount: item.totalCount
+                    ), totalCount: item.totalCount, kind: item.kind
                 )
             }
         }
@@ -359,7 +376,8 @@ public final class MailboxesStore {
                 folders: cached.folders.map {
                     MailboxesFolderRow(
                         id: $0.id, accountId: cached.id, displayName: $0.displayName,
-                        specialUse: $0.specialUse, badgeCount: $0.badgeCount, totalCount: $0.totalCount
+                        specialUse: $0.specialUse, badgeCount: $0.badgeCount, totalCount: $0.totalCount,
+                        kind: $0.kind
                     )
                 }
             )
@@ -380,7 +398,7 @@ public final class MailboxesStore {
                     folders: section.folders.map {
                         MVMailboxesCachedFolder(
                             id: $0.id, displayName: $0.displayName, specialUse: $0.specialUse,
-                            badgeCount: $0.badgeCount, totalCount: $0.totalCount
+                            badgeCount: $0.badgeCount, totalCount: $0.totalCount, kind: $0.kind
                         )
                     }
                 )

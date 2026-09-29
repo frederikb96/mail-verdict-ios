@@ -62,7 +62,7 @@ private struct FolderOrderRow: View {
 
     var body: some View {
         HStack {
-            Image(systemName: MVSymbols.folderIcon(specialUse: folder.specialUse))
+            Image(systemName: MVSymbols.folderIcon(specialUse: folder.specialUse, kind: folder.kind))
                 .foregroundStyle(.secondary)
             Text(folder.displayName ?? folder.imapName)
                 .foregroundStyle(folder.isVisible ? .primary : .secondary)

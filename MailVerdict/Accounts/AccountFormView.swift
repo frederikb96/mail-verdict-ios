@@ -77,6 +77,23 @@ struct AccountFormView: View {
                         .keyboardType(.numberPad)
                 }
 
+                if isEditing {
+                    Section {
+                        Toggle("Enable glacier storage", isOn: $input.glacierEnabled)
+                        TextField(
+                            "Off — move mail into the glacier by hand only", text: $input.glacierAutoDays
+                        )
+                        .keyboardType(.numberPad)
+                    } header: {
+                        Text("Glacier")
+                    } footer: {
+                        Text(
+                            "A place mail can be moved to that leaves this account's mail server for good "
+                                + "and lives on only here. Can't be turned off again while it holds anything."
+                        )
+                    }
+                }
+
                 if let errorMessage {
                     Text(errorMessage).foregroundStyle(.red)
                 }
@@ -114,6 +131,8 @@ struct AccountFormView: View {
         case MVAccountFormError.invalidSmtpPort: return "The SMTP port must be a positive number."
         case MVAccountFormError.invalidTrashRetention, MVAccountFormError.invalidJunkRetention:
             return "Retention must be at least 1 day, or left blank for Off."
+        case MVAccountFormError.invalidGlacierAutoDays:
+            return "The automatic sweep must be at least 1 day, or left blank for manual only."
         default: return error.mvUserMessage
         }
     }

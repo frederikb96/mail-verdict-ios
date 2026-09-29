@@ -7,13 +7,32 @@ public struct MVMailboxesCachedFolder: Codable, Sendable, Equatable, Identifiabl
     public let specialUse: String?
     public let badgeCount: Int
     public let totalCount: Int
+    /// "glacier" for the one synthetic per-account row; every real IMAP folder is "imap". Absent
+    /// from a cache file written before this field existed, in which case it decodes as "imap" —
+    /// a stale glacier row misdrawn without its icon for one launch is harmless, and the next
+    /// `save()` overwrites it.
+    public let kind: String
 
-    public init(id: UUID, displayName: String, specialUse: String?, badgeCount: Int, totalCount: Int) {
+    public init(
+        id: UUID, displayName: String, specialUse: String?, badgeCount: Int, totalCount: Int,
+        kind: String = "imap"
+    ) {
         self.id = id
         self.displayName = displayName
         self.specialUse = specialUse
         self.badgeCount = badgeCount
         self.totalCount = totalCount
+        self.kind = kind
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        specialUse = try container.decodeIfPresent(String.self, forKey: .specialUse)
+        badgeCount = try container.decode(Int.self, forKey: .badgeCount)
+        totalCount = try container.decode(Int.self, forKey: .totalCount)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "imap"
     }
 }
 

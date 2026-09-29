@@ -12,6 +12,7 @@ import MailVerdictKit
         static let inboxId = UUID(uuidString: "00000000-0000-0000-0000-00000000f001")!
         static let archiveId = UUID(uuidString: "00000000-0000-0000-0000-00000000f002")!
         static let sentId = UUID(uuidString: "00000000-0000-0000-0000-00000000f003")!
+        static let glacierId = UUID(uuidString: "00000000-0000-0000-0000-00000000f007")!
 
         static let accountId2 = UUID(uuidString: "00000000-0000-0000-0000-00000000a002")!
         static let inboxId2 = UUID(uuidString: "00000000-0000-0000-0000-00000000f004")!
@@ -33,8 +34,10 @@ import MailVerdictKit
             register(.get, "/api/alerts/badge", AlertBadgeResponse(count: 3))
             register(.get, "/api/unified/folders", [unifiedFolder])
             register(.get, "/api/accounts/\(accountId)/folder-order", folderOrder)
+            register(.get, "/api/accounts/\(accountId)/folders", folders)
             register(.get, "/api/accounts/\(accountId)/sync-status", syncStatus)
             register(.get, "/api/accounts/\(accountId2)/folder-order", folderOrder2)
+            register(.get, "/api/accounts/\(accountId2)/folders", folders2)
             register(.get, "/api/accounts/\(accountId2)/sync-status", syncStatus2)
         }
 
@@ -44,7 +47,8 @@ import MailVerdictKit
                 smtpHost: "posteo.de", smtpPort: 587, smtpUser: "me@posteo.de", state: "active",
                 stateError: nil, capabilities: nil, createdAt: Date(timeIntervalSince1970: 1_700_000_000),
                 updatedAt: Date(timeIntervalSince1970: 1_700_000_000), emoji: "📬", folderOrder: nil,
-                trashRetentionDays: 30, junkRetentionDays: 30
+                trashRetentionDays: 30, junkRetentionDays: 30, glacierEnabled: true, glacierFolderId: glacierId,
+                glacierAutoDays: 90
             )
         }
 
@@ -73,6 +77,10 @@ import MailVerdictKit
                     folderId: sentId, imapName: "Sent", displayName: "Sent", specialUse: "sent",
                     unreadCount: 0, totalCount: 87
                 ),
+                FolderOrderItem(
+                    folderId: glacierId, imapName: "Glacier", displayName: nil, specialUse: nil,
+                    unreadCount: 0, totalCount: 212, kind: "glacier"
+                ),
             ])
         }
 
@@ -92,6 +100,24 @@ import MailVerdictKit
                 ),
             ])
         }
+
+        /// The plain `/folders` list Search's own folder-scope sheet reads — built from the same
+        /// `FolderOrderItem`s `folderOrder` carries, so the glacier row appears there too with no
+        /// separate definition to drift out of step.
+        private static func folders(from order: FolderOrderResponse, accountId: UUID) -> [FolderResponse] {
+            order.folders.map { item in
+                FolderResponse(
+                    id: item.folderId, accountId: accountId, imapName: item.imapName,
+                    displayName: item.displayName, specialUse: item.specialUse, mailboxId: nil,
+                    initialSyncDone: true, backfillTotal: nil, idleStatus: nil, lastSyncedAt: nil,
+                    syncError: nil, createdAt: nil, unreadCount: item.unreadCount, totalCount: item.totalCount,
+                    isVisible: item.isVisible, kind: item.kind
+                )
+            }
+        }
+
+        private static var folders: [FolderResponse] { folders(from: folderOrder, accountId: accountId) }
+        private static var folders2: [FolderResponse] { folders(from: folderOrder2, accountId: accountId2) }
 
         private static var syncStatus: SyncStatusResponse {
             SyncStatusResponse(

@@ -44,6 +44,9 @@ struct AccountDetailScreen: View {
                     AccountFormView(mode: .edit(account)) { input in
                         try await store.update(input)
                     }
+                    #if DEBUG
+                        .onAppear { AccountsDebugServices.shared.editSheetVisible = true }
+                    #endif
                 }
             }
             .confirmationDialog(
@@ -74,6 +77,11 @@ struct AccountDetailScreen: View {
                 environment.toasts.show(.init(variant: .info, message: "This account was removed."))
                 dismiss()
             }
+            #if DEBUG
+                .onChange(of: AccountsDebugServices.shared.showEditSheetRequested) { _, requested in
+                    if requested { showingEditSheet = true }
+                }
+            #endif
     }
 
     @ViewBuilder
@@ -190,7 +198,14 @@ private struct DetailsSection: View {
             LabeledContent(
                 "Junk retention",
                 value: account.junkRetentionDays.map { "\($0) days" } ?? "Off")
+            LabeledContent("Glacier", value: glacierSummary(account))
         }
+    }
+
+    private func glacierSummary(_ account: AccountResponse) -> String {
+        guard account.glacierEnabled else { return "Off" }
+        guard let days = account.glacierAutoDays else { return "On, manual only" }
+        return "On, sweeps after \(days) days"
     }
 }
 

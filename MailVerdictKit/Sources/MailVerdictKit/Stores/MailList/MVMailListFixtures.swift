@@ -13,6 +13,7 @@
         static let trashId = UUID(uuidString: "00000000-0000-0000-0000-0000000f0002")!
         static let archiveId = UUID(uuidString: "00000000-0000-0000-0000-0000000f0003")!
         static let projectsId = UUID(uuidString: "00000000-0000-0000-0000-0000000f0004")!
+        public static let glacierId = UUID(uuidString: "00000000-0000-0000-0000-0000000f0005")!
 
         /// Registers every route. Answers are computed per request, so relative dates stay
         /// relative to whenever the screen is shown.
@@ -86,6 +87,8 @@
                 FolderOrderItem(folderId: projectsId, imapName: "Projects", displayName: nil, specialUse: nil),
                 FolderOrderItem(folderId: archiveId, imapName: "Archive", displayName: nil, specialUse: "archive"),
                 FolderOrderItem(folderId: trashId, imapName: "Trash", displayName: nil, specialUse: "trash"),
+                FolderOrderItem(
+                    folderId: glacierId, imapName: "Glacier", displayName: nil, specialUse: nil, kind: "glacier"),
             ]
         )
 

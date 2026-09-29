@@ -21,6 +21,7 @@ struct MailListScreen: View {
     @State private var pendingMove: PendingMove?
     @State private var deleteForeverRow: MessageSummary?
     @State private var bulkConfirmation: BulkConfirmation?
+    @State private var glacierMoveConfirmation: GlacierMoveConfirmation?
     @State private var emptyFolderSnapshot: SelectionSnapshotResponse?
     @State private var reviewingActions = false
 
@@ -94,8 +95,21 @@ struct MailListScreen: View {
             }
     }
 
-    private var withFolderConfirmations: some View {
+    private var withGlacierMoveConfirmation: some View {
         withBulkConfirmations
+            .alert(
+                glacierMoveConfirmationTitle, isPresented: isPresented($glacierMoveConfirmation),
+                presenting: glacierMoveConfirmation
+            ) { (confirmation: GlacierMoveConfirmation) in
+                Button("Move to Glacier", role: .destructive) { performMove(confirmation.pending) }
+                Button("Cancel", role: .cancel) {}
+            } message: { (confirmation: GlacierMoveConfirmation) in
+                Text(GlacierMoveWarning.message(count: confirmation.count))
+            }
+    }
+
+    private var withFolderConfirmations: some View {
+        withGlacierMoveConfirmation
             .alert(emptyFolderTitle, isPresented: isPresented($emptyFolderSnapshot), presenting: emptyFolderSnapshot) {
                 (snapshot: SelectionSnapshotResponse) in
                 Button("Empty Folder", role: .destructive) { confirmEmptyFolder(snapshot) }
@@ -113,6 +127,12 @@ struct MailListScreen: View {
             #if DEBUG
                 .onChange(of: MailListScreenshotStage.shared.optionsRowId) { _, rowId in
                     if let rowId, let row = store.row(id: rowId) { optionsRow = row }
+                }
+                .onChange(of: MailListScreenshotStage.shared.movePickerRowId) { _, rowId in
+                    guard let rowId, let row = store.row(id: rowId) else { return }
+                    movePicker = MovePickerRequest(
+                        source: .folders(accountId: row.accountId, excludingFolderId: row.folderId), rowId: row.id
+                    )
                 }
                 .screenshotReady(
                     route: .list(scope, aroundMessageId: aroundMessageId), environment: environment,
@@ -143,6 +163,9 @@ struct MailListScreen: View {
         MovePickerSheet(source: request.source, backend: connection.apiClient) { target in
             pendingMove = PendingMove(request: request, target: target)
         }
+        #if DEBUG
+            .onAppear { MailListScreenshotStage.shared.isMovePickerVisible = true }
+        #endif
     }
 
     private static let deleteForeverMessage = "This removes it from the mail server. It cannot be undone."
@@ -152,6 +175,10 @@ struct MailListScreen: View {
 
     private var bulkConfirmationTitle: String {
         bulkConfirmation?.title ?? ""
+    }
+
+    private var glacierMoveConfirmationTitle: String {
+        GlacierMoveWarning.title(count: glacierMoveConfirmation?.count ?? 1)
     }
 
     private func confirmBulk(_ confirmation: BulkConfirmation) {
@@ -502,6 +529,18 @@ struct MailListScreen: View {
     private func runPendingMove() {
         guard let pending = pendingMove else { return }
         pendingMove = nil
+        // The glacier is the one Move-picker target that is not on the mail server at all —
+        // confirmed before it happens, naming the count, rather than performed straight away like
+        // every other target.
+        if pending.target.isGlacier {
+            let count = pending.request.rowId != nil ? 1 : store.effectiveSelection.count
+            glacierMoveConfirmation = GlacierMoveConfirmation(pending: pending, count: count)
+            return
+        }
+        performMove(pending)
+    }
+
+    private func performMove(_ pending: PendingMove) {
         if let rowId = pending.request.rowId {
             store.perform(.moveTo, on: rowId, target: pending.target)
         } else {
@@ -618,6 +657,14 @@ private struct MovePickerRequest: Identifiable {
 private struct PendingMove {
     let request: MovePickerRequest
     let target: MVMoveTarget
+}
+
+/// A chosen move target that is the glacier, waiting on the confirmation `GlacierMoveWarning`
+/// requires before it is actually sent.
+private struct GlacierMoveConfirmation: Identifiable {
+    let id = UUID()
+    let pending: PendingMove
+    let count: Int
 }
 
 /// A bulk action over a select-all selection that cannot be undone, waiting on confirmation.

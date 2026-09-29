@@ -17,8 +17,23 @@ import MailVerdictKit
             MVScreenshotEntry(
                 id: "account-detail",
                 destination: .route(.account(UUID(uuidString: "11111111-1111-1111-1111-111111111111")!)),
-                prepare: prepareAccountDetail)
+                prepare: prepareAccountDetail),
+            MVScreenshotEntry(
+                id: "account-edit-glacier",
+                destination: .route(.account(UUID(uuidString: "11111111-1111-1111-1111-111111111111")!)),
+                prepare: prepareAccountEditGlacier),
         ]
+
+        /// The same account fixture as `account-detail`, plus opening its Edit… sheet — the
+        /// screen where the glacier switch and automatic-sweep days field actually live.
+        @MainActor
+        private static func prepareAccountEditGlacier(
+            _ environment: AppEnvironment, _ connection: AppEnvironment.Connection
+        ) async {
+            await prepareAccountDetail(environment, connection)
+            AccountsDebugServices.shared.showEditSheetRequested = true
+            _ = await poll { AccountsDebugServices.shared.editSheetVisible ? true : nil }
+        }
 
         @MainActor
         private static func prepareAccountDetail(_: AppEnvironment, _: AppEnvironment.Connection) async {
@@ -33,7 +48,9 @@ import MailVerdictKit
                      "smtp_host":"posteo.de","smtp_port":587,"smtp_user":"me@posteo.de",
                      "is_active":true,"state":"active","state_error":null,
                      "created_at":"2025-01-10T08:00:00+00:00","updated_at":"2026-01-15T10:30:00+00:00",
-                     "emoji":"📧","spam_enabled":true,"trash_retention_days":30,"junk_retention_days":14}
+                     "emoji":"📧","spam_enabled":true,"trash_retention_days":30,"junk_retention_days":14,
+                     "glacier_enabled":true,"glacier_folder_id":"22222222-2222-2222-2222-222222222222",
+                     "glacier_auto_days":90}
                     """#.utf8)
             }
             MVFixtureURLProtocol.register(

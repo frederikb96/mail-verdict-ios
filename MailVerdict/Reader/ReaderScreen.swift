@@ -109,6 +109,14 @@ private struct ReaderContent: View {
                     model.move(to: target, accountId: request.accountId)
                 }
             }
+            .alert(
+                GlacierMoveWarning.title(count: 1), isPresented: isPresented($model.pendingGlacierMove)
+            ) {
+                Button("Move to Glacier", role: .destructive) { model.confirmGlacierMove() }
+                Button("Cancel", role: .cancel) { model.pendingGlacierMove = nil }
+            } message: {
+                Text(GlacierMoveWarning.message(count: 1))
+            }
             .sheet(item: $model.eventDetails) { request in
                 EventDetailsSheet(objectId: request.id, calendars: request.calendars, api: api)
             }

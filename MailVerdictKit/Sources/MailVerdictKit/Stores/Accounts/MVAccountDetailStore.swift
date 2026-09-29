@@ -96,7 +96,8 @@ public final class MVAccountDetailStore {
                 capabilities: previous.capabilities, createdAt: previous.createdAt,
                 updatedAt: previous.updatedAt, emoji: previous.emoji, spamEnabled: previous.spamEnabled,
                 folderOrder: previous.folderOrder, trashRetentionDays: previous.trashRetentionDays,
-                junkRetentionDays: previous.junkRetentionDays
+                junkRetentionDays: previous.junkRetentionDays, glacierEnabled: previous.glacierEnabled,
+                glacierFolderId: previous.glacierFolderId, glacierAutoDays: previous.glacierAutoDays
             ))
         do {
             _ = try await apiClient.updateAccount(id: accountId, AccountUpdateRequest(isActive: isActive))

@@ -65,4 +65,40 @@ final class MVMovePickerTests: XCTestCase {
         XCTAssertEqual(folderDisplayName(imapName: "Receipts", displayName: nil, specialUse: nil), "Receipts")
         XCTAssertEqual(folderDisplayName(imapName: "INBOX", displayName: "Main", specialUse: "inbox"), "Main")
     }
+
+    /// The glacier target carries its own icon and its own flag, checked before every move to it
+    /// — the one Move-picker target that is not on the mail server at all.
+    func testTheGlacierTargetIsFlaggedAndCarriesItsOwnIcon() {
+        let glacier = MVMoveTarget(
+            folder: FolderOrderItem(
+                folderId: testUUID(9), imapName: "Glacier", displayName: nil, specialUse: nil, kind: "glacier"),
+            accountId: testAccount
+        )
+        XCTAssertTrue(glacier.isGlacier)
+        XCTAssertEqual(glacier.symbol, "snowflake")
+
+        let ordinary = folder(1, "INBOX", specialUse: "inbox")
+        XCTAssertFalse(ordinary.isGlacier)
+    }
+
+    /// A unified-view target is never flagged as the glacier, even when every account it spans
+    /// happens to have one enabled — it stands for several accounts' folders at once, not for one
+    /// account's glacier specifically.
+    func testAUnifiedTargetIsNeverFlaggedAsTheGlacier() {
+        let view = UnifiedFolderResponse(
+            id: testUUID(51), unifiedName: "Everything", emoji: nil, folders: [], unreadCount: 0, totalCount: 0)
+        XCTAssertFalse(MVMoveTarget(unifiedView: view).isGlacier)
+    }
+}
+
+final class GlacierMoveWarningTests: XCTestCase {
+
+    func testTitleAndMessageNameTheCount() {
+        XCTAssertEqual(GlacierMoveWarning.title(count: 1), "Move to Glacier?")
+        XCTAssertEqual(GlacierMoveWarning.title(count: 3), "Move 3 Messages to Glacier?")
+
+        XCTAssertTrue(GlacierMoveWarning.message(count: 1).hasPrefix("This message"))
+        XCTAssertTrue(GlacierMoveWarning.message(count: 3).hasPrefix("These 3 messages"))
+        XCTAssertTrue(GlacierMoveWarning.message(count: 1).contains("leave the mail server for good"))
+    }
 }
