@@ -339,6 +339,20 @@ seconds apart and back off, never hundreds in a few seconds, and the list reconn
 mail afterwards without a relaunch.
 
 
+### Glacier storage: sidebar row, move picker, account settings — web anchor: ui/src/components/layout/app-sidebar.tsx, ui/src/components/mail/move-to-folder-popover.tsx, ui/src/components/accounts/accounts-page.tsx
+Needs a device because: this is view and store wiring, not package logic. The model fields
+(`FolderResponse.kind`, `MessageSummary/Detail.isGlacier`, `MessageDetail.originFolderName`,
+`Account.glacierEnabled`/`glacierFolderId`/`glacierAutoDays`, `AccountUpdateRequest.glacierAutoDays`)
+and the action-set logic (`MessageActionSet.actions(for:)` hides the spam/not-spam toggle when
+`isInGlacier`) are already ported and covered by package tests. Not yet done: Mailboxes' sidebar
+doesn't show the glacier row (web: a Snowflake icon, `getFolderIcon`); MovePicker doesn't offer it
+as a target or show a confirmation naming the count before moving a message in; the account
+settings screen has no switch or days field; there is no `MVScreenshotEntry` for either. Confirm:
+enable a glacier on an account through the web UI, then on the phone open Mailboxes for that
+account and see the Glacier row with its own icon; open the move picker on a message and confirm it
+lists Glacier with a "leaves the server for good" warning; open account settings and see the switch
+and days field, matching what the web form shows.
+
 ### One live stream for the whole app, not one per rebuild — server anchor: GET /api/events
 Needs a device because: only a real session — moving between screens, leaving and returning to the
 app, a push arriving — rebuilds the shell often enough for a second connection to accumulate, and

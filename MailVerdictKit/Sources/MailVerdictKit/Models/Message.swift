@@ -81,7 +81,8 @@ public struct MessageSummary: ContractModel, Codable, Sendable, Equatable, Ident
             isSeen = "is_seen", isFlagged = "is_flagged", isAnswered = "is_answered",
             isDraft = "is_draft", snippet, pendingSync = "pending_sync",
             isTruncated = "is_truncated", threadCount = "thread_count",
-            unreadInThread = "unread_in_thread", mirroredAt = "mirrored_at",
+            unreadInThread = "unread_in_thread", isGlacier = "is_glacier",
+            mirroredAt = "mirrored_at",
             hasAttachments = "has_attachments", verdictIsSpam = "verdict_is_spam"
     }
     public typealias CodingKeys = ContractKeys
@@ -105,6 +106,8 @@ public struct MessageSummary: ContractModel, Codable, Sendable, Equatable, Ident
     @MVDefaulted<MVDefaultFalse> public var isTruncated: Bool
     public let threadCount: Int?
     public let unreadInThread: Int?
+    /// In the account's glacier — no longer on the mail server.
+    @MVDefaulted<MVDefaultFalse> public var isGlacier: Bool
     public let mirroredAt: Date
     public let hasAttachments: Bool
     /// The latest spam verdict for this message; `nil` if never classified.
@@ -115,8 +118,8 @@ public struct MessageSummary: ContractModel, Codable, Sendable, Equatable, Ident
         fromAddr: String?, toAddrs: MVJSONValue?, receivedAt: Date?, isSeen: Bool = false,
         isFlagged: Bool = false, isAnswered: Bool = false, isDraft: Bool = false,
         snippet: String?, pendingSync: Bool = false, isTruncated: Bool = false,
-        threadCount: Int? = nil, unreadInThread: Int? = nil, mirroredAt: Date,
-        hasAttachments: Bool = false, verdictIsSpam: Bool? = nil
+        threadCount: Int? = nil, unreadInThread: Int? = nil, isGlacier: Bool = false,
+        mirroredAt: Date, hasAttachments: Bool = false, verdictIsSpam: Bool? = nil
     ) {
         self.id = id
         self.accountId = accountId
@@ -135,6 +138,7 @@ public struct MessageSummary: ContractModel, Codable, Sendable, Equatable, Ident
         self.isTruncated = isTruncated
         self.threadCount = threadCount
         self.unreadInThread = unreadInThread
+        self.isGlacier = isGlacier
         self.mirroredAt = mirroredAt
         self.hasAttachments = hasAttachments
         self.verdictIsSpam = verdictIsSpam
@@ -202,7 +206,8 @@ public struct MessageDetail: ContractModel, Codable, Sendable, Equatable, Identi
             bccAddrs = "bcc_addrs", replyTo = "reply_to", inReplyTo = "in_reply_to",
             references, bodyText = "body_text", bodyHtml = "body_html", sizeBytes = "size_bytes",
             keywords, hasBlockedImages = "has_blocked_images", imagesAllowed = "images_allowed",
-            createdAt = "created_at", tags, attachments, verdict
+            createdAt = "created_at", isGlacier = "is_glacier",
+            originFolderName = "origin_folder_name", tags, attachments, verdict
     }
     public typealias CodingKeys = ContractKeys
 
@@ -234,6 +239,10 @@ public struct MessageDetail: ContractModel, Codable, Sendable, Equatable, Identi
     @MVDefaulted<MVDefaultFalse> public var hasBlockedImages: Bool
     @MVDefaulted<MVDefaultFalse> public var imagesAllowed: Bool
     public let createdAt: Date
+    /// In the account's glacier — no longer on the mail server.
+    @MVDefaulted<MVDefaultFalse> public var isGlacier: Bool
+    /// Provenance for a glaciered message: the folder it was copied out of, by name.
+    public let originFolderName: String?
     @MVDefaulted<MVDefaultEmptyArray<TagResponse>> public var tags: [TagResponse]
     @MVDefaulted<MVDefaultEmptyArray<AttachmentSummary>> public var attachments: [AttachmentSummary]
     public let verdict: VerdictResponse?
@@ -246,7 +255,8 @@ public struct MessageDetail: ContractModel, Codable, Sendable, Equatable, Identi
         messageId: String?, ccAddrs: MVJSONValue?, bccAddrs: MVJSONValue?, replyTo: String?,
         inReplyTo: String?, references: [String]?, bodyText: String?, bodyHtml: String?,
         sizeBytes: Int?, keywords: [String] = [], hasBlockedImages: Bool = false,
-        imagesAllowed: Bool = false, createdAt: Date, tags: [TagResponse] = [],
+        imagesAllowed: Bool = false, createdAt: Date, isGlacier: Bool = false,
+        originFolderName: String? = nil, tags: [TagResponse] = [],
         attachments: [AttachmentSummary] = [], verdict: VerdictResponse?
     ) {
         self.id = id
@@ -277,6 +287,8 @@ public struct MessageDetail: ContractModel, Codable, Sendable, Equatable, Identi
         self.hasBlockedImages = hasBlockedImages
         self.imagesAllowed = imagesAllowed
         self.createdAt = createdAt
+        self.isGlacier = isGlacier
+        self.originFolderName = originFolderName
         self.tags = tags
         self.attachments = attachments
         self.verdict = verdict
@@ -329,7 +341,7 @@ public struct MessageActionRequest: ContractModel, Codable, Sendable, Equatable 
     public static let schemaName = "MessageActionRequest"
     public enum ContractKeys: String, CodingKey, CaseIterable {
         case action, targetFolderId = "target_folder_id", keyword, idempotencyKey = "idempotency_key",
-            expectedFolderId = "expected_folder_id"
+            expectedFolderId = "expected_folder_id", confirm
     }
     public typealias CodingKeys = ContractKeys
 
@@ -342,16 +354,20 @@ public struct MessageActionRequest: ContractModel, Codable, Sendable, Equatable 
     /// The folder the message was seen in. When it has moved since, the server writes nothing and
     /// answers `applied: false`.
     public let expectedFolderId: UUID?
+    /// Required for `expunge` on a message already in the glacier — it is the only copy that
+    /// exists. Ignored everywhere else.
+    @MVDefaulted<MVDefaultFalse> public var confirm: Bool
 
     public init(
         action: MVMessageAction, targetFolderId: UUID? = nil, keyword: String? = nil, idempotencyKey: UUID? = nil,
-        expectedFolderId: UUID? = nil
+        expectedFolderId: UUID? = nil, confirm: Bool = false
     ) {
         self.action = action
         self.targetFolderId = targetFolderId
         self.keyword = keyword
         self.idempotencyKey = idempotencyKey
         self.expectedFolderId = expectedFolderId
+        self.confirm = confirm
     }
 }
 

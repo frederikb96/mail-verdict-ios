@@ -38,13 +38,17 @@ public struct MVMessageContext: Sendable, Equatable {
     public let isStarred: Bool
     public let isInTrash: Bool
     public let isInJunk: Bool
+    /// In the account's glacier -- no longer on the mail server. Spam rulings are not yet
+    /// supported against a glaciered message (see MessageActionSet.actions(for:)); everything
+    /// else (read/star, move, delete forever) works the same as on a live message.
+    public let isInGlacier: Bool
     public let verdict: MVMessageVerdictContext?
     public let hasBlockedImages: Bool
     public let canvasIsDark: Bool
 
     public init(
         surface: MVMessageActionSurface, source: MVMessageActionSource, isRead: Bool,
-        isStarred: Bool, isInTrash: Bool, isInJunk: Bool,
+        isStarred: Bool, isInTrash: Bool, isInJunk: Bool, isInGlacier: Bool = false,
         verdict: MVMessageVerdictContext? = nil, hasBlockedImages: Bool = false,
         canvasIsDark: Bool = false
     ) {
@@ -54,6 +58,7 @@ public struct MVMessageContext: Sendable, Equatable {
         self.isStarred = isStarred
         self.isInTrash = isInTrash
         self.isInJunk = isInJunk
+        self.isInGlacier = isInGlacier
         self.verdict = verdict
         self.hasBlockedImages = hasBlockedImages
         self.canvasIsDark = canvasIsDark
@@ -119,8 +124,14 @@ public enum MessageActionSet {
             context.isRead ? .markUnread : .markRead,
             context.isStarred ? .unstar : .star,
             .moveTo,
-            context.isInJunk ? .notJunk : .moveToJunk,
         ]
+        // Spam/not-spam rulings against an already-glaciered message are not
+        // yet supported server-side -- offering the control would just answer
+        // success=false. Everything else here (read/star/move/delete forever)
+        // works the same whether the message is live or in the glacier.
+        if !context.isInGlacier {
+            state.append(context.isInJunk ? .notJunk : .moveToJunk)
+        }
         // Archive exists in the swipe and context menu only — the reader has it in its own
         // bottom bar, so the Options menu there never repeats it.
         if context.surface != .readerOptionsMenu {

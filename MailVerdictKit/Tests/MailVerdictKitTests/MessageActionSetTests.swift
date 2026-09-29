@@ -6,11 +6,12 @@ final class MessageActionSetTests: XCTestCase {
     private func context(
         surface: MVMessageActionSurface, source: MVMessageActionSource = .list, isRead: Bool = false,
         isStarred: Bool = false, isInTrash: Bool = false, isInJunk: Bool = false,
+        isInGlacier: Bool = false,
         verdict: MVMessageVerdictContext? = nil, hasBlockedImages: Bool = false, canvasIsDark: Bool = false
     ) -> MVMessageContext {
         MVMessageContext(
             surface: surface, source: source, isRead: isRead, isStarred: isStarred,
-            isInTrash: isInTrash, isInJunk: isInJunk, verdict: verdict,
+            isInTrash: isInTrash, isInJunk: isInJunk, isInGlacier: isInGlacier, verdict: verdict,
             hasBlockedImages: hasBlockedImages, canvasIsDark: canvasIsDark
         )
     }
@@ -49,6 +50,13 @@ final class MessageActionSetTests: XCTestCase {
         XCTAssertEqual(
             actions(readStarredJunk, in: .state), [.markUnread, .unstar, .moveTo, .notJunk, .archive]
         )
+    }
+
+    /// Spam/not-spam rulings against a glaciered message are not supported server-side yet --
+    /// everything else in the state group stays.
+    func testJunkToggleIsAbsentOnAGlacieredMessage() {
+        let groups = MessageActionSet.actions(for: context(surface: .swipeSheet, isInGlacier: true))
+        XCTAssertEqual(actions(groups, in: .state), [.markRead, .star, .moveTo, .archive])
     }
 
     /// Archive lives in the swipe sheet and context menu only — the reader has it in its own

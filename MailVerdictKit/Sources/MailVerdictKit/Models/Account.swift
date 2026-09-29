@@ -10,7 +10,9 @@ public struct AccountResponse: ContractModel, Codable, Sendable, Equatable, Iden
             isActive = "is_active", state, stateError = "state_error", capabilities,
             createdAt = "created_at", updatedAt = "updated_at", emoji,
             spamEnabled = "spam_enabled", folderOrder = "folder_order",
-            trashRetentionDays = "trash_retention_days", junkRetentionDays = "junk_retention_days"
+            trashRetentionDays = "trash_retention_days", junkRetentionDays = "junk_retention_days",
+            glacierEnabled = "glacier_enabled", glacierFolderId = "glacier_folder_id",
+            glacierAutoDays = "glacier_auto_days"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -33,13 +35,17 @@ public struct AccountResponse: ContractModel, Codable, Sendable, Equatable, Iden
     public let folderOrder: [String]?
     public let trashRetentionDays: Int?
     public let junkRetentionDays: Int?
+    @MVDefaulted<MVDefaultFalse> public var glacierEnabled: Bool
+    public let glacierFolderId: UUID?
+    public let glacierAutoDays: Int?
 
     public init(
         id: UUID, name: String, imapHost: String, imapPort: Int, imapUser: String,
         smtpHost: String?, smtpPort: Int?, smtpUser: String?, isActive: Bool = true,
         state: String = "created", stateError: String?, capabilities: [String: MVAnyJSON]?,
         createdAt: Date, updatedAt: Date, emoji: String?, spamEnabled: Bool = false,
-        folderOrder: [String]?, trashRetentionDays: Int?, junkRetentionDays: Int?
+        folderOrder: [String]?, trashRetentionDays: Int?, junkRetentionDays: Int?,
+        glacierEnabled: Bool = false, glacierFolderId: UUID? = nil, glacierAutoDays: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -60,6 +66,9 @@ public struct AccountResponse: ContractModel, Codable, Sendable, Equatable, Iden
         self.folderOrder = folderOrder
         self.trashRetentionDays = trashRetentionDays
         self.junkRetentionDays = junkRetentionDays
+        self.glacierEnabled = glacierEnabled
+        self.glacierFolderId = glacierFolderId
+        self.glacierAutoDays = glacierAutoDays
     }
 }
 
@@ -119,7 +128,8 @@ public struct AccountUpdateRequest: ContractModel, Codable, Sendable, Equatable 
         case name, imapPassword = "imap_password", smtpHost = "smtp_host",
             smtpPort = "smtp_port", smtpUser = "smtp_user", smtpPassword = "smtp_password",
             isActive = "is_active", emoji, spamEnabled = "spam_enabled",
-            trashRetentionDays = "trash_retention_days", junkRetentionDays = "junk_retention_days"
+            trashRetentionDays = "trash_retention_days", junkRetentionDays = "junk_retention_days",
+            glacierEnabled = "glacier_enabled", glacierAutoDays = "glacier_auto_days"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -138,12 +148,17 @@ public struct AccountUpdateRequest: ContractModel, Codable, Sendable, Equatable 
     /// — never an omitted key — turns retention off; `encode(to:)` is what tells the two apart.
     public let trashRetentionDays: Int??
     public let junkRetentionDays: Int??
+    public let glacierEnabled: Bool?
+    /// Same `nil`/`.some(nil)`/`.some(.some(days))` shape as the two retention fields above --
+    /// `nil` off the automatic sweep without touching whether the glacier itself is enabled.
+    public let glacierAutoDays: Int??
 
     public init(
         name: String? = nil, imapPassword: String? = nil, smtpHost: String? = nil,
         smtpPort: Int? = nil, smtpUser: String? = nil, smtpPassword: String? = nil,
         isActive: Bool? = nil, emoji: String? = nil, spamEnabled: Bool? = nil,
-        trashRetentionDays: Int?? = nil, junkRetentionDays: Int?? = nil
+        trashRetentionDays: Int?? = nil, junkRetentionDays: Int?? = nil,
+        glacierEnabled: Bool? = nil, glacierAutoDays: Int?? = nil
     ) {
         self.name = name
         self.imapPassword = imapPassword
@@ -156,6 +171,8 @@ public struct AccountUpdateRequest: ContractModel, Codable, Sendable, Equatable 
         self.spamEnabled = spamEnabled
         self.trashRetentionDays = trashRetentionDays
         self.junkRetentionDays = junkRetentionDays
+        self.glacierEnabled = glacierEnabled
+        self.glacierAutoDays = glacierAutoDays
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -169,6 +186,7 @@ public struct AccountUpdateRequest: ContractModel, Codable, Sendable, Equatable 
         try container.encodeIfPresent(isActive, forKey: .isActive)
         try container.encodeIfPresent(emoji, forKey: .emoji)
         try container.encodeIfPresent(spamEnabled, forKey: .spamEnabled)
+        try container.encodeIfPresent(glacierEnabled, forKey: .glacierEnabled)
         if let trashRetentionDays {
             if let trashRetentionDays {
                 try container.encode(trashRetentionDays, forKey: .trashRetentionDays)
@@ -181,6 +199,13 @@ public struct AccountUpdateRequest: ContractModel, Codable, Sendable, Equatable 
                 try container.encode(junkRetentionDays, forKey: .junkRetentionDays)
             } else {
                 try container.encodeNil(forKey: .junkRetentionDays)
+            }
+        }
+        if let glacierAutoDays {
+            if let glacierAutoDays {
+                try container.encode(glacierAutoDays, forKey: .glacierAutoDays)
+            } else {
+                try container.encodeNil(forKey: .glacierAutoDays)
             }
         }
     }
