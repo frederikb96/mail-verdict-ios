@@ -19,23 +19,37 @@
         public static let invitationRowId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0104")!
         public static let reviewRowId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0105")!
         public static let plainRowId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0106")!
+        public static let glacierRowId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0107")!
+        public static let glacierFolderId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0004")!
 
         static let pdfAttachmentId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0201")!
         static let imageAttachmentId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0202")!
         static let inviteAttachmentId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0203")!
         static let reviewAttachmentId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0204")!
+        static let glacierAttachmentId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0205")!
         static let calendarId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0301")!
         static let identityId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0302")!
         static let eventObjectId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0303")!
         static let reviewObjectId = UUID(uuidString: "5B1D7E0A-3C2F-4B8E-9F10-2A6C4D8E0304")!
 
-        /// List order, newest first.
+        /// List order, newest first. The glacier message is deliberately not here -- it lives in
+        /// its own folder, not the inbox, so it pages separately (`glacierRowIds` below) rather
+        /// than appearing alongside ordinary inbox mail.
         public static let rowIds = [conversationRowId, invitationRowId, newsletterRowId, reviewRowId, plainRowId]
+        /// The glacier's own list, paged separately from the ordinary inbox above -- a
+        /// screenshot entry scoped to this folder shows only the one glaciered message.
+        public static let glacierRowIds = [glacierRowId]
+        public static let glacierListSource = ReaderContext.Source.list(
+            .folder(accountId: accountId, folderId: glacierFolderId))
 
         public static let listSource = ReaderContext.Source.list(.folder(accountId: accountId, folderId: inboxId))
 
         public static func context(opening rowId: UUID) -> ReaderContext {
             ReaderContext(source: listSource, messageId: rowId)
+        }
+
+        public static func glacierContext() -> ReaderContext {
+            ReaderContext(source: glacierListSource, messageId: glacierRowId)
         }
 
         /// The list the fixture reader pages through.
@@ -52,10 +66,25 @@
 
         @MainActor public static let source = Source()
 
+        /// The glacier's own list, one message, paged separately from `Source` above.
+        @MainActor
+        public final class GlacierSource: ReaderListSource {
+            public let rowIds = ReaderFixtures.glacierRowIds
+            public let hasOlder = false
+            public let hasNewer = false
+            public var readerTitle: String? { "\(rowIds.count) Messages" }
+
+            public func loadOlder() async {}
+            public func loadNewer() async {}
+        }
+
+        @MainActor public static let glacierSource = GlacierSource()
+
         /// Registers every fixture route and the fixture list with the reader. Safe to call again.
         @MainActor
         public static func install() {
             ReaderSourceRegistry.shared.register(source, for: listSource)
+            ReaderSourceRegistry.shared.register(glacierSource, for: glacierListSource)
             for (rowId, thread) in threads() {
                 MVFixtureURLProtocol.register(method: "GET", path: "/api/messages/\(rowId)/thread") { json(thread) }
                 for message in thread.messages {
@@ -82,6 +111,9 @@
             MVFixtureURLProtocol.register(
                 method: "GET", path: "/api/messages/\(conversationRowId)/attachments/\(pdfAttachmentId)"
             ) { Data(minimalPDF.utf8) }
+            MVFixtureURLProtocol.register(
+                method: "GET", path: "/api/messages/\(glacierRowId)/attachments/\(glacierAttachmentId)"
+            ) { Data(minimalPDF.utf8) }
         }
 
         // MARK: Data
@@ -95,21 +127,24 @@
                 invitationRowId: ThreadResponse(messages: [invitationMessage]),
                 reviewRowId: ThreadResponse(messages: [reviewMessage]),
                 plainRowId: ThreadResponse(messages: [plainMessage]),
+                glacierRowId: ThreadResponse(messages: [glacierMessage]),
             ]
         }
 
         static func message(
             id: UUID, from: String, to: [String], subject: String, html: String?, text: String?,
             minutesAgo: Double, isSeen: Bool = true, verdict: VerdictResponse? = nil,
-            attachments: [AttachmentSummary] = [], hasBlockedImages: Bool = false
+            attachments: [AttachmentSummary] = [], hasBlockedImages: Bool = false, isGlacier: Bool = false,
+            originFolderName: String? = nil, folderId: UUID = inboxId
         ) -> MessageDetail {
             MessageDetail(
-                id: id, accountId: accountId, folderId: inboxId, threadId: id, subject: subject, fromAddr: from,
+                id: id, accountId: accountId, folderId: folderId, threadId: id, subject: subject, fromAddr: from,
                 toAddrs: .array(to), receivedAt: reference.addingTimeInterval(-minutesAgo * 60), isSeen: isSeen,
                 snippet: text.map { String($0.prefix(120)) } ?? "", messageId: "<\(id)@fixture.invalid>",
                 ccAddrs: nil, bccAddrs: nil, replyTo: nil, inReplyTo: nil, references: nil, bodyText: text,
                 bodyHtml: html, sizeBytes: 4096, hasBlockedImages: hasBlockedImages, imagesAllowed: false,
-                createdAt: reference, attachments: attachments, verdict: verdict)
+                createdAt: reference, isGlacier: isGlacier, originFolderName: originFolderName, tags: [],
+                attachments: attachments, verdict: verdict)
         }
 
         static let earlierMessage = message(
@@ -172,6 +207,16 @@
             html: nil, text: "Here are the notes:\n\n- ship the reader\n- details at https://example.org/notes\n",
             minutesAgo: 1_500)
 
+        static let glacierMessage = message(
+            id: glacierRowId, from: "Finance <billing@example.org>", to: ["me@example.org"],
+            subject: "Receipt: annual subscription", html: "<p>Thanks for renewing. Receipt attached.</p>",
+            text: "Thanks for renewing. Receipt attached.", minutesAgo: 300_000,
+            attachments: [
+                AttachmentSummary(
+                    id: glacierAttachmentId, filename: "receipt.pdf", contentType: "application/pdf",
+                    sizeBytes: 96_000)
+            ], isGlacier: true, originFolderName: "Archive", folderId: glacierFolderId)
+
         static let folders = [
             FolderResponse(
                 id: inboxId, accountId: accountId, imapName: "INBOX", displayName: "Inbox", specialUse: "inbox",
@@ -181,6 +226,10 @@
                 id: trashId, accountId: accountId, imapName: "Trash", displayName: "Trash", specialUse: "trash",
                 mailboxId: nil, backfillTotal: nil, idleStatus: nil, lastSyncedAt: reference, syncError: nil,
                 createdAt: reference),
+            FolderResponse(
+                id: glacierFolderId, accountId: accountId, imapName: "Glacier", displayName: nil, specialUse: nil,
+                mailboxId: nil, initialSyncDone: true, backfillTotal: nil, idleStatus: nil, lastSyncedAt: nil,
+                syncError: nil, createdAt: nil, totalCount: glacierRowIds.count, kind: "glacier"),
         ]
 
         static let calendar = MVCalendar(

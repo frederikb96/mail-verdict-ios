@@ -12,12 +12,22 @@ final class ReaderRouteStub: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var routes: [String: (status: Int, body: Data)] = [:]
     nonisolated(unsafe) private static var _recorded: [String] = []
+    /// The last request body sent to each recorded key, decoded lazily by a test — most requests
+    /// here are asserted by path alone, so this stays a raw payload rather than a typed one.
+    nonisolated(unsafe) private static var _recordedBodies: [String: Data] = [:]
 
     static func reset() {
         lock.lock()
         defer { lock.unlock() }
         routes = [:]
         _recorded = []
+        _recordedBodies = [:]
+    }
+
+    static func recordedBody(_ method: String, _ path: String) -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _recordedBodies["\(method) \(path)"]
     }
 
     static func route(_ method: String, _ path: String, status: Int = 200, body: Data) {
@@ -49,6 +59,7 @@ final class ReaderRouteStub: URLProtocol {
         let key = "\(request.httpMethod ?? "GET") \(request.url?.path ?? "")"
         Self.lock.lock()
         Self._recorded.append(key)
+        if let body = request.httpBody { Self._recordedBodies[key] = body }
         let match = Self.routes[key] ?? (404, Data(#"{"detail":"no route"}"#.utf8))
         Self.lock.unlock()
         let response = HTTPURLResponse(
@@ -72,10 +83,10 @@ final class ReaderSessionTests: XCTestCase {
         ReaderRouteStub.reset()
     }
 
-    private func message(_ id: UUID, seen: Bool) -> MessageDetail {
+    private func message(_ id: UUID, seen: Bool, isGlacier: Bool = false) -> MessageDetail {
         ReaderFixtures.message(
             id: id, from: "Alice <alice@example.org>", to: [], subject: "s", html: "<p>x</p>", text: nil, minutesAgo: 1,
-            isSeen: seen)
+            isSeen: seen, isGlacier: isGlacier)
     }
 
     private func makeClient() throws -> MVApiClient {
@@ -316,5 +327,74 @@ final class ReaderSessionTests: XCTestCase {
         let restored = await waitUntil { !session.paging.removedIds.contains(self.b) }
         XCTAssertTrue(restored, "a failed archive left the message out of the pager")
         XCTAssertEqual(toasts.current?.message, "Could not archive: Message is locked")
+    }
+
+    /// `isCurrentInGlacier` reads the model's own `isGlacier` field directly, and `remove(with:
+    /// .expunge)` sends `confirm: true` -- required server-side for a permanent delete of a
+    /// message already in the glacier, the only copy that exists.
+    func testExpungeOfAGlacieredMessageIsFlaggedAndSendsConfirmTrue() async throws {
+        ReaderRouteStub.route(
+            "POST", "/api/messages/\(a)/action",
+            json: MessageActionResponse(success: true, action: "expunge", messageId: a, message: nil))
+        let (session, _) = try makeSession(rows: [a], opening: a, seen: true)
+        ReaderRouteStub.route(
+            "GET", "/api/messages/\(a)/thread",
+            json: ThreadResponse(messages: [message(a, seen: true, isGlacier: true)]))
+        session.didSettle(on: a)
+        let loaded = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(loaded)
+        XCTAssertTrue(session.isCurrentInGlacier)
+
+        _ = session.remove(with: .expunge)
+
+        let sent = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.a)) }
+        XCTAssertTrue(sent)
+        let body = try XCTUnwrap(ReaderRouteStub.recordedBody("POST", "/api/messages/\(a)/action"))
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(decoded["confirm"] as? Bool, true)
+    }
+
+    /// An ordinary (non-glaciered) permanent delete also sends `confirm: true` -- it costs
+    /// nothing to send (the server ignores it outside the glacier) and it means a message this
+    /// action reaches without `isCurrentInGlacier` having been read correctly is still deleted
+    /// rather than silently refused. `remove(with:)` never has to ask whether the message is
+    /// glaciered at all.
+    func testExpungeOfAnOrdinaryMessageAlsoSendsConfirmTrue() async throws {
+        ReaderRouteStub.route(
+            "POST", "/api/messages/\(a)/action",
+            json: MessageActionResponse(success: true, action: "expunge", messageId: a, message: nil))
+        let (session, _) = try makeSession(rows: [a], opening: a, seen: true)
+        session.didSettle(on: a)
+        let loaded = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(loaded)
+        XCTAssertFalse(session.isCurrentInGlacier)
+
+        _ = session.remove(with: .expunge)
+
+        let sent = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.a)) }
+        XCTAssertTrue(sent)
+        let body = try XCTUnwrap(ReaderRouteStub.recordedBody("POST", "/api/messages/\(a)/action"))
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(decoded["confirm"] as? Bool, true)
+    }
+
+    /// Only `.expunge` ever confirms -- an ordinary destructive-but-reversible action (archive,
+    /// say) never carries it.
+    func testArchiveNeverSendsConfirm() async throws {
+        ReaderRouteStub.route(
+            "POST", "/api/messages/\(a)/action",
+            json: MessageActionResponse(success: true, action: "archive", messageId: a, message: nil))
+        let (session, _) = try makeSession(rows: [a], opening: a, seen: true)
+        session.didSettle(on: a)
+        let loaded = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(loaded)
+
+        _ = session.remove(with: .archive)
+
+        let sent = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.a)) }
+        XCTAssertTrue(sent)
+        let body = try XCTUnwrap(ReaderRouteStub.recordedBody("POST", "/api/messages/\(a)/action"))
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(decoded["confirm"] as? Bool, false)
     }
 }

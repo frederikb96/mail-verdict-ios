@@ -154,15 +154,15 @@ public enum MessageActionSet {
         }
 
         // Destructive appears in the swipe sheet and context menu as its own group; the reader's
-        // Options menu only ever gains the single Delete Forever item, and only in Trash — its
-        // ordinary Delete already lives in the bottom bar.
+        // Options menu only ever gains the single Delete Forever item, and only in Trash or the
+        // glacier — its ordinary Delete already lives in the bottom bar. A glaciered message is
+        // the only copy that exists, the same reason Trash turns Delete into Delete Forever.
+        let isTheOnlyCopy = context.isInTrash || context.isInGlacier
         if context.surface != .readerOptionsMenu {
             groups.append(
-                MVMessageActionGroup(
-                    kind: .destructive, actions: [context.isInTrash ? .deleteForever : .delete]
-                )
+                MVMessageActionGroup(kind: .destructive, actions: [isTheOnlyCopy ? .deleteForever : .delete])
             )
-        } else if context.isInTrash {
+        } else if isTheOnlyCopy {
             groups.append(MVMessageActionGroup(kind: .destructive, actions: [.deleteForever]))
         }
 

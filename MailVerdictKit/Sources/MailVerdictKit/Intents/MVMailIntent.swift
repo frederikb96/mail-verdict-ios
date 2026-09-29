@@ -42,6 +42,9 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
     public internal(set) var snapshots: [MessageSummary]
     /// The intent this one undoes.
     public let undoes: UUID?
+    /// Only ever read server-side for a permanent delete of a message already in the glacier --
+    /// the only copy that exists. Ignored everywhere else, so every other intent carries `false`.
+    public let confirm: Bool
     public let createdAt: Date
     public internal(set) var state: Phase
     public internal(set) var attempts: Int
@@ -86,6 +89,7 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         self.originFolderIds = request.originFolderIds
         self.snapshots = request.snapshots
         self.undoes = undoes
+        self.confirm = request.confirm
         self.createdAt = createdAt
         self.state = .pending
         self.attempts = 0
@@ -111,6 +115,7 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         originFolderIds = (try? container.decodeIfPresent([UUID: UUID].self, forKey: .originFolderIds)) ?? [:]
         snapshots = (try? container.decodeIfPresent([MessageSummary].self, forKey: .snapshots)) ?? []
         undoes = try container.decodeIfPresent(UUID.self, forKey: .undoes)
+        confirm = try container.decodeIfPresent(Bool.self, forKey: .confirm) ?? false
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         state = try container.decode(Phase.self, forKey: .state)
         attempts = try container.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
@@ -157,11 +162,14 @@ public struct MVIntentRequest: Sendable, Equatable {
     public var originFolderIds: [UUID: UUID]
     public var snapshots: [MessageSummary]
     public var seenThrough: Date?
+    /// Only ever read server-side for a permanent delete of a message already in the glacier --
+    /// the only copy that exists. Ignored everywhere else, so every other request leaves it `false`.
+    public var confirm: Bool
 
     public init(
         accountId: UUID, action: MVBulkAction, targetFolderId: UUID? = nil, messageIds: [UUID],
         delivery: MVMailIntent.Delivery = .message, originFolderIds: [UUID: UUID] = [:],
-        snapshots: [MessageSummary] = [], seenThrough: Date? = nil
+        snapshots: [MessageSummary] = [], seenThrough: Date? = nil, confirm: Bool = false
     ) {
         self.accountId = accountId
         self.action = action
@@ -171,6 +179,7 @@ public struct MVIntentRequest: Sendable, Equatable {
         self.originFolderIds = originFolderIds
         self.snapshots = snapshots
         self.seenThrough = seenThrough
+        self.confirm = confirm
     }
 }
 

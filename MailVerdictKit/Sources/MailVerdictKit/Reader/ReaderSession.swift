@@ -157,6 +157,14 @@ public final class ReaderSession {
         currentPrimary.map { folderRole(of: $0) == "trash" } ?? false
     }
 
+    /// A glaciered message is the only copy that exists, the same reason Trash's own "Delete"
+    /// turns into "Delete Forever" — checked directly on the model rather than through
+    /// `folderRole(of:)`, which looks up the folder's `special_use` and the glacier's own
+    /// synthetic folder carries none.
+    public var isCurrentInGlacier: Bool {
+        currentPrimary?.isGlacier ?? false
+    }
+
     /// The Options menu's input for the current message, or `nil` until it has loaded.
     public func optionsContext() -> MVMessageContext? {
         guard let message = currentPrimary else { return nil }
@@ -169,7 +177,7 @@ public final class ReaderSession {
         }
         return MVMessageContext(
             surface: .readerOptionsMenu, source: actionSource, isRead: message.isSeen, isStarred: message.isFlagged,
-            isInTrash: role == "trash", isInJunk: role == "junk",
+            isInTrash: role == "trash", isInJunk: role == "junk", isInGlacier: message.isGlacier,
             verdict: message.verdict.map { MVMessageVerdictContext(isSpam: $0.isSpam, modelUsed: $0.modelUsed) },
             hasBlockedImages: !message.isTruncated && message.hasBlockedImages && !message.imagesAllowed,
             canvasIsDark: canvases[message.id] == .dark)
@@ -500,7 +508,11 @@ public final class ReaderSession {
         ledger.enqueue(
             MVIntentRequest(
                 accountId: message.accountId, action: bulk, targetFolderId: targetFolderId, messageIds: [message.id],
-                originFolderIds: [message.id: message.folderId]),
+                originFolderIds: [message.id: message.folderId],
+                // Only ever read server-side for a permanent delete of a message already in the
+                // glacier -- ignored everywhere else, and this action always reaches here from
+                // its own already-confirmed "Delete Forever" alert.
+                confirm: action == .expunge),
             undoToast: MailActionLabels.undoToast(for: action))
         guard message.id == rowId else { return .stay }
         switch paging.remove(rowId) {

@@ -16,13 +16,13 @@ let testReceivedBase = Date(timeIntervalSince1970: 1_780_000_000)
 /// Row `n` of a newest-first list: a larger `n` is older, so `rows(1...5)` is already in order.
 func testRow(
     _ n: Int, account: UUID = testAccount, folder: UUID = testFolder, thread: UUID? = nil, seen: Bool = false,
-    unreadInThread: Int? = nil, mirroredAt: Date? = nil
+    unreadInThread: Int? = nil, mirroredAt: Date? = nil, isGlacier: Bool = false
 ) -> MessageSummary {
     MessageSummary(
         id: testUUID(n), accountId: account, folderId: folder, threadId: thread ?? testUUID(500_000 + n),
         subject: "Subject \(n)", fromAddr: "Sender \(n) <sender\(n)@example.com>", toAddrs: nil,
         receivedAt: testReceivedBase.addingTimeInterval(-Double(n) * 60), isSeen: seen, snippet: "Snippet \(n)",
-        unreadInThread: unreadInThread, mirroredAt: mirroredAt ?? testReceivedBase
+        unreadInThread: unreadInThread, isGlacier: isGlacier, mirroredAt: mirroredAt ?? testReceivedBase
     )
 }
 
@@ -88,7 +88,7 @@ final class FakeMailListBackend: MVMailListBackend, MVIntentTransport, @unchecke
         BulkActionResponse(success: true, action: request.action.rawValue, affectedCount: request.ids?.count ?? 0)
     }
     private var _cursors: [MVListCursor] = []
-    private var _messageActions: [(UUID, MVMessageAction, UUID?)] = []
+    private var _messageActions: [(UUID, MVMessageAction, UUID?, Bool)] = []
     private var _messageActionError: Error?
     private var _messageActionDelay: (@Sendable (UUID) async throws -> Void)?
     private var _bulkRequests: [(UUID, BulkActionRequest)] = []
@@ -129,7 +129,7 @@ final class FakeMailListBackend: MVMailListBackend, MVIntentTransport, @unchecke
         set { locked { _locations = newValue } }
     }
     var cursors: [MVListCursor] { locked { _cursors } }
-    var messageActions: [(UUID, MVMessageAction, UUID?)] { locked { _messageActions } }
+    var messageActions: [(UUID, MVMessageAction, UUID?, Bool)] { locked { _messageActions } }
     var bulkRequests: [(UUID, BulkActionRequest)] { locked { _bulkRequests } }
     var selectionFilters: [MVSelectionFilter] { locked { _selectionFilters } }
     var filterQueries: [String] { locked { _filterQueries } }
@@ -175,10 +175,10 @@ final class FakeMailListBackend: MVMailListBackend, MVIntentTransport, @unchecke
 
     func deliverMessageAction(
         messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
-        timeout: TimeInterval
+        confirm: Bool, timeout: TimeInterval
     ) async throws -> MessageActionResponse {
         let (error, delay) = locked {
-            _messageActions.append((messageId, action, targetFolderId))
+            _messageActions.append((messageId, action, targetFolderId, confirm))
             return (_messageActionError, _messageActionDelay)
         }
         try await delay?(messageId)

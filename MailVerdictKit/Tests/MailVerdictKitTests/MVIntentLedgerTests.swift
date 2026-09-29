@@ -17,6 +17,7 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     private var _thread = ThreadResponse(messages: [])
     private var _threadFetches = 0
     private var _bulkIds: [[UUID]] = []
+    private var _confirms: [Bool] = []
 
     private func locked<T>(_ body: () -> T) -> T {
         lock.lock()
@@ -37,6 +38,8 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     var threadFetches: Int { locked { _threadFetches } }
     /// The ids each bulk delivery named.
     var bulkIds: [[UUID]] { locked { _bulkIds } }
+    /// `confirm` as each single-message delivery carried it.
+    var confirms: [Bool] { locked { _confirms } }
     var handler: Handler {
         get { locked { _handler } }
         set { locked { _handler = newValue } }
@@ -61,9 +64,12 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
 
     func deliverMessageAction(
         messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
-        timeout: TimeInterval
+        confirm: Bool, timeout: TimeInterval
     ) async throws -> MessageActionResponse {
-        locked { _expected.append(expectedFolderId.map { [messageId: $0] } ?? [:]) }
+        locked {
+            _expected.append(expectedFolderId.map { [messageId: $0] } ?? [:])
+            _confirms.append(confirm)
+        }
         try await record(Self.label(action.rawValue, messageId), key: idempotencyKey, timeout: timeout)
         let (applied, filed) = locked { (_applied, _filedFolder) }
         return MessageActionResponse(
@@ -154,6 +160,31 @@ final class MVIntentLedgerTests: XCTestCase {
 
     private func refusal(_ status: Int) -> MVError {
         MVError.detail("refused \(status)", statusCode: status)
+    }
+
+    /// A record an older build wrote has no `confirm` key at all -- it must decode as `false`
+    /// rather than throwing, the same way every other field added after this struct shipped
+    /// already does.
+    func testAnIntentRecordWithNoStoredConfirmKeyDecodesAsFalse() throws {
+        let intent = MVMailIntent(
+            request: MVIntentRequest(accountId: testAccount, action: .expunge, messageIds: [testUUID(1)]),
+            id: UUID(), undoes: nil, createdAt: Date())
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder.mvDefault.encode(intent)) as? [String: Any])
+        XCTAssertNotNil(object["confirm"], "the encoder itself must still write the key")
+        object.removeValue(forKey: "confirm")
+        let strippedData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder.mvDefault.decode(MVMailIntent.self, from: strippedData)
+        XCTAssertFalse(decoded.confirm)
+    }
+
+    /// `confirm: true` on the request survives to the intent the ledger actually delivers.
+    func testConfirmOnTheRequestCarriesThroughToTheIntent() {
+        var req = request(.expunge, 1)
+        req.confirm = true
+        let intent = MVMailIntent(request: req, id: UUID(), undoes: nil, createdAt: Date())
+        XCTAssertTrue(intent.confirm)
     }
 
     // MARK: - Delivery order

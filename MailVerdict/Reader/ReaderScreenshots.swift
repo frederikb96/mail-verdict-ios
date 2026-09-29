@@ -67,6 +67,15 @@
                     return
                 }
             },
+            // A glaciered message with an attachment: the provenance banner, the body still
+            // rendering, and the bottom bar reading Delete Forever rather than Delete.
+            MVScreenshotEntry(id: "reader-glacier", destination: .route(.reader(ReaderFixtures.glacierContext()))) {
+                _, _ in
+                guard await ReaderDebugHook.waitUntilLoaded() else {
+                    await neverReady()
+                    return
+                }
+            },
         ]
     }
 

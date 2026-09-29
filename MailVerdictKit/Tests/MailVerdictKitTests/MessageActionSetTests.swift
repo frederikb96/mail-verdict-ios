@@ -139,9 +139,20 @@ final class MessageActionSetTests: XCTestCase {
         }
     }
 
+    /// A glaciered message is the only copy that exists, the same reason Trash turns Delete into
+    /// Delete Forever — checked on every surface the destructive group appears on.
+    func testDestructiveGroupIsDeleteForeverOnAGlacieredMessageForSwipeAndContextMenu() {
+        for surface in [MVMessageActionSurface.swipeSheet, .contextMenu] {
+            XCTAssertEqual(
+                actions(MessageActionSet.actions(for: context(surface: surface, isInGlacier: true)), in: .destructive),
+                [.deleteForever], "\(surface)"
+            )
+        }
+    }
+
     /// The reader's Options menu never duplicates its own bottom-bar Delete — except for Delete
-    /// Forever while in Trash.
-    func testReaderOptionsMenuHasNoDestructiveGroupExceptDeleteForeverInTrash() {
+    /// Forever while in Trash or the glacier.
+    func testReaderOptionsMenuHasNoDestructiveGroupExceptDeleteForeverInTrashOrTheGlacier() {
         XCTAssertNil(
             actions(
                 MessageActionSet.actions(for: context(surface: .readerOptionsMenu, isInTrash: false)), in: .destructive)
@@ -149,6 +160,12 @@ final class MessageActionSetTests: XCTestCase {
         XCTAssertEqual(
             actions(
                 MessageActionSet.actions(for: context(surface: .readerOptionsMenu, isInTrash: true)), in: .destructive),
+            [.deleteForever]
+        )
+        XCTAssertEqual(
+            actions(
+                MessageActionSet.actions(for: context(surface: .readerOptionsMenu, isInGlacier: true)), in: .destructive
+            ),
             [.deleteForever]
         )
     }

@@ -83,7 +83,9 @@ private struct ReaderContent: View {
                 Button("Delete Forever", role: .destructive) { model.deleteForever() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This removes it from the mail server. It cannot be undone.")
+                Text(
+                    model.session.isCurrentInGlacier
+                        ? GlacierDeleteWarning.message : "This removes it from the mail server. It cannot be undone.")
             }
             .alert(
                 model.phoneHandoffIsMessage ? "Send a Message?" : "Make a Call?",
@@ -157,7 +159,7 @@ private struct ReaderContent: View {
         }
         ToolbarItem(placement: .bottomBar) {
             Group {
-                if model.session.isCurrentInTrash {
+                if model.session.isCurrentInTrash || model.session.isCurrentInGlacier {
                     Button(role: .destructive) {
                         model.confirmingDeleteForever = true
                     } label: {

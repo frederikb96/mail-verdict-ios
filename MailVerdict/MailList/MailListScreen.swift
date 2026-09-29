@@ -79,8 +79,8 @@ struct MailListScreen: View {
             ) { (row: MessageSummary) in
                 Button("Delete Forever", role: .destructive) { store.perform(.deleteForever, on: row.id) }
                 Button("Cancel", role: .cancel) {}
-            } message: { (_: MessageSummary) in
-                Text(Self.deleteForeverMessage)
+            } message: { (row: MessageSummary) in
+                Text(row.isGlacier ? GlacierDeleteWarning.message : Self.deleteForeverMessage)
             }
     }
 
@@ -246,9 +246,11 @@ struct MailListScreen: View {
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar) { selectionOptionsMenu }
         } else {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Select") { store.setSelecting(true) }
-                    .accessibilityIdentifier("maillist-select")
+            if !isGlacierFolder {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Select") { store.setSelecting(true) }
+                        .accessibilityIdentifier("maillist-select")
+                }
             }
             ToolbarItem(placement: .topBarTrailing) { moreMenu }
             ToolbarItem(placement: .bottomBar) { unreadFilterButton }
@@ -302,6 +304,18 @@ struct MailListScreen: View {
         return store.context.folders[folderId]?.specialUse == "junk"
     }
 
+    /// The account's own glacier folder has no bulk-action support on the server at all — both
+    /// its scope and its explicit-id resolution query the live `messages` table only, so a
+    /// glacier folder id or a glaciered message id never resolves to anything there, and the
+    /// request comes back reporting an empty, silent success. Every bulk surface (select mode,
+    /// Mark All as Read, Empty Folder…) is hidden here rather than shipping a control that lies;
+    /// a glaciered message still works one at a time through the single-message action path,
+    /// which the glacier's own row-level actions already use.
+    private var isGlacierFolder: Bool {
+        guard case .folder(_, let folderId) = scope else { return false }
+        return store.context.folders[folderId]?.kind == "glacier"
+    }
+
     private var moreMenu: some View {
         Menu {
             Toggle(
@@ -309,7 +323,7 @@ struct MailListScreen: View {
             ) {
                 Label("Group by Conversation", systemImage: MVSymbols.groupByConversation)
             }
-            if isFolderScope {
+            if isFolderScope && !isGlacierFolder {
                 Button {
                     Task { await store.markAllAsRead() }
                 } label: {

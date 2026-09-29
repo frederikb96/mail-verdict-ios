@@ -486,12 +486,13 @@ final class MailListViewController: UIViewController, UITableViewDelegate {
     }
 
     /// Swipe left: Delete first, so a full swipe deletes; a short swipe shows Options and Delete.
-    /// In Trash, Delete is Delete Forever and asks first — the row stays until confirmed.
+    /// In Trash or the glacier, Delete is Delete Forever and asks first — the row stays until
+    /// confirmed, the same reason a glaciered message is the only copy that exists.
     func tableView(
         _ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
     ) -> UISwipeActionsConfiguration? {
         guard !tableView.isEditing, let row = row(at: indexPath) else { return nil }
-        let deleteAction: MVMessageUIAction = store.isInTrash(row) ? .deleteForever : .delete
+        let deleteAction: MVMessageUIAction = store.isInTrash(row) || row.isGlacier ? .deleteForever : .delete
         let delete = UIContextualAction(style: .destructive, title: deleteAction.title) {
             [weak self] _, _, completion in
             MainActor.assumeIsolated { self?.run(deleteAction, on: row) }

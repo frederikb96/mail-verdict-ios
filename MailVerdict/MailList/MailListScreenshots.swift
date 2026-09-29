@@ -36,9 +36,15 @@
                 // screen, not that its list (the glacier row among the targets) has painted yet.
                 try? await Task.sleep(for: .milliseconds(300))
             },
+            // The glacier's own folder as the open list — its toolbar carries no Select, Mark
+            // All as Read or Empty Folder…, none of which the server supports for it.
+            MVScreenshotEntry(id: "list-glacier", destination: .route(glacierRoute)) { _, _ in
+                _ = await loadedStore()
+            },
         ]
 
         private static let route = Route.list(MVMailListFixtures.scope, aroundMessageId: nil)
+        private static let glacierRoute = Route.list(MVMailListFixtures.glacierScope, aroundMessageId: nil)
 
         /// The fixture list's store once its rows are on screen — the controller has applied
         /// them, not merely the store loaded them.

@@ -102,3 +102,11 @@ final class GlacierMoveWarningTests: XCTestCase {
         XCTAssertTrue(GlacierMoveWarning.message(count: 1).contains("leave the mail server for good"))
     }
 }
+
+final class GlacierDeleteWarningTests: XCTestCase {
+
+    func testMessageNamesTheOnlyCopyAndThatItIsPermanent() {
+        XCTAssertTrue(GlacierDeleteWarning.message.contains("only copy"))
+        XCTAssertTrue(GlacierDeleteWarning.message.contains("permanent"))
+    }
+}

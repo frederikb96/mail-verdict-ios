@@ -184,6 +184,14 @@ public enum ConversationDocumentBuilder {
         if hasCalendarAttachment(message) {
             parts.append(options.invitationCards[message.id] ?? InvitationCardBuilder.emptySlot(messageId: message.id))
         }
+        if message.isGlacier {
+            let origin = message.originFolderName.map { " (was in \(escape($0)))" } ?? ""
+            parts.append(
+                #"<div class="mv-banner mv-banner-muted mv-banner-row">\#(snowflakeGlyph)<span>"#
+                    + "This message is in the glacier — it no longer exists on the mail server\(origin)."
+                    + "</span></div>"
+            )
+        }
         if message.isTruncated {
             parts.append(
                 #"<div class="mv-banner mv-banner-muted">This message is too large to display. Its content was not downloaded during sync.</div>"#
@@ -278,6 +286,8 @@ public enum ConversationDocumentBuilder {
         #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 7.5L12 3l4.5 4.5M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>"#
     static let locateGlyph =
         #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>"#
+    static let snowflakeGlyph =
+        #"<svg class="mv-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M2 7l20 10M2 17l20-10"/></svg>"#
 
     /// The chrome's own stylesheet — iOS system colours per theme, Dynamic Type text styles, and
     /// `overflow-x: hidden` at the root so that at rest zoom the page never scrolls sideways and
@@ -326,6 +336,7 @@ public enum ConversationDocumentBuilder {
           font: -apple-system-footnote; }
         .mv-banner { margin: 0 16px 10px; padding: 10px 12px; border-radius: 10px; font: -apple-system-subheadline; }
         .mv-banner-muted { background: var(--fill); color: var(--secondary); }
+        .mv-banner-row { display: flex; align-items: center; gap: 8px; }
         .mv-banner-amber { background: var(--amber-bg); color: var(--amber-text); display: flex; flex-direction: column; gap: 8px; }
         .mv-banner-actions { display: flex; flex-wrap: wrap; gap: 6px; }
         .mv-banner-button { color: var(--amber-text); border: 1px solid var(--amber-border); border-radius: 14px;

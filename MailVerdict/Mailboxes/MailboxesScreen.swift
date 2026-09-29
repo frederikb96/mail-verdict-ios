@@ -228,30 +228,37 @@ struct MailboxesScreen: View {
 
     @ViewBuilder
     private func folderContextMenu(accountId: UUID, folder: MailboxesFolderRow) -> some View {
-        Button("Mark All as Read") {
-            if folder.badgeCount > 0 {
-                environment.toasts.show(
-                    MVToast(
-                        variant: .info,
-                        message: "Marking \(folder.badgeCount) messages — this can take a while"
+        // The glacier folder has no bulk-action support on the server: both actions below
+        // resolve their targets against the live `messages` table only, so a glacier folder id
+        // never matches anything there and the request comes back reporting an empty, silent
+        // success — offering either here would be a control that lies. A glaciered message still
+        // works one at a time through the single-message action path.
+        if !folder.isGlacier {
+            Button("Mark All as Read") {
+                if folder.badgeCount > 0 {
+                    environment.toasts.show(
+                        MVToast(
+                            variant: .info,
+                            message: "Marking \(folder.badgeCount) messages — this can take a while"
+                        )
                     )
-                )
-            }
-            Task { try? await store.markAllAsRead(accountId: accountId, folderId: folder.id) }
-        }
-        Button("Empty Folder…", role: .destructive) {
-            Task {
-                let snapshot: SelectionSnapshotResponse
-                do {
-                    snapshot = try await store.mintEmptySelection(accountId: accountId, folderId: folder.id)
-                } catch {
-                    showError(error)
-                    return
                 }
-                pendingEmptyFolder = PendingEmptyFolder(
-                    accountId: accountId, folderId: folder.id, folderName: folder.displayName,
-                    messageCount: snapshot.count, snapshotAt: snapshot.snapshotAt
-                )
+                Task { try? await store.markAllAsRead(accountId: accountId, folderId: folder.id) }
+            }
+            Button("Empty Folder…", role: .destructive) {
+                Task {
+                    let snapshot: SelectionSnapshotResponse
+                    do {
+                        snapshot = try await store.mintEmptySelection(accountId: accountId, folderId: folder.id)
+                    } catch {
+                        showError(error)
+                        return
+                    }
+                    pendingEmptyFolder = PendingEmptyFolder(
+                        accountId: accountId, folderId: folder.id, folderName: folder.displayName,
+                        messageCount: snapshot.count, snapshotAt: snapshot.snapshotAt
+                    )
+                }
             }
         }
         if !folder.isGlacier {

@@ -909,7 +909,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     public func actionContext(for row: MessageSummary, surface: MVMessageActionSurface) -> MVMessageContext {
         MVMessageContext(
             surface: surface, source: .list, isRead: !Self.isRowUnread(row), isStarred: row.isFlagged,
-            isInTrash: isInTrash(row), isInJunk: isInJunk(row),
+            isInTrash: isInTrash(row), isInJunk: isInJunk(row), isInGlacier: row.isGlacier,
             verdict: row.verdictIsSpam.map { MVMessageVerdictContext(isSpam: $0, modelUsed: nil) }
         )
     }
@@ -959,7 +959,11 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         ledger.enqueue(
             MVIntentRequest(
                 accountId: row.accountId, action: bulk, targetFolderId: targetFolderId, messageIds: [rowId],
-                originFolderIds: [rowId: row.folderId], snapshots: [row]),
+                originFolderIds: [rowId: row.folderId], snapshots: [row],
+                // Only ever read server-side for a permanent delete of a message already in the
+                // glacier -- ignored everywhere else, and this action always reaches here from
+                // its own already-confirmed "Delete Forever" alert.
+                confirm: action == .deleteForever),
             undoToast: bulk.undoToastTitle)
     }
 

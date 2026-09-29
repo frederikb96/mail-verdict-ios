@@ -9,6 +9,10 @@
         public static let accountId = UUID(uuidString: "00000000-0000-0000-0000-0000000a0001")!
         public static let folderId = UUID(uuidString: "00000000-0000-0000-0000-0000000f0001")!
         public static let scope = ListScope.folder(accountId: accountId, folderId: folderId)
+        /// The same account's glacier row as a list scope of its own -- the toolbar's own glacier
+        /// gating (`isGlacierFolder` in `MailListScreen`) reads `context.folders[folderId].kind`,
+        /// which needs `folders(now:)` to carry the glacier row too, not only `folderOrder`.
+        public static let glacierScope = ListScope.folder(accountId: accountId, folderId: glacierId)
 
         static let trashId = UUID(uuidString: "00000000-0000-0000-0000-0000000f0002")!
         static let archiveId = UUID(uuidString: "00000000-0000-0000-0000-0000000f0003")!
@@ -71,7 +75,7 @@
                 (folderId, "INBOX", "inbox", 6, 128), (trashId, "Trash", "trash", 0, 12),
                 (archiveId, "Archive", "archive", 0, 940), (projectsId, "Projects", nil, 2, 31),
             ]
-            return specs.map { id, name, specialUse, unread, total in
+            let ordinary = specs.map { id, name, specialUse, unread, total in
                 FolderResponse(
                     id: id, accountId: accountId, imapName: name, displayName: nil, specialUse: specialUse,
                     mailboxId: nil, initialSyncDone: true, backfillTotal: nil, idleStatus: nil,
@@ -79,6 +83,12 @@
                     totalCount: total
                 )
             }
+            let glacier = FolderResponse(
+                id: glacierId, accountId: accountId, imapName: "Glacier", displayName: nil, specialUse: nil,
+                mailboxId: nil, initialSyncDone: true, backfillTotal: nil, idleStatus: nil,
+                lastSyncedAt: nil, syncError: nil, createdAt: nil, unreadCount: 0, totalCount: 212, kind: "glacier"
+            )
+            return ordinary + [glacier]
         }
 
         static let folderOrder = FolderOrderResponse(

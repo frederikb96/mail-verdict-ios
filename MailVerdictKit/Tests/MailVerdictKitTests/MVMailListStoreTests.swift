@@ -213,6 +213,25 @@ final class MVMailListStoreTests: XCTestCase {
         XCTAssertTrue(store.rowIds.contains(testUUID(3)))
     }
 
+    /// `confirm` is only ever read server-side for a permanent delete of a message already in the
+    /// glacier — sent `true` for every Delete Forever (it always reaches here from its own
+    /// already-confirmed alert, and the server ignores it for an ordinary message), `false` for
+    /// everything else.
+    func testDeleteForeverSendsConfirmTrueAndEveryOtherActionSendsFalse() async {
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage([testRow(1), testRow(2, seen: true)]) }
+        let store = makeStore(backend)
+        await store.start()
+
+        store.perform(.deleteForever, on: testUUID(1))
+        store.perform(.archive, on: testUUID(2))
+        await waitUntil { backend.messageActions.count == 2 }
+
+        let byId = Dictionary(backend.messageActions.map { ($0.0, $0.3) }, uniquingKeysWith: { first, _ in first })
+        XCTAssertEqual(byId[testUUID(1)], true, "Delete Forever must confirm")
+        XCTAssertEqual(byId[testUUID(2)], false, "an ordinary action must never confirm")
+    }
+
     /// Reading a row while only unread mail is listed must not snatch it away on the next
     /// refresh, which no longer returns it.
     func testARowReadInTheUnreadListStaysThroughARefresh() async {

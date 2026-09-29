@@ -475,7 +475,7 @@ public final class MVIntentLedger {
                 let response = try await transport.deliverMessageAction(
                     messageId: messageId, action: action, targetFolderId: intent.targetFolderId,
                     expectedFolderId: intent.expectedFolderIds?[messageId], idempotencyKey: intent.id,
-                    timeout: timeout)
+                    confirm: intent.confirm, timeout: timeout)
                 guard response.success else { return .refused(response.message ?? "The server did not apply it") }
                 guard response.applied else { return .notApplied }
                 return .delivered(
