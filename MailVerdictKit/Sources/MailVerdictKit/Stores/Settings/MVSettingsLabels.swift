@@ -11,6 +11,7 @@ public enum MVSettingsLabels {
     public static let order: [String] = [
         "provider",
         "model",
+        "base_url",
         "reasoning_effort",
         "max_tokens",
         "max_retries",
@@ -39,6 +40,7 @@ public enum MVSettingsLabels {
     private static let labels: [String: String] = [
         "provider": "Provider",
         "model": "Model",
+        "base_url": "Server address (custom provider only)",
         "reasoning_effort": "Reasoning effort",
         "max_tokens": "Max tokens",
         "max_retries": "Max retries",
@@ -97,18 +99,30 @@ extension MVSettingsCategory {
 }
 
 /// Which fields a category's GET response carries that the generic renderer must never draw as an
-/// editable field — the `ai` category's write-only key status, computed on every read and
-/// stripped from any write (`settings_api.py`'s `_AI_COMPUTED_FIELDS`). `calendar` has its own
-/// computed field (`default_calendar_id`) but calendar settings are out of this app's scope
+/// editable field. `ai`'s write-only key status is computed on every read and stripped from any
+/// write (`settings_api.py`'s `_AI_COMPUTED_FIELDS`). `semantic`'s active_model/active_provider/
+/// active_base_url are managed by the backend's backfill reconciler during a re-embed
+/// (`embeddings/worker.py`'s `_maybe_cutover`), never something to type into. `calendar` has its
+/// own computed field (`default_calendar_id`) but calendar settings are out of this app's scope
 /// entirely, so there is nothing to exclude it from.
 public enum MVSettingsComputedFields {
+    private static let semanticManaged: Set<String> = [
+        "active_model", "active_provider", "active_base_url",
+    ]
+
     public static func excluded(for category: MVSettingsCategory) -> Set<String> {
-        guard category == .ai else { return [] }
-        var excluded: Set<String> = []
-        for provider in MVSettingsProvider.allCases {
-            excluded.insert("\(provider.rawValue)_api_key_configured")
-            excluded.insert("\(provider.rawValue)_api_key_hint")
+        switch category {
+        case .ai:
+            var excluded: Set<String> = []
+            for provider in MVSettingsProvider.allCases {
+                excluded.insert("\(provider.rawValue)_api_key_configured")
+                excluded.insert("\(provider.rawValue)_api_key_hint")
+            }
+            return excluded
+        case .semantic:
+            return semanticManaged
+        default:
+            return []
         }
-        return excluded
     }
 }

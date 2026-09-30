@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The Settings screen's AI provider key section now also offers a Custom (OpenAI-compatible)
+  server, alongside Anthropic and OpenAI, matching the server's own selectable provider.
+
 ### Changed
 
 - Tapping a link in a message now offers a choice — open it inside the app, or hand it to
