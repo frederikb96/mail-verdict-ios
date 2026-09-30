@@ -42,6 +42,17 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
     public internal(set) var snapshots: [MessageSummary]
     /// The intent this one undoes.
     public let undoes: UUID?
+    /// Only ever read server-side for a permanent delete of a message already in the glacier --
+    /// the only copy that exists. Ignored everywhere else, so every other intent carries `false`.
+    public let confirm: Bool
+    /// A move into the glacier copies the message under a *new* id -- unlike every other move,
+    /// which relocates the same row. Neither the single-message nor the bulk response hands the
+    /// new id back to a caller that only asked to move something (the bulk one has no field for
+    /// it at all), so `MVIntentProjection` never keeps or speculatively inserts this intent's own
+    /// rows under their old id: the correct row, with its real id, reaches the screen through the
+    /// next live-triggered refetch instead, the same way opening the message from anywhere else
+    /// already picks up the new id from the server's own response body.
+    public let targetIsGlacier: Bool
     public let createdAt: Date
     public internal(set) var state: Phase
     public internal(set) var attempts: Int
@@ -86,6 +97,8 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         self.originFolderIds = request.originFolderIds
         self.snapshots = request.snapshots
         self.undoes = undoes
+        self.confirm = request.confirm
+        self.targetIsGlacier = request.targetIsGlacier
         self.createdAt = createdAt
         self.state = .pending
         self.attempts = 0
@@ -111,6 +124,8 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         originFolderIds = (try? container.decodeIfPresent([UUID: UUID].self, forKey: .originFolderIds)) ?? [:]
         snapshots = (try? container.decodeIfPresent([MessageSummary].self, forKey: .snapshots)) ?? []
         undoes = try container.decodeIfPresent(UUID.self, forKey: .undoes)
+        confirm = try container.decodeIfPresent(Bool.self, forKey: .confirm) ?? false
+        targetIsGlacier = try container.decodeIfPresent(Bool.self, forKey: .targetIsGlacier) ?? false
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         state = try container.decode(Phase.self, forKey: .state)
         attempts = try container.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
@@ -157,11 +172,18 @@ public struct MVIntentRequest: Sendable, Equatable {
     public var originFolderIds: [UUID: UUID]
     public var snapshots: [MessageSummary]
     public var seenThrough: Date?
+    /// Only ever read server-side for a permanent delete of a message already in the glacier --
+    /// the only copy that exists. Ignored everywhere else, so every other request leaves it `false`.
+    public var confirm: Bool
+    /// Set from `MVMoveTarget.isGlacier` at the point a move is enqueued — see the same property
+    /// on `MVMailIntent` for why the projection needs it.
+    public var targetIsGlacier: Bool
 
     public init(
         accountId: UUID, action: MVBulkAction, targetFolderId: UUID? = nil, messageIds: [UUID],
         delivery: MVMailIntent.Delivery = .message, originFolderIds: [UUID: UUID] = [:],
-        snapshots: [MessageSummary] = [], seenThrough: Date? = nil
+        snapshots: [MessageSummary] = [], seenThrough: Date? = nil, confirm: Bool = false,
+        targetIsGlacier: Bool = false
     ) {
         self.accountId = accountId
         self.action = action
@@ -171,6 +193,8 @@ public struct MVIntentRequest: Sendable, Equatable {
         self.originFolderIds = originFolderIds
         self.snapshots = snapshots
         self.seenThrough = seenThrough
+        self.confirm = confirm
+        self.targetIsGlacier = targetIsGlacier
     }
 }
 

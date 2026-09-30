@@ -54,4 +54,13 @@ final class SymbolsTests: XCTestCase {
         XCTAssertEqual(MVSymbols.folderIcon(specialUse: nil), "folder")
         XCTAssertEqual(MVSymbols.folderIcon(specialUse: "something-else"), "folder")
     }
+
+    /// `kind == "glacier"` overrides `specialUse` entirely -- the synthetic per-account row
+    /// always carries `specialUse == nil`, but the check has to win regardless of what a caller
+    /// happens to pass there.
+    func testFolderIconForTheGlacierOverridesSpecialUse() {
+        XCTAssertEqual(MVSymbols.folderIcon(specialUse: nil, kind: "glacier"), "snowflake")
+        XCTAssertEqual(MVSymbols.folderIcon(specialUse: "inbox", kind: "glacier"), "snowflake")
+        XCTAssertEqual(MVSymbols.folderIcon(specialUse: "inbox", kind: "imap"), "tray")
+    }
 }

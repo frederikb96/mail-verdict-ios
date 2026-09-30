@@ -17,8 +17,51 @@ import MailVerdictKit
             MVScreenshotEntry(
                 id: "account-detail",
                 destination: .route(.account(UUID(uuidString: "11111111-1111-1111-1111-111111111111")!)),
-                prepare: prepareAccountDetail)
+                prepare: prepareAccountDetail),
+            MVScreenshotEntry(
+                id: "account-edit-glacier",
+                destination: .route(.account(UUID(uuidString: "11111111-1111-1111-1111-111111111111")!)),
+                prepare: prepareAccountEditGlacier),
         ]
+
+        /// The same account fixture as `account-detail`, plus opening its Edit… sheet and
+        /// scrolling it to the Glacier section — the switch and days field sit below the fold in
+        /// an ordinary Form, so nothing short of scrolling to them ever shows up in a screenshot.
+        ///
+        /// Each wait fails visibly (hangs, the same `neverReady()` shape `ReaderScreenshots` uses)
+        /// rather than reporting the screen ready anyway: a stage this entry's own two flags never
+        /// reach would otherwise pass silently as whatever the screen already looked like, which
+        /// is exactly how the sheet not opening at all went unnoticed once already.
+        @MainActor
+        private static func prepareAccountEditGlacier(
+            _ environment: AppEnvironment, _ connection: AppEnvironment.Connection
+        ) async {
+            await prepareAccountDetail(environment, connection)
+            AccountsDebugServices.shared.showEditSheetRequested = true
+            guard await poll({ AccountsDebugServices.shared.editSheetVisible ? true : nil }) != nil else {
+                DebugLogBuffer.shared.append(.info, "screenshot", "account-edit-glacier: sheet never appeared")
+                await neverReady()
+                return
+            }
+            AccountsDebugServices.shared.scrollToGlacierSectionRequested = true
+            guard await poll({ AccountsDebugServices.shared.glacierSectionScrolled ? true : nil }) != nil else {
+                DebugLogBuffer.shared.append(
+                    .info, "screenshot", "account-edit-glacier: never scrolled to the glacier section")
+                await neverReady()
+                return
+            }
+            // `scrollTo` schedules the scroll; it does not itself wait for the layout pass that
+            // actually moves content on screen.
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+
+        /// A genuine timeout means the stage never reached the state it claims to — hanging here
+        /// keeps `screenshotReady` from ever reporting this screen ready, so the sweep's own poll
+        /// of `/screen/current` times out and fails the run honestly instead of publishing a
+        /// screenshot of whatever was already on screen.
+        private static func neverReady() async {
+            while true { try? await Task.sleep(nanoseconds: 60 * 60 * 1_000_000_000) }
+        }
 
         @MainActor
         private static func prepareAccountDetail(_: AppEnvironment, _: AppEnvironment.Connection) async {
@@ -33,7 +76,9 @@ import MailVerdictKit
                      "smtp_host":"posteo.de","smtp_port":587,"smtp_user":"me@posteo.de",
                      "is_active":true,"state":"active","state_error":null,
                      "created_at":"2025-01-10T08:00:00+00:00","updated_at":"2026-01-15T10:30:00+00:00",
-                     "emoji":"📧","spam_enabled":true,"trash_retention_days":30,"junk_retention_days":14}
+                     "emoji":"📧","spam_enabled":true,"trash_retention_days":30,"junk_retention_days":14,
+                     "glacier_enabled":true,"glacier_folder_id":"22222222-2222-2222-2222-222222222222",
+                     "glacier_auto_days":90}
                     """#.utf8)
             }
             MVFixtureURLProtocol.register(

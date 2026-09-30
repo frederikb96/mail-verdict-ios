@@ -23,7 +23,8 @@ final class MVAccountDetailStoreTests: XCTestCase {
         "is_active":true,"state":"active","state_error":null,"capabilities":null,
         "created_at":"2026-01-01T00:00:00+00:00","updated_at":"2026-01-01T00:00:00+00:00",
         "emoji":null,"spam_enabled":false,"folder_order":null,"trash_retention_days":null,
-        "junk_retention_days":null}
+        "junk_retention_days":null,"glacier_enabled":true,
+        "glacier_folder_id":"11111111-1111-1111-1111-111111111111","glacier_auto_days":30}
         """
     }
 
@@ -104,5 +105,24 @@ final class MVAccountDetailStoreTests: XCTestCase {
             // expected
         }
         XCTAssertEqual(store.account?.isActive, true)
+    }
+
+    /// `setActive`'s optimistic update reconstructs the account by hand rather than waiting on
+    /// the server's response, which it never reads back into `state` at all on success -- every
+    /// field the reconstruction forgets to carry over is silently reset to its type's default,
+    /// permanently, the moment the sync toggle is used.
+    func testSetActiveCarriesGlacierFieldsForward() async {
+        let id = UUID()
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(accountJSON(id: id).utf8))
+        let store = makeStore(accountId: id)
+        await store.load()
+        XCTAssertEqual(store.account?.glacierEnabled, true)
+        XCTAssertEqual(store.account?.glacierAutoDays, 30)
+
+        try? await store.setActive(false)
+
+        XCTAssertEqual(store.account?.isActive, false)
+        XCTAssertEqual(store.account?.glacierEnabled, true, "setActive dropped glacierEnabled")
+        XCTAssertEqual(store.account?.glacierAutoDays, 30, "setActive dropped glacierAutoDays")
     }
 }

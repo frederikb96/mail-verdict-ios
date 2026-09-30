@@ -909,7 +909,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     public func actionContext(for row: MessageSummary, surface: MVMessageActionSurface) -> MVMessageContext {
         MVMessageContext(
             surface: surface, source: .list, isRead: !Self.isRowUnread(row), isStarred: row.isFlagged,
-            isInTrash: isInTrash(row), isInJunk: isInJunk(row),
+            isInTrash: isInTrash(row), isInJunk: isInJunk(row), isInGlacier: row.isGlacier,
             verdict: row.verdictIsSpam.map { MVMessageVerdictContext(isSpam: $0, modelUsed: nil) }
         )
     }
@@ -959,7 +959,11 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         ledger.enqueue(
             MVIntentRequest(
                 accountId: row.accountId, action: bulk, targetFolderId: targetFolderId, messageIds: [rowId],
-                originFolderIds: [rowId: row.folderId], snapshots: [row]),
+                originFolderIds: [rowId: row.folderId], snapshots: [row],
+                // Only ever read server-side for a permanent delete of a message already in the
+                // glacier -- ignored everywhere else, and this action always reaches here from
+                // its own already-confirmed "Delete Forever" alert.
+                confirm: action == .deleteForever, targetIsGlacier: target?.isGlacier ?? false),
             undoToast: bulk.undoToastTitle)
     }
 
@@ -1061,12 +1065,15 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     /// Runs a bulk action on the selection. An explicit selection is applied optimistically and
     /// offered back with Undo where the action has one; a predicate is resolved server-side over
     /// however many messages match, so the list is re-read from the newest edge afterwards.
-    /// Confirmation (`MVBulkRequestBuilder.needsConfirmation`) is the caller's, before this.
-    public func performBulk(_ action: MVBulkAction, target: MVMoveTarget? = nil) async {
+    /// Confirmation (`MVBulkRequestBuilder.needsConfirmation`, or the glacier's own restore/expunge
+    /// warnings) is the caller's, before this -- `confirmed` only ever reaches the server for a
+    /// permanent delete of a selection already in the glacier, the same shape a single message's
+    /// own `confirm` has.
+    public func performBulk(_ action: MVBulkAction, target: MVMoveTarget? = nil, confirmed: Bool = false) async {
         let current = effectiveSelection
         guard !current.isEmpty else { return }
         let built = MVBulkRequestBuilder.plans(
-            for: current, action: action, targetFolderId: { target?.folderId(forAccount: $0) }
+            for: current, action: action, targetFolderId: { target?.folderId(forAccount: $0) }, confirm: confirmed
         )
         let count = current.count
         if current.predicate != nil {
@@ -1110,7 +1117,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     originFolderIds: Dictionary(
                         planOriginals.map { ($0.id, $0.folderId) }, uniquingKeysWith: { first, _ in first }),
                     snapshots: planOriginals,
-                    seenThrough: plan.request.expandThreads ? conversationBound(for: planOriginals) : nil))
+                    seenThrough: plan.request.expandThreads ? conversationBound(for: planOriginals) : nil,
+                    confirm: confirmed, targetIsGlacier: target?.isGlacier ?? false))
         }
         if let phrase = action.bulkUndoPhrase, !intentIds.isEmpty {
             // Offered at once, like a single action's: undoing what has not been sent yet simply
@@ -1198,7 +1206,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                 request: BulkActionRequest(
                     action: .expunge,
                     scope: BulkActionScope(folderId: folderId, filter: "all", snapshotAt: snapshot.snapshotAt),
-                    confirmMessageCount: snapshot.count
+                    // Only ever read server-side for a permanent delete of the glacier's own
+                    // contents -- ignored everywhere else, and this request always reaches here
+                    // from the folder's own already-confirmed "Empty Folder…" alert.
+                    confirmMessageCount: snapshot.count, confirm: true
                 )
             )
         } catch {

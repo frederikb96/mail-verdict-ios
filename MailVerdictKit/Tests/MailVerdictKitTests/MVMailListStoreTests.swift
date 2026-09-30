@@ -213,6 +213,25 @@ final class MVMailListStoreTests: XCTestCase {
         XCTAssertTrue(store.rowIds.contains(testUUID(3)))
     }
 
+    /// `confirm` is only ever read server-side for a permanent delete of a message already in the
+    /// glacier — sent `true` for every Delete Forever (it always reaches here from its own
+    /// already-confirmed alert, and the server ignores it for an ordinary message), `false` for
+    /// everything else.
+    func testDeleteForeverSendsConfirmTrueAndEveryOtherActionSendsFalse() async {
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage([testRow(1), testRow(2, seen: true)]) }
+        let store = makeStore(backend)
+        await store.start()
+
+        store.perform(.deleteForever, on: testUUID(1))
+        store.perform(.archive, on: testUUID(2))
+        await waitUntil { backend.messageActions.count == 2 }
+
+        let byId = Dictionary(backend.messageActions.map { ($0.0, $0.3) }, uniquingKeysWith: { first, _ in first })
+        XCTAssertEqual(byId[testUUID(1)], true, "Delete Forever must confirm")
+        XCTAssertEqual(byId[testUUID(2)], false, "an ordinary action must never confirm")
+    }
+
     /// Reading a row while only unread mail is listed must not snatch it away on the next
     /// refresh, which no longer returns it.
     func testARowReadInTheUnreadListStaysThroughARefresh() async {
@@ -452,6 +471,22 @@ final class MVMailListStoreTests: XCTestCase {
         }
     }
 
+    /// `actionContext(for:surface:)` is the one function that turns a real row into what
+    /// `MessageActionSet` decides from — the reader's own equivalent
+    /// (`ReaderSessionTests.testOptionsContextCarriesIsGlacierFromARealMessage`) is the other.
+    /// `MessageActionSet.actions(for:)` itself was already proven correct against a hand-built
+    /// context; this is what proves the context it actually receives from the list carries the
+    /// row's real `isGlacier` rather than silently defaulting to `false`, the bug this test would
+    /// have caught before it was found by hand.
+    func testActionContextCarriesIsGlacierFromARealRow() {
+        let backend = FakeMailListBackend()
+        let store = makeStore(backend)
+        let glaciered = testRow(1, isGlacier: true)
+        let ordinary = testRow(2, isGlacier: false)
+
+        XCTAssertTrue(store.actionContext(for: glaciered, surface: .swipeSheet).isInGlacier)
+        XCTAssertFalse(store.actionContext(for: ordinary, surface: .swipeSheet).isInGlacier)
+    }
 }
 
 /// Counts calls from inside a `@Sendable` handler.

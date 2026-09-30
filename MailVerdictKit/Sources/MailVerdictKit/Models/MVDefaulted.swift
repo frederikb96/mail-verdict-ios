@@ -82,3 +82,9 @@ public enum MVDefaultImapPort: MVDefaultValueSource {
 public enum MVDefaultAccountStateCreated: MVDefaultValueSource {
     public static let defaultValue = "created"
 }
+
+/// `FolderResponse.kind`/`FolderOrderItem.kind`'s own default — every real IMAP folder, the
+/// overwhelming majority of rows, against the one synthetic "glacier" row per account.
+public enum MVDefaultFolderKindImap: MVDefaultValueSource {
+    public static let defaultValue = "imap"
+}

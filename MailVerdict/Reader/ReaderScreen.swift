@@ -51,7 +51,25 @@ private struct ReaderContent: View {
     @Bindable var model: ReaderScreenModel
     let api: MVApiClient
 
+    // The body is built in stages, each its own property, so no single modifier chain grows past
+    // what the type checker resolves in reasonable time (the same shape `MailListScreen` already
+    // uses for the same reason).
     var body: some View {
+        withGlacierMoveAlert
+            .sheet(item: $model.eventDetails) { request in
+                EventDetailsSheet(objectId: request.id, calendars: request.calendars, api: api)
+            }
+            .sheet(isPresented: $model.optionsPreview) {
+                NavigationStack {
+                    List { ReaderOptionsMenuContent(model: model) }
+                        .navigationTitle("Options")
+                        .navigationBarTitleDisplayMode(.inline)
+                }
+            }
+            .quickLookPreview($model.quickLookURL)
+    }
+
+    private var base: some View {
         ReaderPager(model: model)
             .ignoresSafeArea()
             .navigationTitle(model.session.title ?? "")
@@ -59,6 +77,10 @@ private struct ReaderContent: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbar }
             .toolbar(.visible, for: .bottomBar)
+    }
+
+    private var withDialogs: some View {
+        base
             .confirmationDialog(
                 model.addressChoice?.address ?? "", isPresented: isPresented($model.addressChoice),
                 titleVisibility: .visible, presenting: model.addressChoice
@@ -79,11 +101,15 @@ private struct ReaderContent: View {
                     Button(calendar.displayName) { model.addInvitation(choice, to: calendar.id) }
                 }
             }
+    }
+
+    private var withDeleteForeverAndPhoneAlerts: some View {
+        withDialogs
             .alert("Delete this message forever?", isPresented: $model.confirmingDeleteForever) {
                 Button("Delete Forever", role: .destructive) { model.deleteForever() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This removes it from the mail server. It cannot be undone.")
+                Text(deleteForeverMessage)
             }
             .alert(
                 model.phoneHandoffIsMessage ? "Send a Message?" : "Make a Call?",
@@ -101,6 +127,15 @@ private struct ReaderContent: View {
                 Button("Open in App") { model.openLinkInApp() }
                 Button("Open in Browser") { model.openLinkInSystemBrowser() }
             }
+    }
+
+    private var deleteForeverMessage: String {
+        model.session.isCurrentInGlacier
+            ? GlacierDeleteWarning.message(count: 1) : "This removes it from the mail server. It cannot be undone."
+    }
+
+    private var withNoteAndMoveSheet: some View {
+        withDeleteForeverAndPhoneAlerts
             .alert("Note to the Organizer", isPresented: isPresented($model.noteMessageId)) {
                 TextField("Note", text: $model.noteText, axis: .vertical)
                 Button("Save") { model.saveNote() }
@@ -116,17 +151,35 @@ private struct ReaderContent: View {
                     model.move(to: target, accountId: request.accountId)
                 }
             }
-            .sheet(item: $model.eventDetails) { request in
-                EventDetailsSheet(objectId: request.id, calendars: request.calendars, api: api)
+    }
+
+    private var withGlacierMoveAlert: some View {
+        withGlacierRestoreAlert
+            .alert(
+                GlacierMoveWarning.title(count: 1), isPresented: isPresented($model.pendingGlacierMove)
+            ) {
+                Button("Move to Glacier", role: .destructive) { model.confirmGlacierMove() }
+                Button("Cancel", role: .cancel) { model.pendingGlacierMove = nil }
+            } message: {
+                Text(GlacierMoveWarning.message(count: 1))
             }
-            .sheet(isPresented: $model.optionsPreview) {
-                NavigationStack {
-                    List { ReaderOptionsMenuContent(model: model) }
-                        .navigationTitle("Options")
-                        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var withGlacierRestoreAlert: some View {
+        withNoteAndMoveSheet
+            .alert(
+                model.pendingGlacierRestore.map { GlacierRestoreWarning.title(action: $0.action, count: 1) } ?? "",
+                isPresented: isPresented($model.pendingGlacierRestore)
+            ) {
+                if let action = model.pendingGlacierRestore?.action {
+                    Button(GlacierRestoreWarning.confirmLabel(action), role: .destructive) {
+                        model.confirmGlacierRestore()
+                    }
                 }
+                Button("Cancel", role: .cancel) { model.pendingGlacierRestore = nil }
+            } message: {
+                Text(GlacierRestoreWarning.message(count: 1))
             }
-            .quickLookPreview($model.quickLookURL)
     }
 
     @ToolbarContentBuilder
@@ -156,7 +209,7 @@ private struct ReaderContent: View {
         }
         ToolbarItem(placement: .bottomBar) {
             Group {
-                if model.session.isCurrentInTrash {
+                if model.session.isCurrentInTrash || model.session.isCurrentInGlacier {
                     Button(role: .destructive) {
                         model.confirmingDeleteForever = true
                     } label: {

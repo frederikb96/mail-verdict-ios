@@ -228,6 +228,8 @@ struct MailboxesScreen: View {
 
     @ViewBuilder
     private func folderContextMenu(accountId: UUID, folder: MailboxesFolderRow) -> some View {
+        // Mark All as Read only ever needs the account-wide bulk-action path, which now resolves
+        // a glacier scope correctly server-side — it works against the glacier row already.
         Button("Mark All as Read") {
             if folder.badgeCount > 0 {
                 environment.toasts.show(
@@ -239,25 +241,34 @@ struct MailboxesScreen: View {
             }
             Task { try? await store.markAllAsRead(accountId: accountId, folderId: folder.id) }
         }
-        Button("Empty Folder…", role: .destructive) {
-            Task {
-                let snapshot: SelectionSnapshotResponse
-                do {
-                    snapshot = try await store.mintEmptySelection(accountId: accountId, folderId: folder.id)
-                } catch {
-                    showError(error)
-                    return
+        // Empty Folder… is not offered for the glacier: its confirmation count comes from
+        // `mint_selection`, which still resolves against the live `messages` table alone and
+        // always reads 0 for the glacier — the bulk request that followed would then be refused
+        // for not matching what actually resolves. Revisit once that endpoint gets its own
+        // glacier branch.
+        if !folder.isGlacier {
+            Button("Empty Folder…", role: .destructive) {
+                Task {
+                    let snapshot: SelectionSnapshotResponse
+                    do {
+                        snapshot = try await store.mintEmptySelection(accountId: accountId, folderId: folder.id)
+                    } catch {
+                        showError(error)
+                        return
+                    }
+                    pendingEmptyFolder = PendingEmptyFolder(
+                        accountId: accountId, folderId: folder.id, folderName: folder.displayName,
+                        messageCount: snapshot.count, snapshotAt: snapshot.snapshotAt
+                    )
                 }
-                pendingEmptyFolder = PendingEmptyFolder(
-                    accountId: accountId, folderId: folder.id, folderName: folder.displayName,
-                    messageCount: snapshot.count, snapshotAt: snapshot.snapshotAt
-                )
             }
         }
-        Button("New Folder Inside…") {
-            createFolderContext = FolderCreateContext(accountId: accountId, parentId: folder.id)
+        if !folder.isGlacier {
+            Button("New Folder Inside…") {
+                createFolderContext = FolderCreateContext(accountId: accountId, parentId: folder.id)
+            }
         }
-        if folder.specialUse == nil {
+        if folder.specialUse == nil && !folder.isGlacier {
             Button("Delete Folder…", role: .destructive) {
                 if let refusal = store.folderDestructionRefusal(accountId: accountId) {
                     showError(refusal)
@@ -371,7 +382,7 @@ private struct FolderRowLabel: View {
 
     var body: some View {
         HStack {
-            Image(systemName: MVSymbols.folderIcon(specialUse: folder.specialUse))
+            Image(systemName: MVSymbols.folderIcon(specialUse: folder.specialUse, kind: folder.kind))
             Text(folder.displayName)
             Spacer()
             if folder.badgeCount > 0 {

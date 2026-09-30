@@ -65,7 +65,14 @@ public enum MVIntentProjection {
         guard intent.leavesFolder else {
             return rows.map { ids.contains($0.id) ? applying(intent.action, to: $0, threaded: scope.threaded) : $0 }
         }
-        guard intent.action == .move, let target = intent.targetFolderId, scope.folderIds.contains(target) else {
+        // A move into the glacier copies the message under a new id rather than relocating the
+        // same row, unlike every other move — keeping or inserting it here, under the id it had
+        // before the move, would show a row nothing can act on until the next real fetch replaces
+        // it anyway. `intent.targetIsGlacier`'s own doc comment has the rest of the reasoning.
+        guard
+            intent.action == .move, !intent.targetIsGlacier, let target = intent.targetFolderId,
+            scope.folderIds.contains(target)
+        else {
             return rows.filter { !ids.contains($0.id) }
         }
         var result = rows.map { ids.contains($0.id) ? $0.with(folderId: target) : $0 }

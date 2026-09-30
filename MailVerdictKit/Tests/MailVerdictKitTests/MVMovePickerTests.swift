@@ -65,4 +65,86 @@ final class MVMovePickerTests: XCTestCase {
         XCTAssertEqual(folderDisplayName(imapName: "Receipts", displayName: nil, specialUse: nil), "Receipts")
         XCTAssertEqual(folderDisplayName(imapName: "INBOX", displayName: "Main", specialUse: "inbox"), "Main")
     }
+
+    /// The glacier target carries its own icon and its own flag, checked before every move to it
+    /// — the one Move-picker target that is not on the mail server at all.
+    func testTheGlacierTargetIsFlaggedAndCarriesItsOwnIcon() {
+        let glacier = MVMoveTarget(
+            folder: FolderOrderItem(
+                folderId: testUUID(9), imapName: "Glacier", displayName: nil, specialUse: nil, kind: "glacier"),
+            accountId: testAccount
+        )
+        XCTAssertTrue(glacier.isGlacier)
+        XCTAssertEqual(glacier.symbol, "snowflake")
+
+        let ordinary = folder(1, "INBOX", specialUse: "inbox")
+        XCTAssertFalse(ordinary.isGlacier)
+    }
+
+    /// A unified-view target is never flagged as the glacier, even when every account it spans
+    /// happens to have one enabled — it stands for several accounts' folders at once, not for one
+    /// account's glacier specifically.
+    func testAUnifiedTargetIsNeverFlaggedAsTheGlacier() {
+        let view = UnifiedFolderResponse(
+            id: testUUID(51), unifiedName: "Everything", emoji: nil, folders: [], unreadCount: 0, totalCount: 0)
+        XCTAssertFalse(MVMoveTarget(unifiedView: view).isGlacier)
+    }
+}
+
+final class GlacierMoveWarningTests: XCTestCase {
+
+    func testTitleAndMessageNameTheCount() {
+        XCTAssertEqual(GlacierMoveWarning.title(count: 1), "Move to Glacier?")
+        XCTAssertEqual(GlacierMoveWarning.title(count: 3), "Move 3 Messages to Glacier?")
+
+        XCTAssertTrue(GlacierMoveWarning.message(count: 1).hasPrefix("This message"))
+        XCTAssertTrue(GlacierMoveWarning.message(count: 3).hasPrefix("These 3 messages"))
+        XCTAssertTrue(GlacierMoveWarning.message(count: 1).contains("leave the mail server for good"))
+    }
+}
+
+final class GlacierDeleteWarningTests: XCTestCase {
+
+    func testMessageNamesTheOnlyCopyAndThatItIsPermanent() {
+        XCTAssertTrue(GlacierDeleteWarning.message(count: 1).contains("only copy"))
+        XCTAssertTrue(GlacierDeleteWarning.message(count: 1).contains("permanent"))
+    }
+
+    /// Emptying the glacier is the one bulk surface that can act on more than one message at
+    /// once — the wording still has to say "only copies", plural, and name the count.
+    func testBulkMessageNamesTheCount() {
+        let message = GlacierDeleteWarning.message(count: 5)
+        XCTAssertTrue(message.contains("only copies"))
+        XCTAssertTrue(message.contains("5"))
+        XCTAssertTrue(message.contains("permanent"))
+    }
+}
+
+final class GlacierRestoreWarningTests: XCTestCase {
+
+    func testTitleNamesTheActionAndTheCount() {
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .archive, count: 1), "Archive?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .archive, count: 3), "Archive 3 Messages?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .trash, count: 1), "Move to Trash?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .trash, count: 2), "Move 2 Messages to Trash?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .move, count: 1), "Move to This Folder?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .move, count: 4), "Move 4 Messages?")
+    }
+
+    func testConfirmLabelMatchesEachAction() {
+        XCTAssertEqual(GlacierRestoreWarning.confirmLabel(.archive), "Archive")
+        XCTAssertEqual(GlacierRestoreWarning.confirmLabel(.trash), "Move to Trash")
+        XCTAssertEqual(GlacierRestoreWarning.confirmLabel(.move), "Move")
+    }
+
+    /// The reverse of `GlacierMoveWarning`'s wording: this one says the message goes back onto
+    /// the server, singular and plural, and never mentions "leave" -- the two are never
+    /// confusable by a glance at the dialog alone.
+    func testMessageNamesTheCountAndTheDirection() {
+        XCTAssertTrue(GlacierRestoreWarning.message(count: 1).hasPrefix("This message"))
+        XCTAssertTrue(GlacierRestoreWarning.message(count: 1).contains("goes back onto the mail server"))
+        XCTAssertTrue(GlacierRestoreWarning.message(count: 3).hasPrefix("These 3 messages"))
+        XCTAssertTrue(GlacierRestoreWarning.message(count: 3).contains("go back onto the mail server"))
+        XCTAssertFalse(GlacierRestoreWarning.message(count: 1).contains("leave"))
+    }
 }

@@ -113,6 +113,74 @@ final class MVAccountFormModelTests: XCTestCase {
             XCTAssertEqual(error as? MVAccountFormError, .missingName)
         }
     }
+
+    // MARK: - Glacier: the same leave/clear/set shape as retention
+
+    func testCreateRequestNeverCarriesGlacierFields() async throws {
+        var input = MVAccountFormInput()
+        input.name = "Work"
+        input.imapHost = "imap.example.com"
+        input.imapUser = "user@example.com"
+        input.glacierEnabled = true
+        input.glacierAutoDays = "90"
+        // AccountCreateRequest has no glacier fields at all -- a glacier can only be configured
+        // once the account exists, the same gate the web form uses.
+        _ = try MVAccountFormModel.buildCreateRequest(input)
+    }
+
+    func testUpdateRequestSendsExplicitNullWhenTheAutomaticSweepIsCleared() async throws {
+        var input = MVAccountFormInput()
+        input.name = "Work"
+        input.glacierAutoDays = ""
+        let object = try encoded(MVAccountFormModel.buildUpdateRequest(input))
+        XCTAssertTrue(object.keys.contains("glacier_auto_days"))
+        XCTAssertTrue(object["glacier_auto_days"] is NSNull)
+    }
+
+    func testUpdateRequestCarriesTheGlacierSwitchAndDaysWhenSet() async throws {
+        var input = MVAccountFormInput()
+        input.name = "Work"
+        input.glacierEnabled = true
+        input.glacierAutoDays = "90"
+        let object = try encoded(MVAccountFormModel.buildUpdateRequest(input))
+        XCTAssertEqual(object["glacier_enabled"] as? Bool, true)
+        XCTAssertEqual(object["glacier_auto_days"] as? Int, 90)
+    }
+
+    /// Same floor as trash/junk retention: a value below 1 would sweep the account's whole
+    /// archive on the very next tick rather than meaning "off".
+    func testUpdateRequestRejectsAnAutomaticSweepOfZero() async throws {
+        var input = MVAccountFormInput()
+        input.name = "Work"
+        input.glacierAutoDays = "0"
+        XCTAssertThrowsError(try MVAccountFormModel.buildUpdateRequest(input)) { error in
+            XCTAssertEqual(error as? MVAccountFormError, .invalidGlacierAutoDays)
+        }
+    }
+
+    func testFormInputPrefillsFromAnAccountsGlacierFields() {
+        let account = AccountResponse(
+            id: UUID(), name: "Work", imapHost: "imap.example.com", imapPort: 993,
+            imapUser: "user@example.com", smtpHost: nil, smtpPort: nil, smtpUser: nil, stateError: nil,
+            capabilities: nil, createdAt: Date(), updatedAt: Date(), emoji: nil, folderOrder: nil,
+            trashRetentionDays: nil, junkRetentionDays: nil, glacierEnabled: true, glacierAutoDays: 30
+        )
+        let input = MVAccountFormInput(account: account)
+        XCTAssertTrue(input.glacierEnabled)
+        XCTAssertEqual(input.glacierAutoDays, "30")
+    }
+
+    func testFormInputPrefillsManualOnlyAsAnEmptyField() {
+        let account = AccountResponse(
+            id: UUID(), name: "Work", imapHost: "imap.example.com", imapPort: 993,
+            imapUser: "user@example.com", smtpHost: nil, smtpPort: nil, smtpUser: nil, stateError: nil,
+            capabilities: nil, createdAt: Date(), updatedAt: Date(), emoji: nil, folderOrder: nil,
+            trashRetentionDays: nil, junkRetentionDays: nil, glacierEnabled: true, glacierAutoDays: nil
+        )
+        let input = MVAccountFormInput(account: account)
+        XCTAssertTrue(input.glacierEnabled)
+        XCTAssertEqual(input.glacierAutoDays, "")
+    }
 }
 
 /// `UnifiedViewUpdate.emoji`'s own `??` is the same "leave it / clear it / set it" encoding the

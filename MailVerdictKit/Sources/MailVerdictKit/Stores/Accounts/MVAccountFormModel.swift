@@ -18,6 +18,13 @@ public struct MVAccountFormInput: Equatable, Sendable {
     /// one use for that state.
     public var trashRetentionDays: String = ""
     public var junkRetentionDays: String = ""
+    /// Only ever read on an edit — a glacier can't be configured while creating the account, the
+    /// same gate the web form uses, since it needs the account to exist before it can be assigned
+    /// a synthetic folder id.
+    public var glacierEnabled: Bool = false
+    /// Empty means "Off" (manual glaciering only, no automatic sweep) — same shape as the two
+    /// retention fields above.
+    public var glacierAutoDays: String = ""
 
     public init() {}
 
@@ -34,6 +41,8 @@ public struct MVAccountFormInput: Equatable, Sendable {
         spamEnabled = account.spamEnabled
         trashRetentionDays = account.trashRetentionDays.map(String.init) ?? ""
         junkRetentionDays = account.junkRetentionDays.map(String.init) ?? ""
+        glacierEnabled = account.glacierEnabled
+        glacierAutoDays = account.glacierAutoDays.map(String.init) ?? ""
     }
 }
 
@@ -45,6 +54,7 @@ public enum MVAccountFormError: Error, Equatable {
     case invalidSmtpPort
     case invalidTrashRetention
     case invalidJunkRetention
+    case invalidGlacierAutoDays
 }
 
 public enum MVAccountFormModel {
@@ -77,11 +87,13 @@ public enum MVAccountFormModel {
         let smtpPort = try optionalPort(input.smtpPort)
         let trashRetentionDays = try optionalRetention(input.trashRetentionDays, error: .invalidTrashRetention)
         let junkRetentionDays = try optionalRetention(input.junkRetentionDays, error: .invalidJunkRetention)
+        let glacierAutoDays = try optionalRetention(input.glacierAutoDays, error: .invalidGlacierAutoDays)
         return AccountUpdateRequest(
             name: name, imapPassword: emptyToNil(input.imapPassword), smtpHost: emptyToNil(input.smtpHost),
             smtpPort: smtpPort, smtpUser: emptyToNil(input.smtpUser),
             smtpPassword: emptyToNil(input.smtpPassword), spamEnabled: input.spamEnabled,
-            trashRetentionDays: .some(trashRetentionDays), junkRetentionDays: .some(junkRetentionDays)
+            trashRetentionDays: .some(trashRetentionDays), junkRetentionDays: .some(junkRetentionDays),
+            glacierEnabled: input.glacierEnabled, glacierAutoDays: .some(glacierAutoDays)
         )
     }
 

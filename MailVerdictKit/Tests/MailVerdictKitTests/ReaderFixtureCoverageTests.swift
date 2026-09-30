@@ -80,9 +80,12 @@
             let defaults = try XCTUnwrap(UserDefaults(suiteName: "reader-fixture-coverage-\(UUID())"))
             var sessions: [ReaderSession] = []
 
-            for (settled, rowId) in ReaderFixtures.rowIds.enumerated() {
+            for (settled, rowId) in (ReaderFixtures.rowIds + ReaderFixtures.glacierRowIds).enumerated() {
+                let context =
+                    rowId == ReaderFixtures.glacierRowId
+                    ? ReaderFixtures.glacierContext() : ReaderFixtures.context(opening: rowId)
                 let session = ReaderSession(
-                    context: ReaderFixtures.context(opening: rowId), api: client,
+                    context: context, api: client,
                     ledger: makeTestLedger(transport: client), placeResolver: MVMessagePlaceResolver(apiClient: client),
                     theme: .light,
                     canvasStore: MVCanvasPreferenceStore(defaults: defaults),

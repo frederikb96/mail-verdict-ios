@@ -17,6 +17,7 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     private var _thread = ThreadResponse(messages: [])
     private var _threadFetches = 0
     private var _bulkIds: [[UUID]] = []
+    private var _confirms: [Bool] = []
 
     private func locked<T>(_ body: () -> T) -> T {
         lock.lock()
@@ -37,6 +38,8 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
     var threadFetches: Int { locked { _threadFetches } }
     /// The ids each bulk delivery named.
     var bulkIds: [[UUID]] { locked { _bulkIds } }
+    /// `confirm` as each single-message delivery carried it.
+    var confirms: [Bool] { locked { _confirms } }
     var handler: Handler {
         get { locked { _handler } }
         set { locked { _handler = newValue } }
@@ -61,9 +64,12 @@ final class RecordingIntentTransport: MVIntentTransport, @unchecked Sendable {
 
     func deliverMessageAction(
         messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
-        timeout: TimeInterval
+        confirm: Bool, timeout: TimeInterval
     ) async throws -> MessageActionResponse {
-        locked { _expected.append(expectedFolderId.map { [messageId: $0] } ?? [:]) }
+        locked {
+            _expected.append(expectedFolderId.map { [messageId: $0] } ?? [:])
+            _confirms.append(confirm)
+        }
         try await record(Self.label(action.rawValue, messageId), key: idempotencyKey, timeout: timeout)
         let (applied, filed) = locked { (_applied, _filedFolder) }
         return MessageActionResponse(
@@ -154,6 +160,49 @@ final class MVIntentLedgerTests: XCTestCase {
 
     private func refusal(_ status: Int) -> MVError {
         MVError.detail("refused \(status)", statusCode: status)
+    }
+
+    /// A record an older build wrote has no `confirm` key at all -- it must decode as `false`
+    /// rather than throwing, the same way every other field added after this struct shipped
+    /// already does.
+    func testAnIntentRecordWithNoStoredConfirmKeyDecodesAsFalse() throws {
+        let intent = MVMailIntent(
+            request: MVIntentRequest(accountId: testAccount, action: .expunge, messageIds: [testUUID(1)]),
+            id: UUID(), undoes: nil, createdAt: Date())
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder.mvDefault.encode(intent)) as? [String: Any])
+        XCTAssertNotNil(object["confirm"], "the encoder itself must still write the key")
+        object.removeValue(forKey: "confirm")
+        let strippedData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder.mvDefault.decode(MVMailIntent.self, from: strippedData)
+        XCTAssertFalse(decoded.confirm)
+    }
+
+    /// `confirm: true` on the request survives to the intent the ledger actually delivers.
+    func testConfirmOnTheRequestCarriesThroughToTheIntent() {
+        var req = request(.expunge, 1)
+        req.confirm = true
+        let intent = MVMailIntent(request: req, id: UUID(), undoes: nil, createdAt: Date())
+        XCTAssertTrue(intent.confirm)
+    }
+
+    /// A `.bulk`-delivery intent's own `confirm` reaches the actual `BulkActionRequest` sent to
+    /// the server -- the single-message path already did this (the assertion above and
+    /// `RecordingIntentTransport.confirms`), but the bulk path silently dropped it at the
+    /// construction site: a bulk permanent delete of a glacier selection needs this to be
+    /// refused nowhere but the confirmation UI in front of it.
+    func testABulkDeliveryCarriesConfirmThroughToTheServer() async {
+        let transport = RecordingIntentTransport()
+        let ledger = makeTestLedger(transport: transport)
+        let req = MVIntentRequest(
+            accountId: testAccount, action: .expunge, messageIds: [testUUID(1), testUUID(2)],
+            delivery: .bulk(expandThreads: false), confirm: true)
+
+        ledger.enqueue(req)
+        await waitUntil { ledger.intents.first?.state == .done }
+
+        XCTAssertEqual(transport.bulkRequests.last?.confirm, true)
     }
 
     // MARK: - Delivery order
@@ -438,6 +487,52 @@ final class MVIntentLedgerTests: XCTestCase {
         XCTAssertEqual(transport.calls, ["flag 1", "unflag 1"])
     }
 
+    /// A move into the glacier is a one-way door -- reversing it server-side would be an
+    /// unconfirmed restore, exactly what `GlacierRestoreWarning` exists to gate. Undo must
+    /// leave it alone: no reversal request, and the original intent simply stays as it landed.
+    func testUndoingADoneMoveIntoTheGlacierBuildsNoReversal() async {
+        let transport = RecordingIntentTransport()
+        let ledger = makeTestLedger(transport: transport)
+        let glacierFolder = testUUID(900_003)
+        let req = MVIntentRequest(
+            accountId: testAccount, action: .move, targetFolderId: glacierFolder, messageIds: [testUUID(1)],
+            originFolderIds: [testUUID(1): testFolder], snapshots: [testRow(1)], targetIsGlacier: true)
+
+        let id = ledger.enqueue(req)
+        await waitUntil { ledger.intents.first?.state == .done }
+        ledger.undo([id])
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(transport.calls, ["move 1"], "a glacier move must never be reversed")
+        XCTAssertEqual(ledger.intents.count, 1, "the original intent stays -- nothing was appended in its place")
+    }
+
+    /// The same guard for Discard (`MVMailListStore.discardAttentionActions`), which reaches
+    /// `undo` through the exact same path once an intent has been attempted at least once --
+    /// the shape a held-for-confirmation glacier move takes after backing off from a transient
+    /// failure, the case `testARetryHoldsBackTheSameMessageButNotOthers` above also builds.
+    func testDiscardingABackedOffMoveIntoTheGlacierBuildsNoReversal() async {
+        let clock = TestIntentClock()
+        let transport = RecordingIntentTransport()
+        let failures = CallCounter()
+        transport.handler = { call in
+            if call == "move 1", failures.next() == 1 { throw MVError.detail("slow down", statusCode: 429) }
+        }
+        let ledger = makeTestLedger(transport: transport, clock: clock)
+        let glacierFolder = testUUID(900_003)
+        let req = MVIntentRequest(
+            accountId: testAccount, action: .move, targetFolderId: glacierFolder, messageIds: [testUUID(1)],
+            originFolderIds: [testUUID(1): testFolder], snapshots: [testRow(1)], targetIsGlacier: true)
+
+        let id = ledger.enqueue(req)
+        await waitUntil { ledger.intents.first?.state == .pending && ledger.intents.first?.attempts == 1 }
+        ledger.discard([id])
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(transport.calls, ["move 1"], "a glacier move must never be reversed, discarded or not")
+        XCTAssertTrue(ledger.intents.isEmpty, "the attempted intent is simply gone, with no reversal in its place")
+    }
+
     // MARK: - Retirement
 
     /// Data read after an intent settled already carries it, so the intent stops applying there
@@ -531,12 +626,14 @@ final class MVIntentProjectionTests: XCTestCase {
 
     private func intent(
         _ action: MVBulkAction, _ ids: [Int], target: UUID? = nil, state: MVMailIntent.Phase = .pending,
-        settled: Int? = nil, delivery: MVMailIntent.Delivery = .message, snapshots: [MessageSummary] = []
+        settled: Int? = nil, delivery: MVMailIntent.Delivery = .message, snapshots: [MessageSummary] = [],
+        targetIsGlacier: Bool = false
     ) -> MVMailIntent {
         var intent = MVMailIntent(
             request: MVIntentRequest(
                 accountId: testAccount, action: action, targetFolderId: target, messageIds: ids.map(testUUID),
-                delivery: delivery, snapshots: snapshots), id: UUID(), undoes: nil, createdAt: testReceivedBase)
+                delivery: delivery, snapshots: snapshots, targetIsGlacier: targetIsGlacier),
+            id: UUID(), undoes: nil, createdAt: testReceivedBase)
         intent.state = state
         intent.settledSequence = settled
         return intent
@@ -592,6 +689,42 @@ final class MVIntentProjectionTests: XCTestCase {
         let rows = MVIntentProjection.rows(
             testRows(1...2), applying: [intent(.move, [1], target: archiveFolder)], baseSequence: 0, scope: scope)
         XCTAssertEqual(rows.map(\.id), [testUUID(2)])
+    }
+
+    /// A move into the glacier copies the message under a new id -- unlike every other move,
+    /// which keeps the row's id and can safely be put back into a list that is viewing the
+    /// target folder. Even when the current scope names the glacier folder as its own (a list
+    /// open on the glacier itself, elsewhere in the app, while this move lands), the row must
+    /// never be kept or speculatively inserted under its old id: nothing could act on it there
+    /// until the next real fetch replaces it with the server's own, correctly-identified row.
+    func testAMoveIntoTheGlacierNeverKeepsOrInsertsTheOldId() {
+        let glacierFolder = testUUID(801)
+        let glacierScope = MVProjectionScope(folderIds: [glacierFolder], threaded: false)
+
+        // Kept case: the row is already in the projected list (its own folder id updated).
+        let keepCandidate = intent(.move, [1], target: glacierFolder, targetIsGlacier: true)
+        let kept = MVIntentProjection.rows(
+            testRows(1...2), applying: [keepCandidate], baseSequence: 0, scope: glacierScope)
+        XCTAssertEqual(kept.map(\.id), [testUUID(2)], "the glaciered row must not be kept under its old id")
+
+        // Insert case: the row arrives via its snapshot, the same shape an undo-restore uses.
+        let insertCandidate = intent(
+            .move, [9], target: glacierFolder, snapshots: [testRow(9)], targetIsGlacier: true)
+        let inserted = MVIntentProjection.rows(
+            testRows(1...2), applying: [insertCandidate], baseSequence: 0, scope: glacierScope)
+        XCTAssertEqual(
+            inserted.map(\.id), [testUUID(1), testUUID(2)],
+            "the glaciered row must not be speculatively inserted under its old id")
+    }
+
+    /// The control for the test above: an ordinary (non-glacier) move into a folder the current
+    /// scope names is still kept and put back in place exactly as before -- the id genuinely
+    /// stays the same for every target but the glacier.
+    func testAnOrdinaryMoveIntoTheListStillKeepsTheRow() {
+        let target = testFolder
+        let keepCandidate = intent(.move, [1], target: target)
+        let kept = MVIntentProjection.rows(testRows(1...2), applying: [keepCandidate], baseSequence: 0, scope: scope)
+        XCTAssertEqual(kept.map(\.id), [testUUID(1), testUUID(2)])
     }
 
     /// Done at sequence 5: a read that began at 4 predates it and still needs it; one that began

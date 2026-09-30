@@ -143,4 +143,18 @@ final class MVBulkRequestBuilderTests: XCTestCase {
         XCTAssertFalse(MVBulkRequestBuilder.needsConfirmation(all, action: .markRead))
         XCTAssertFalse(MVBulkRequestBuilder.needsConfirmation(explicit, action: .trash))
     }
+
+    /// `confirm` reaches the built request -- the one flag the server reads for a bulk permanent
+    /// delete of a selection already in the glacier. Defaulted `false` everywhere else, so every
+    /// existing caller above is unaffected by this parameter's addition.
+    func testConfirmReachesTheBuiltRequestWhenPassed() {
+        let scope = MVSelectionScope(listScope: .folder(accountId: testAccount, folderId: testFolder), threaded: false)
+        let selection = MVSelection.explicit([MVSelectableRow(testRow(1))], in: scope)
+
+        let unconfirmed = MVBulkRequestBuilder.plans(for: selection, action: .expunge).plans
+        let confirmed = MVBulkRequestBuilder.plans(for: selection, action: .expunge, confirm: true).plans
+
+        XCTAssertEqual(unconfirmed.first?.request.confirm, false)
+        XCTAssertEqual(confirmed.first?.request.confirm, true)
+    }
 }

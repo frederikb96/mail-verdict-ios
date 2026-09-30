@@ -475,7 +475,7 @@ public final class MVIntentLedger {
                 let response = try await transport.deliverMessageAction(
                     messageId: messageId, action: action, targetFolderId: intent.targetFolderId,
                     expectedFolderId: intent.expectedFolderIds?[messageId], idempotencyKey: intent.id,
-                    timeout: timeout)
+                    confirm: intent.confirm, timeout: timeout)
                 guard response.success else { return .refused(response.message ?? "The server did not apply it") }
                 guard response.applied else { return .notApplied }
                 return .delivered(
@@ -483,7 +483,7 @@ public final class MVIntentLedger {
             case .bulk(let expandThreads):
                 let request = BulkActionRequest(
                     action: intent.action, targetFolderId: intent.targetFolderId, ids: intent.messageIds,
-                    expandThreads: expandThreads, idempotencyKey: intent.id,
+                    expandThreads: expandThreads, confirm: intent.confirm, idempotencyKey: intent.id,
                     expectedFolderIds: intent.expectedFolderIds,
                     expandThreadsThrough: expandThreads ? intent.seenThrough : nil)
                 return Self.delivered(
@@ -777,7 +777,12 @@ public final class MVIntentLedger {
     /// Moves back to each message's own origin folder — one intent per folder, expecting each
     /// message where the server said it filed it (or, not having said, where the action files
     /// messages: `guardReversal`), so one filed elsewhere since stays there — or read and star
-    /// state flipped back. Expunge and a conversation read have nothing to reverse.
+    /// state flipped back. Expunge and a conversation read have nothing to reverse. Neither does a
+    /// move into the glacier: the plain `.move` this would otherwise build, back to the message's
+    /// origin folder, is indistinguishable server-side from an ordinary restore -- exactly the
+    /// unconfirmed restore `GlacierRestoreWarning` exists to prevent, and Undo/Discard reach this
+    /// same path with no confirmation UI in front of them at all. A glacier move stays
+    /// undo-proof, matching every surface that starts one.
     private static func reversal(of intent: MVMailIntent) -> [MVIntentRequest] {
         if let inverse = intent.action.inverse {
             if case .conversationRead = intent.delivery { return [] }
@@ -787,7 +792,7 @@ public final class MVIntentLedger {
                     delivery: intent.delivery)
             ]
         }
-        guard intent.action != .expunge else { return [] }
+        guard intent.action != .expunge, !intent.targetIsGlacier else { return [] }
         let moved =
             intent.movedSources.isEmpty
             ? intent.messageIds.compactMap { id in intent.originFolderIds[id].map { (id, $0) } }

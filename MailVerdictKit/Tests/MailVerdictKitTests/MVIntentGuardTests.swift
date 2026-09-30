@@ -201,7 +201,7 @@ final class SkippingBulkTransport: MVIntentTransport, @unchecked Sendable {
 
     func deliverMessageAction(
         messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
-        timeout: TimeInterval
+        confirm: Bool, timeout: TimeInterval
     ) async throws -> MessageActionResponse {
         MessageActionResponse(success: true, action: action.rawValue, messageId: messageId, message: nil)
     }

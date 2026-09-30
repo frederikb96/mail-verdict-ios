@@ -33,8 +33,9 @@
                 try decode([FolderResponse].self, "/api/accounts/\(account)/folders").contains {
                     $0.id == MVMailListFixtures.folderId
                 })
-            XCTAssertFalse(
-                try decode(FolderOrderResponse.self, "/api/accounts/\(account)/folder-order").folders.isEmpty)
+            let order = try decode(FolderOrderResponse.self, "/api/accounts/\(account)/folder-order").folders
+            XCTAssertFalse(order.isEmpty)
+            XCTAssertTrue(order.contains { $0.folderId == MVMailListFixtures.glacierId && $0.kind == "glacier" })
             _ = try decode(SelectionSnapshotResponse.self, "/api/accounts/\(account)/messages/selection")
             _ = try decode([OutboxResponse].self, "/api/outbox")
             _ = try decode([UnifiedFolderResponse].self, "/api/unified/folders")

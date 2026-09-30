@@ -6,11 +6,12 @@ final class MessageActionSetTests: XCTestCase {
     private func context(
         surface: MVMessageActionSurface, source: MVMessageActionSource = .list, isRead: Bool = false,
         isStarred: Bool = false, isInTrash: Bool = false, isInJunk: Bool = false,
+        isInGlacier: Bool = false,
         verdict: MVMessageVerdictContext? = nil, hasBlockedImages: Bool = false, canvasIsDark: Bool = false
     ) -> MVMessageContext {
         MVMessageContext(
             surface: surface, source: source, isRead: isRead, isStarred: isStarred,
-            isInTrash: isInTrash, isInJunk: isInJunk, verdict: verdict,
+            isInTrash: isInTrash, isInJunk: isInJunk, isInGlacier: isInGlacier, verdict: verdict,
             hasBlockedImages: hasBlockedImages, canvasIsDark: canvasIsDark
         )
     }
@@ -49,6 +50,32 @@ final class MessageActionSetTests: XCTestCase {
         XCTAssertEqual(
             actions(readStarredJunk, in: .state), [.markUnread, .unstar, .moveTo, .notJunk, .archive]
         )
+    }
+
+    /// Spam/not-spam rulings against a glaciered message are not supported server-side yet --
+    /// everything else in the state group stays. Checked on every surface the Options set is
+    /// shown on: the swipe sheet, the context menu and the reader's own Options menu.
+    func testJunkToggleIsAbsentOnAGlacieredMessageOnEverySurface() {
+        let swipeSheet = MessageActionSet.actions(for: context(surface: .swipeSheet, isInGlacier: true))
+        XCTAssertEqual(actions(swipeSheet, in: .state), [.markRead, .star, .moveTo, .archive])
+
+        let contextMenu = MessageActionSet.actions(for: context(surface: .contextMenu, isInGlacier: true))
+        XCTAssertEqual(actions(contextMenu, in: .state), [.markRead, .star, .moveTo, .archive])
+
+        // The reader's Options menu never repeats Archive (it lives in the bottom bar there), so
+        // the glaciered state group is one item shorter than the other two surfaces'.
+        let readerOptions = MessageActionSet.actions(for: context(surface: .readerOptionsMenu, isInGlacier: true))
+        XCTAssertEqual(actions(readerOptions, in: .state), [.markRead, .star, .moveTo])
+    }
+
+    /// Reply, reply-all and forward need only the outbox, never the original message on the mail
+    /// server -- so they stay offered for a glaciered message exactly as for a live one, on every
+    /// surface.
+    func testRespondGroupIsUnchangedOnAGlacieredMessageOnEverySurface() {
+        for surface in [MVMessageActionSurface.swipeSheet, .contextMenu, .readerOptionsMenu] {
+            let groups = MessageActionSet.actions(for: context(surface: surface, isInGlacier: true))
+            XCTAssertEqual(actions(groups, in: .respond), [.reply, .replyAll, .forward], "\(surface)")
+        }
     }
 
     /// Archive lives in the swipe sheet and context menu only — the reader has it in its own
@@ -112,9 +139,20 @@ final class MessageActionSetTests: XCTestCase {
         }
     }
 
+    /// A glaciered message is the only copy that exists, the same reason Trash turns Delete into
+    /// Delete Forever — checked on every surface the destructive group appears on.
+    func testDestructiveGroupIsDeleteForeverOnAGlacieredMessageForSwipeAndContextMenu() {
+        for surface in [MVMessageActionSurface.swipeSheet, .contextMenu] {
+            XCTAssertEqual(
+                actions(MessageActionSet.actions(for: context(surface: surface, isInGlacier: true)), in: .destructive),
+                [.deleteForever], "\(surface)"
+            )
+        }
+    }
+
     /// The reader's Options menu never duplicates its own bottom-bar Delete — except for Delete
-    /// Forever while in Trash.
-    func testReaderOptionsMenuHasNoDestructiveGroupExceptDeleteForeverInTrash() {
+    /// Forever while in Trash or the glacier.
+    func testReaderOptionsMenuHasNoDestructiveGroupExceptDeleteForeverInTrashOrTheGlacier() {
         XCTAssertNil(
             actions(
                 MessageActionSet.actions(for: context(surface: .readerOptionsMenu, isInTrash: false)), in: .destructive)
@@ -122,6 +160,12 @@ final class MessageActionSetTests: XCTestCase {
         XCTAssertEqual(
             actions(
                 MessageActionSet.actions(for: context(surface: .readerOptionsMenu, isInTrash: true)), in: .destructive),
+            [.deleteForever]
+        )
+        XCTAssertEqual(
+            actions(
+                MessageActionSet.actions(for: context(surface: .readerOptionsMenu, isInGlacier: true)), in: .destructive
+            ),
             [.deleteForever]
         )
     }

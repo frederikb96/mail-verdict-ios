@@ -20,9 +20,12 @@ public struct MVMessageState: Sendable, Equatable {
 
 /// The requests an intent is delivered with. `MVApiClient` is the one real implementation.
 public protocol MVIntentTransport: Sendable {
+    /// `confirm` is only ever read server-side for a permanent delete of a message already in the
+    /// glacier -- the only copy that exists. Ignored everywhere else, so every other caller sends
+    /// `false`.
     func deliverMessageAction(
         messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
-        timeout: TimeInterval
+        confirm: Bool, timeout: TimeInterval
     ) async throws -> MessageActionResponse
     func deliverBulkAction(
         accountId: UUID, request: BulkActionRequest, timeout: TimeInterval
@@ -37,11 +40,11 @@ public protocol MVIntentTransport: Sendable {
 extension MVApiClient: MVIntentTransport {
     public func deliverMessageAction(
         messageId: UUID, action: MVMessageAction, targetFolderId: UUID?, expectedFolderId: UUID?, idempotencyKey: UUID,
-        timeout: TimeInterval
+        confirm: Bool, timeout: TimeInterval
     ) async throws -> MessageActionResponse {
         try await performMessageAction(
             messageId: messageId, action: action, targetFolderId: targetFolderId, idempotencyKey: idempotencyKey,
-            expectedFolderId: expectedFolderId, timeout: timeout)
+            expectedFolderId: expectedFolderId, confirm: confirm, timeout: timeout)
     }
 
     public func deliverBulkAction(

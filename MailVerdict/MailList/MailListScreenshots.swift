@@ -27,9 +27,39 @@
                 MailListScreenshotStage.shared.optionsRowId = row.id
                 _ = await waitFor { MailListScreenshotStage.shared.isOptionsSheetVisible }
             },
+            MVScreenshotEntry(id: "list-move-picker", destination: .route(route)) { _, _ in
+                guard let store = await loadedStore(), let row = store.rows.first else { return }
+                MailListScreenshotStage.shared.movePickerRowId = row.id
+                _ = await waitFor { MailListScreenshotStage.shared.isMovePickerVisible }
+                // `MovePickerSheet` loads its own target list asynchronously from a fixture
+                // response after it appears — `isMovePickerVisible` only means the sheet is on
+                // screen, not that its list (the glacier row among the targets) has painted yet.
+                try? await Task.sleep(for: .milliseconds(300))
+            },
+            // The glacier's own folder as the open list — its toolbar carries Select and Mark
+            // All as Read (both now resolve against it server-side) but no Empty Folder…, since
+            // that one's confirmation count still resolves against the live `messages` table
+            // alone and would always read 0.
+            MVScreenshotEntry(id: "list-glacier", destination: .route(glacierRoute)) { _, _ in
+                _ = await loadedStore()
+            },
+            // Select mode within the glacier's own list — the Options menu (mark read/unread,
+            // star/unstar, move) and the bottom bar's Archive/Delete all now resolve a glacier
+            // selection server-side; only the junk toggle stays out, spam rulings on glaciered
+            // mail still being unsupported.
+            MVScreenshotEntry(id: "list-glacier-select-mode", destination: .route(glacierRoute)) { _, _ in
+                guard let store = await loadedStore() else { return }
+                store.setSelecting(true)
+                for row in store.rows.prefix(2) { store.toggleSelection(of: row.id) }
+                _ = await waitFor {
+                    let state = MailListDebugState.shared.current
+                    return state?.isSelecting == true && (state?.selectionCount ?? 0) == 2
+                }
+            },
         ]
 
         private static let route = Route.list(MVMailListFixtures.scope, aroundMessageId: nil)
+        private static let glacierRoute = Route.list(MVMailListFixtures.glacierScope, aroundMessageId: nil)
 
         /// The fixture list's store once its rows are on screen — the controller has applied
         /// them, not merely the store loaded them.
@@ -62,6 +92,11 @@
         @ObservationIgnored weak var store: MVMailListStore?
         var optionsRowId: UUID?
         var isOptionsSheetVisible = false
+        /// Which row's Move picker to open with no touch available, and whether it has appeared —
+        /// the fixture folder order carries a glacier target, so this is what the sweep uses to
+        /// show it.
+        var movePickerRowId: UUID?
+        var isMovePickerVisible = false
     }
 
 #endif

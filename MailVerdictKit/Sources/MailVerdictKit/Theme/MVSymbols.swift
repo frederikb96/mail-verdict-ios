@@ -57,8 +57,11 @@ public enum MVSymbols {
 
     /// Folder special-use icons, keyed by PostIMAP's own `special_use` string
     /// (`inbox`/`drafts`/`sent`/`archive`/`junk`/`trash`), with `folder` as the fallback for an
-    /// ordinary or unrecognized one.
-    public static func folderIcon(specialUse: String?) -> String {
+    /// ordinary or unrecognized one. `kind == "glacier"` overrides `specialUse` entirely — the
+    /// one synthetic per-account row always carries `specialUse == nil` and needs its own icon
+    /// regardless.
+    public static func folderIcon(specialUse: String?, kind: String = "imap") -> String {
+        if kind == "glacier" { return "snowflake" }
         switch specialUse {
         case "inbox": return "tray"
         case "drafts": return "doc"
