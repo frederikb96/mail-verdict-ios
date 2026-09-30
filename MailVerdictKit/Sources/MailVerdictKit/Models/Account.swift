@@ -12,7 +12,8 @@ public struct AccountResponse: ContractModel, Codable, Sendable, Equatable, Iden
             spamEnabled = "spam_enabled", ordersEnabled = "orders_enabled",
             folderOrder = "folder_order", trashRetentionDays = "trash_retention_days",
             junkRetentionDays = "junk_retention_days", glacierEnabled = "glacier_enabled",
-            glacierFolderId = "glacier_folder_id", glacierAutoDays = "glacier_auto_days"
+            glacierFolderId = "glacier_folder_id", glacierAutoDays = "glacier_auto_days",
+            glacierSweepLastRefusal = "glacier_sweep_last_refusal"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -39,6 +40,11 @@ public struct AccountResponse: ContractModel, Codable, Sendable, Equatable, Iden
     @MVDefaulted<MVDefaultFalse> public var glacierEnabled: Bool
     public let glacierFolderId: UUID?
     public let glacierAutoDays: Int?
+    /// Why the automatic sweep's last tick considering this account skipped it, or nil once a
+    /// tick actually proceeds. Some reasons (auto-sweep not configured) are expected; others
+    /// (an unacknowledged sync failure) never self-clear on their own until whatever caused them
+    /// is fixed.
+    public let glacierSweepLastRefusal: String?
 
     public init(
         id: UUID, name: String, imapHost: String, imapPort: Int, imapUser: String,
@@ -47,7 +53,7 @@ public struct AccountResponse: ContractModel, Codable, Sendable, Equatable, Iden
         createdAt: Date, updatedAt: Date, emoji: String?, spamEnabled: Bool = false,
         ordersEnabled: Bool = false, folderOrder: [String]?, trashRetentionDays: Int?,
         junkRetentionDays: Int?, glacierEnabled: Bool = false, glacierFolderId: UUID? = nil,
-        glacierAutoDays: Int? = nil
+        glacierAutoDays: Int? = nil, glacierSweepLastRefusal: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -72,6 +78,7 @@ public struct AccountResponse: ContractModel, Codable, Sendable, Equatable, Iden
         self.glacierEnabled = glacierEnabled
         self.glacierFolderId = glacierFolderId
         self.glacierAutoDays = glacierAutoDays
+        self.glacierSweepLastRefusal = glacierSweepLastRefusal
     }
 }
 

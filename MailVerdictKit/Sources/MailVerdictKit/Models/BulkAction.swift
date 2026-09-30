@@ -104,7 +104,8 @@ public struct BulkActionSource: ContractModel, Codable, Sendable, Equatable {
 public struct BulkActionResponse: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "BulkActionResponse"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case success, action, affectedCount = "affected_count", errors, sources,
+        case success, action, affectedCount = "affected_count",
+            duplicateCount = "duplicate_count", errors, sources,
             targetFolderId = "target_folder_id", skippedIds = "skipped_ids"
     }
     public typealias CodingKeys = ContractKeys
@@ -112,6 +113,10 @@ public struct BulkActionResponse: ContractModel, Codable, Sendable, Equatable {
     public let success: Bool
     public let action: String
     public let affectedCount: Int
+    /// Of affectedCount, how many were byte-identical to a message already in the glacier --
+    /// the server's duplicate copy was removed rather than a new one copied. Always 0 outside a
+    /// bulk move into the glacier.
+    @MVDefaulted<MVDefaultZero> public var duplicateCount: Int
     @MVDefaulted<MVDefaultEmptyArray<String>> public var errors: [String]
     @MVDefaulted<MVDefaultEmptyArray<BulkActionSource>> public var sources: [BulkActionSource]
     /// The folder a moving action filed the messages into — where an undo expects to find them.
@@ -120,12 +125,14 @@ public struct BulkActionResponse: ContractModel, Codable, Sendable, Equatable {
     @MVDefaulted<MVDefaultEmptyArray<UUID>> public var skippedIds: [UUID]
 
     public init(
-        success: Bool, action: String, affectedCount: Int, errors: [String] = [],
-        sources: [BulkActionSource] = [], targetFolderId: UUID? = nil, skippedIds: [UUID] = []
+        success: Bool, action: String, affectedCount: Int, duplicateCount: Int = 0,
+        errors: [String] = [], sources: [BulkActionSource] = [], targetFolderId: UUID? = nil,
+        skippedIds: [UUID] = []
     ) {
         self.success = success
         self.action = action
         self.affectedCount = affectedCount
+        self.duplicateCount = duplicateCount
         self.errors = errors
         self.sources = sources
         self.targetFolderId = targetFolderId
