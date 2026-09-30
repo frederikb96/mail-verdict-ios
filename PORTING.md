@@ -346,3 +346,10 @@ the extra ones are invisible on screen. Confirm: use the app normally for a few 
 `GET /api/events` and `GET /api/accounts/<id>/folders` in the server's own log over that period —
 single figures, never hundreds inside one second — and check that the mail list keeps loading while
 an action is waiting for the network.
+
+### Tapping a link offers opening in the app or in the system browser, in one tap — web anchor: n/a (native confirmation dialog)
+Needs a device because: `confirmationDialog` layout and the resulting handoff can only be judged on
+device. Confirm: tap a link in a message and see one dialog with "Open in App" and "Open in
+Browser" (no browser named), no second tap needed for either; "Open in App" opens the in-app
+browser view as before, "Open in Browser" leaves the app for whatever browser is set as the
+system default (not necessarily Safari).
