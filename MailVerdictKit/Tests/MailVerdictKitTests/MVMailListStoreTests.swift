@@ -471,6 +471,22 @@ final class MVMailListStoreTests: XCTestCase {
         }
     }
 
+    /// `actionContext(for:surface:)` is the one function that turns a real row into what
+    /// `MessageActionSet` decides from — the reader's own equivalent
+    /// (`ReaderSessionTests.testOptionsContextCarriesIsGlacierFromARealMessage`) is the other.
+    /// `MessageActionSet.actions(for:)` itself was already proven correct against a hand-built
+    /// context; this is what proves the context it actually receives from the list carries the
+    /// row's real `isGlacier` rather than silently defaulting to `false`, the bug this test would
+    /// have caught before it was found by hand.
+    func testActionContextCarriesIsGlacierFromARealRow() {
+        let backend = FakeMailListBackend()
+        let store = makeStore(backend)
+        let glaciered = testRow(1, isGlacier: true)
+        let ordinary = testRow(2, isGlacier: false)
+
+        XCTAssertTrue(store.actionContext(for: glaciered, surface: .swipeSheet).isInGlacier)
+        XCTAssertFalse(store.actionContext(for: ordinary, surface: .swipeSheet).isInGlacier)
+    }
 }
 
 /// Counts calls from inside a `@Sendable` handler.

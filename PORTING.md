@@ -345,40 +345,59 @@ view or a WKWebView. Every piece is built and unit-tested at the package level: 
 shows the glacier row with its own snowflake icon and offers neither "New Folder Inside…" nor
 "Delete Folder…" on it; the Move picker (swipe sheet, context menu, select-mode bulk move, and the
 reader's own "Move to…") offers the glacier as a target and confirms with the count and "leaves
-the mail server for good" before sending the move; permanently deleting a glaciered message
-(swipe, context menu, and the reader's own bottom bar and Options, all already reading Delete
-Forever instead of Delete the same way a Trash message does) confirms with "this is the only
-copy" and sends the `confirm` flag the server requires for it — proved end to end against a
-recorded request body, not only against the action-set logic; account settings has the switch and
-the automatic-sweep-days field, editable only once the account exists, with the same leave/clear/
-set shape trash and junk retention already use; Account Detail's own summary line reads "On,
-sweeps after N days" / "On, manual only" / "Off"; the sync toggle's optimistic update no longer
-drops the glacier fields (a real bug, covered by a package test that was watched failing first);
-opening the glacier's own folder shows its mail list and lets a glaciered message open in the
-reader, where it carries a provenance banner naming where it used to live, its body and attachment
-still render, and its toolbar has no Select, Mark All as Read or Empty Folder… — the server has no
-bulk-action path for the glacier at all (both its scope and its explicit-id resolution query the
-live `messages` table only), so those controls are removed rather than shipped silently broken;
-package tests proved this destructive-group and toolbar behaviour watched failing first, and a
-whole-corpus fixture-coverage test proves every fixture route the glacier reader page calls is
-actually served. Registered for the screenshot sweep: `list-move-picker` (the picker with the
-glacier row visible), `list-glacier` (the glacier's own list, with its narrowed toolbar),
-`account-edit-glacier` (the edit sheet with the switch and field visible), `reader-glacier` (a
-glaciered message with an attachment, provenance banner, and Delete Forever in the bottom bar); the
-existing `mailboxes` and `account-detail` entries also show a glacier-enabled account/folder now.
-Confirm: enable a glacier on an account (through the web UI or the app's own edit sheet), open
-Mailboxes for that account and see the Glacier row with its snowflake icon and no rename/delete in
-its menu; open the move picker on a message, choose Glacier, and confirm the alert names the count
-and says the mail leaves the server for good, both for a single message and for a multi-select
-bulk move, and both from the list and from the reader's own Options "Move to…"; move a message
-into the glacier, then open it and permanently delete it, confirming the "only copy" alert appears
-and the message is actually gone afterward; open the glacier's own folder and confirm there is no
-Select button and no Mark All as Read/Empty Folder… in its "…" menu; open a glaciered message and
-confirm the provenance banner, its attachment, and that the bottom bar reads Delete Forever; open
+the mail server for good" before sending the move — and a message just moved in is never shown
+under its old id afterward, since the server hands that id to a genuinely new row rather than
+relocating the old one and neither the single-message nor the bulk response carries the new id
+back, so the list simply drops the row from view instead of guessing at an id it does not have,
+the same as moving to any folder the current view is not showing; permanently deleting a glaciered
+message (swipe, context menu, and the reader's own bottom bar and Options, all already reading
+Delete Forever instead of Delete the same way a Trash message does) confirms with "this is the
+only copy" and sends the `confirm` flag the server requires for it — proved end to end against a
+recorded request body, not only against the action-set logic; the same is now true of Select mode
+within the glacier's own list — mark read/unread, star/unstar, move, archive and delete all
+resolve a glacier selection server-side, by id and by the glacier as scope, so Select is offered
+there again, with only the junk toggle held back (spam rulings on glaciered mail are still
+refused) — Mark All as Read is offered too, since it only ever needs a timestamp from the
+selection-count endpoint, never the count itself; Empty Folder… stays withheld specifically for
+the glacier, because that endpoint's own count still resolves against the live mail table alone
+and would always read 0, which the bulk request's own count check would then refuse against
+whatever actually exists — revisit once that endpoint gets a glacier branch too; account settings
+has the switch, the automatic-sweep-days field (now captioned with what a number means and that
+blank means moving only by hand), editable only once the account exists, with the same
+leave/clear/set shape trash and junk retention already use; Account Detail's own summary line
+reads "On, sweeps after N days" / "On, manual only" / "Off"; the sync toggle's optimistic update
+no longer drops the glacier fields (a real bug, covered by a package test that was watched failing
+first); opening the glacier's own folder shows its mail list and lets a glaciered message open in
+the reader, where it carries a provenance banner (with a corrected snowflake icon — an earlier
+version merged lucide's twelve subpaths into one path string, which silently broke every subpath's
+positioning past the first) naming where it used to live, its body and attachment still render.
+Every fix in this and the previous three rounds was watched failing first; a whole-corpus
+fixture-coverage test proves every fixture route the glacier reader page calls is actually served,
+and the vendored API contract is synced to the server's current commit. Registered for the
+screenshot sweep: `list-move-picker` (the picker with the glacier row visible), `list-glacier` (the
+glacier's own list, Select and Mark All as Read offered, Empty Folder… withheld),
+`list-glacier-select-mode` (a selection ticked within it, the bulk toolbar and Options menu
+visible), `account-edit-glacier` (the edit sheet, scrolled to the switch, the days field and its
+new caption), `reader-glacier` (a glaciered message with an attachment, provenance banner, and
+Delete Forever in the bottom bar); the existing `mailboxes` and `account-detail` entries also show
+a glacier-enabled account/folder now. Confirm: enable a glacier on an account (through the web UI
+or the app's own edit sheet), open Mailboxes for that account and see the Glacier row with its
+snowflake icon and no rename/delete in its menu; open the move picker on a message, choose
+Glacier, and confirm the alert names the count and says the mail leaves the server for good, both
+for a single message and for a multi-select bulk move, and both from the list and from the
+reader's own Options "Move to…", and confirm the moved message is no longer shown anywhere under
+its old id; move a message into the glacier, then open it and permanently delete it, confirming
+the "only copy" alert appears and the message is actually gone afterward; open the glacier's own
+folder, confirm Select and Mark All as Read work (tick a few rows, use the bulk toolbar and
+Options menu — archive, delete, move, mark read/unread, star/unstar), confirm the junk toggle is
+absent from the Options menu there, and confirm there is still no Empty Folder… in its "…" menu;
+open a glaciered message and confirm the provenance banner (snowflake icon rendering correctly,
+not as a scattered fragment), its attachment, and that the bottom bar reads Delete Forever; open
 Search, tap the Folders chip for that account and confirm "Glacier" is offered as a scope (needs
 no app code — the server already returns it, so this is a smoke check of the wiring, not new
-logic); open account settings and see the switch and days field, matching what the web form shows,
-and confirm saving it round-trips.
+logic); open account settings, scroll to (or confirm the screenshot sweep already scrolled to) the
+Glacier section, and see the switch, the days field and its caption, matching what the web form
+shows, and confirm saving it round-trips.
 
 ### One live stream for the whole app, not one per rebuild — server anchor: GET /api/events
 Needs a device because: only a real session — moving between screens, leaving and returning to the

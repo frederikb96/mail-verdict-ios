@@ -124,7 +124,7 @@ private struct ReaderContent: View {
 
     private var deleteForeverMessage: String {
         model.session.isCurrentInGlacier
-            ? GlacierDeleteWarning.message : "This removes it from the mail server. It cannot be undone."
+            ? GlacierDeleteWarning.message(count: 1) : "This removes it from the mail server. It cannot be undone."
     }
 
     private var withNoteAndMoveSheet: some View {

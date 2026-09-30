@@ -963,7 +963,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                 // Only ever read server-side for a permanent delete of a message already in the
                 // glacier -- ignored everywhere else, and this action always reaches here from
                 // its own already-confirmed "Delete Forever" alert.
-                confirm: action == .deleteForever),
+                confirm: action == .deleteForever, targetIsGlacier: target?.isGlacier ?? false),
             undoToast: bulk.undoToastTitle)
     }
 
@@ -1114,7 +1114,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     originFolderIds: Dictionary(
                         planOriginals.map { ($0.id, $0.folderId) }, uniquingKeysWith: { first, _ in first }),
                     snapshots: planOriginals,
-                    seenThrough: plan.request.expandThreads ? conversationBound(for: planOriginals) : nil))
+                    seenThrough: plan.request.expandThreads ? conversationBound(for: planOriginals) : nil,
+                    targetIsGlacier: target?.isGlacier ?? false))
         }
         if let phrase = action.bulkUndoPhrase, !intentIds.isEmpty {
             // Offered at once, like a single action's: undoing what has not been sent yet simply
@@ -1202,7 +1203,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                 request: BulkActionRequest(
                     action: .expunge,
                     scope: BulkActionScope(folderId: folderId, filter: "all", snapshotAt: snapshot.snapshotAt),
-                    confirmMessageCount: snapshot.count
+                    // Only ever read server-side for a permanent delete of the glacier's own
+                    // contents -- ignored everywhere else, and this request always reaches here
+                    // from the folder's own already-confirmed "Empty Folder…" alert.
+                    confirmMessageCount: snapshot.count, confirm: true
                 )
             )
         } catch {

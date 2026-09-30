@@ -36,10 +36,25 @@
                 // screen, not that its list (the glacier row among the targets) has painted yet.
                 try? await Task.sleep(for: .milliseconds(300))
             },
-            // The glacier's own folder as the open list — its toolbar carries no Select, Mark
-            // All as Read or Empty Folder…, none of which the server supports for it.
+            // The glacier's own folder as the open list — its toolbar carries Select and Mark
+            // All as Read (both now resolve against it server-side) but no Empty Folder…, since
+            // that one's confirmation count still resolves against the live `messages` table
+            // alone and would always read 0.
             MVScreenshotEntry(id: "list-glacier", destination: .route(glacierRoute)) { _, _ in
                 _ = await loadedStore()
+            },
+            // Select mode within the glacier's own list — the Options menu (mark read/unread,
+            // star/unstar, move) and the bottom bar's Archive/Delete all now resolve a glacier
+            // selection server-side; only the junk toggle stays out, spam rulings on glaciered
+            // mail still being unsupported.
+            MVScreenshotEntry(id: "list-glacier-select-mode", destination: .route(glacierRoute)) { _, _ in
+                guard let store = await loadedStore() else { return }
+                store.setSelecting(true)
+                for row in store.rows.prefix(2) { store.toggleSelection(of: row.id) }
+                _ = await waitFor {
+                    let state = MailListDebugState.shared.current
+                    return state?.isSelecting == true && (state?.selectionCount ?? 0) == 2
+                }
             },
         ]
 

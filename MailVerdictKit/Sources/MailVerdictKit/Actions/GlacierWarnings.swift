@@ -20,9 +20,13 @@ public enum GlacierMoveWarning {
 /// The confirmation shown before permanently deleting a message already in the glacier — it is
 /// the only copy that exists, unlike an ordinary Trash message, which the mail server also still
 /// holds until this same "Delete Forever" removes it there too. Shared by every surface Delete
-/// Forever already reaches (swipe sheet, context menu, reader bottom bar and Options), so the
-/// wording is one string rather than several.
+/// Forever already reaches (swipe sheet, context menu, reader bottom bar and Options) and by
+/// Empty Folder… on the glacier row itself, so the wording is one string rather than several.
 public enum GlacierDeleteWarning {
-    public static let message =
-        "This is the only copy of this message. Deleting it is permanent and cannot be undone."
+    public static func message(count: Int) -> String {
+        let subject =
+            count == 1
+            ? "This is the only copy of this message" : "These are the only copies of these \(count) messages"
+        return "\(subject). Deleting \(count == 1 ? "it" : "them") is permanent and cannot be undone."
+    }
 }

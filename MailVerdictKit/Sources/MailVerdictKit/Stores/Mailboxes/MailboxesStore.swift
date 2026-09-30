@@ -274,7 +274,13 @@ public final class MailboxesStore {
         let scope = BulkActionScope(folderId: folderId, filter: "all", snapshotAt: snapshotAt)
         let response = try await apiClient.bulkAction(
             accountId: accountId,
-            request: BulkActionRequest(action: .expunge, scope: scope, confirmMessageCount: confirmMessageCount)
+            request: BulkActionRequest(
+                action: .expunge, scope: scope,
+                // Only ever read server-side for a permanent delete of the glacier's own
+                // contents -- ignored everywhere else, and this request always reaches here from
+                // the folder's own already-confirmed "Empty Folder…" alert.
+                confirmMessageCount: confirmMessageCount, confirm: true
+            )
         )
         await refreshAccountSection(accountId: accountId)
         return response

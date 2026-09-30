@@ -112,6 +112,12 @@ struct AccountFormView: View {
                         "Off — move mail into the glacier by hand only", text: $input.glacierAutoDays
                     )
                     .keyboardType(.numberPad)
+                    Text(
+                        "Automatically move archived mail into the glacier once it is this many days old. "
+                            + "Left blank, mail only moves into the glacier by hand."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 } header: {
                     Text("Glacier")
                 } footer: {

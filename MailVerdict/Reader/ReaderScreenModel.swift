@@ -190,7 +190,7 @@ final class ReaderScreenModel {
 
     private func performMove(target: MVMoveTarget, accountId: UUID) {
         guard let folderId = target.folderId(forAccount: accountId) else { return }
-        apply(session.remove(with: .move, targetFolderId: folderId))
+        apply(session.remove(with: .move, targetFolderId: folderId, targetIsGlacier: target.isGlacier))
     }
 
     // MARK: Page controls

@@ -106,7 +106,16 @@ final class GlacierMoveWarningTests: XCTestCase {
 final class GlacierDeleteWarningTests: XCTestCase {
 
     func testMessageNamesTheOnlyCopyAndThatItIsPermanent() {
-        XCTAssertTrue(GlacierDeleteWarning.message.contains("only copy"))
-        XCTAssertTrue(GlacierDeleteWarning.message.contains("permanent"))
+        XCTAssertTrue(GlacierDeleteWarning.message(count: 1).contains("only copy"))
+        XCTAssertTrue(GlacierDeleteWarning.message(count: 1).contains("permanent"))
+    }
+
+    /// Emptying the glacier is the one bulk surface that can act on more than one message at
+    /// once — the wording still has to say "only copies", plural, and name the count.
+    func testBulkMessageNamesTheCount() {
+        let message = GlacierDeleteWarning.message(count: 5)
+        XCTAssertTrue(message.contains("only copies"))
+        XCTAssertTrue(message.contains("5"))
+        XCTAssertTrue(message.contains("permanent"))
     }
 }

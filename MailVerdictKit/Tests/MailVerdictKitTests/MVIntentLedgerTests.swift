@@ -562,12 +562,14 @@ final class MVIntentProjectionTests: XCTestCase {
 
     private func intent(
         _ action: MVBulkAction, _ ids: [Int], target: UUID? = nil, state: MVMailIntent.Phase = .pending,
-        settled: Int? = nil, delivery: MVMailIntent.Delivery = .message, snapshots: [MessageSummary] = []
+        settled: Int? = nil, delivery: MVMailIntent.Delivery = .message, snapshots: [MessageSummary] = [],
+        targetIsGlacier: Bool = false
     ) -> MVMailIntent {
         var intent = MVMailIntent(
             request: MVIntentRequest(
                 accountId: testAccount, action: action, targetFolderId: target, messageIds: ids.map(testUUID),
-                delivery: delivery, snapshots: snapshots), id: UUID(), undoes: nil, createdAt: testReceivedBase)
+                delivery: delivery, snapshots: snapshots, targetIsGlacier: targetIsGlacier),
+            id: UUID(), undoes: nil, createdAt: testReceivedBase)
         intent.state = state
         intent.settledSequence = settled
         return intent
@@ -623,6 +625,42 @@ final class MVIntentProjectionTests: XCTestCase {
         let rows = MVIntentProjection.rows(
             testRows(1...2), applying: [intent(.move, [1], target: archiveFolder)], baseSequence: 0, scope: scope)
         XCTAssertEqual(rows.map(\.id), [testUUID(2)])
+    }
+
+    /// A move into the glacier copies the message under a new id -- unlike every other move,
+    /// which keeps the row's id and can safely be put back into a list that is viewing the
+    /// target folder. Even when the current scope names the glacier folder as its own (a list
+    /// open on the glacier itself, elsewhere in the app, while this move lands), the row must
+    /// never be kept or speculatively inserted under its old id: nothing could act on it there
+    /// until the next real fetch replaces it with the server's own, correctly-identified row.
+    func testAMoveIntoTheGlacierNeverKeepsOrInsertsTheOldId() {
+        let glacierFolder = testUUID(801)
+        let glacierScope = MVProjectionScope(folderIds: [glacierFolder], threaded: false)
+
+        // Kept case: the row is already in the projected list (its own folder id updated).
+        let keepCandidate = intent(.move, [1], target: glacierFolder, targetIsGlacier: true)
+        let kept = MVIntentProjection.rows(
+            testRows(1...2), applying: [keepCandidate], baseSequence: 0, scope: glacierScope)
+        XCTAssertEqual(kept.map(\.id), [testUUID(2)], "the glaciered row must not be kept under its old id")
+
+        // Insert case: the row arrives via its snapshot, the same shape an undo-restore uses.
+        let insertCandidate = intent(
+            .move, [9], target: glacierFolder, snapshots: [testRow(9)], targetIsGlacier: true)
+        let inserted = MVIntentProjection.rows(
+            testRows(1...2), applying: [insertCandidate], baseSequence: 0, scope: glacierScope)
+        XCTAssertEqual(
+            inserted.map(\.id), [testUUID(1), testUUID(2)],
+            "the glaciered row must not be speculatively inserted under its old id")
+    }
+
+    /// The control for the test above: an ordinary (non-glacier) move into a folder the current
+    /// scope names is still kept and put back in place exactly as before -- the id genuinely
+    /// stays the same for every target but the glacier.
+    func testAnOrdinaryMoveIntoTheListStillKeepsTheRow() {
+        let target = testFolder
+        let keepCandidate = intent(.move, [1], target: target)
+        let kept = MVIntentProjection.rows(testRows(1...2), applying: [keepCandidate], baseSequence: 0, scope: scope)
+        XCTAssertEqual(kept.map(\.id), [testUUID(1), testUUID(2)])
     }
 
     /// Done at sequence 5: a read that began at 4 predates it and still needs it; one that began

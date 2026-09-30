@@ -397,4 +397,23 @@ final class ReaderSessionTests: XCTestCase {
         let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(decoded["confirm"] as? Bool, false)
     }
+
+    /// `optionsContext()` is the one function that turns the reader's own current message into
+    /// what `MessageActionSet` decides from — `MVMailListStoreTests
+    /// .testActionContextCarriesIsGlacierFromARealRow` is the list's equivalent. Proves the
+    /// context the reader's Options menu actually receives carries the message's real
+    /// `isGlacier` rather than silently defaulting to `false`, the bug this test would have
+    /// caught before it was found by hand.
+    func testOptionsContextCarriesIsGlacierFromARealMessage() async throws {
+        let (session, _) = try makeSession(rows: [a], opening: a, seen: true)
+        ReaderRouteStub.route(
+            "GET", "/api/messages/\(a)/thread",
+            json: ThreadResponse(messages: [message(a, seen: true, isGlacier: true)]))
+        session.didSettle(on: a)
+        let loaded = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(loaded)
+
+        let context = try XCTUnwrap(session.optionsContext())
+        XCTAssertTrue(context.isInGlacier)
+    }
 }

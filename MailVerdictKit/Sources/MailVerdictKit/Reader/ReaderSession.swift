@@ -502,7 +502,9 @@ public final class ReaderSession {
     /// one message out of its folder; the row, and the rest of the pager, stay exactly where they
     /// are, the same as the web, where the conversation row survives and only the message leaves
     /// it. Undo, and a refused request, put the message back wherever it showed.
-    public func remove(with action: MVMessageAction, targetFolderId: UUID? = nil) -> ReaderActionOutcome {
+    public func remove(
+        with action: MVMessageAction, targetFolderId: UUID? = nil, targetIsGlacier: Bool = false
+    ) -> ReaderActionOutcome {
         guard let message = currentPrimary, let bulk = MVBulkAction(rawValue: action.rawValue) else { return .stay }
         let rowId = currentRowId
         ledger.enqueue(
@@ -512,7 +514,7 @@ public final class ReaderSession {
                 // Only ever read server-side for a permanent delete of a message already in the
                 // glacier -- ignored everywhere else, and this action always reaches here from
                 // its own already-confirmed "Delete Forever" alert.
-                confirm: action == .expunge),
+                confirm: action == .expunge, targetIsGlacier: targetIsGlacier),
             undoToast: MailActionLabels.undoToast(for: action))
         guard message.id == rowId else { return .stay }
         switch paging.remove(rowId) {

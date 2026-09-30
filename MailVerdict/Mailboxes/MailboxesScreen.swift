@@ -228,23 +228,25 @@ struct MailboxesScreen: View {
 
     @ViewBuilder
     private func folderContextMenu(accountId: UUID, folder: MailboxesFolderRow) -> some View {
-        // The glacier folder has no bulk-action support on the server: both actions below
-        // resolve their targets against the live `messages` table only, so a glacier folder id
-        // never matches anything there and the request comes back reporting an empty, silent
-        // success — offering either here would be a control that lies. A glaciered message still
-        // works one at a time through the single-message action path.
-        if !folder.isGlacier {
-            Button("Mark All as Read") {
-                if folder.badgeCount > 0 {
-                    environment.toasts.show(
-                        MVToast(
-                            variant: .info,
-                            message: "Marking \(folder.badgeCount) messages — this can take a while"
-                        )
+        // Mark All as Read only ever needs the account-wide bulk-action path, which now resolves
+        // a glacier scope correctly server-side — it works against the glacier row already.
+        Button("Mark All as Read") {
+            if folder.badgeCount > 0 {
+                environment.toasts.show(
+                    MVToast(
+                        variant: .info,
+                        message: "Marking \(folder.badgeCount) messages — this can take a while"
                     )
-                }
-                Task { try? await store.markAllAsRead(accountId: accountId, folderId: folder.id) }
+                )
             }
+            Task { try? await store.markAllAsRead(accountId: accountId, folderId: folder.id) }
+        }
+        // Empty Folder… is not offered for the glacier: its confirmation count comes from
+        // `mint_selection`, which still resolves against the live `messages` table alone and
+        // always reads 0 for the glacier — the bulk request that followed would then be refused
+        // for not matching what actually resolves. Revisit once that endpoint gets its own
+        // glacier branch.
+        if !folder.isGlacier {
             Button("Empty Folder…", role: .destructive) {
                 Task {
                     let snapshot: SelectionSnapshotResponse

@@ -80,7 +80,7 @@ struct MailListScreen: View {
                 Button("Delete Forever", role: .destructive) { store.perform(.deleteForever, on: row.id) }
                 Button("Cancel", role: .cancel) {}
             } message: { (row: MessageSummary) in
-                Text(row.isGlacier ? GlacierDeleteWarning.message : Self.deleteForeverMessage)
+                Text(row.isGlacier ? GlacierDeleteWarning.message(count: 1) : Self.deleteForeverMessage)
             }
     }
 
@@ -246,11 +246,9 @@ struct MailListScreen: View {
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar) { selectionOptionsMenu }
         } else {
-            if !isGlacierFolder {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Select") { store.setSelecting(true) }
-                        .accessibilityIdentifier("maillist-select")
-                }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Select") { store.setSelecting(true) }
+                    .accessibilityIdentifier("maillist-select")
             }
             ToolbarItem(placement: .topBarTrailing) { moreMenu }
             ToolbarItem(placement: .bottomBar) { unreadFilterButton }
@@ -278,9 +276,11 @@ struct MailListScreen: View {
                     Label(MVMessageUIAction.moveTo.title, systemImage: MVMessageUIAction.moveTo.symbol)
                 }
                 .accessibilityIdentifier("maillist-bulk-move")
+                // Spam/not-spam rulings against a glaciered selection are not supported
+                // server-side yet -- everything else in this menu already works against it.
                 if isJunkFolder {
                     bulkButton(.notJunk, .notSpam)
-                } else {
+                } else if !isGlacierFolder {
                     bulkButton(.moveToJunk, .spam)
                 }
             }
@@ -304,13 +304,9 @@ struct MailListScreen: View {
         return store.context.folders[folderId]?.specialUse == "junk"
     }
 
-    /// The account's own glacier folder has no bulk-action support on the server at all — both
-    /// its scope and its explicit-id resolution query the live `messages` table only, so a
-    /// glacier folder id or a glaciered message id never resolves to anything there, and the
-    /// request comes back reporting an empty, silent success. Every bulk surface (select mode,
-    /// Mark All as Read, Empty Folder…) is hidden here rather than shipping a control that lies;
-    /// a glaciered message still works one at a time through the single-message action path,
-    /// which the glacier's own row-level actions already use.
+    /// The account's own glacier folder — bulk actions now resolve a glacier id or scope
+    /// correctly server-side, but spam/not-spam rulings against it are still refused, the same
+    /// gate the single-message action set already has.
     private var isGlacierFolder: Bool {
         guard case .folder(_, let folderId) = scope else { return false }
         return store.context.folders[folderId]?.kind == "glacier"
@@ -323,16 +319,25 @@ struct MailListScreen: View {
             ) {
                 Label("Group by Conversation", systemImage: MVSymbols.groupByConversation)
             }
-            if isFolderScope && !isGlacierFolder {
+            if isFolderScope {
+                // Mark All as Read only ever needs `mint_selection`'s timestamp, never its
+                // count -- which still resolves against the live `messages` table alone and
+                // always reads 0 for the glacier -- so it works against it already.
                 Button {
                     Task { await store.markAllAsRead() }
                 } label: {
                     Label("Mark All as Read", systemImage: MVSymbols.markRead)
                 }
-                Button(role: .destructive) {
-                    Task { emptyFolderSnapshot = await store.prepareEmptyFolder() }
-                } label: {
-                    Label("Empty Folder…", systemImage: MVSymbols.delete)
+                // Empty Folder… is not offered for the glacier: its confirmation count comes
+                // from that same still-broken `mint_selection`, so it would always show 0 and
+                // the bulk request that followed would be refused for not matching what
+                // actually resolves. Revisit once that endpoint gets its own glacier branch.
+                if !isGlacierFolder {
+                    Button(role: .destructive) {
+                        Task { emptyFolderSnapshot = await store.prepareEmptyFolder() }
+                    } label: {
+                        Label("Empty Folder…", systemImage: MVSymbols.delete)
+                    }
                 }
             }
         } label: {
