@@ -244,6 +244,18 @@
             ],
             "title": "Glacier Folder Id"
           },
+          "glacier_sweep_last_refusal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the automatic sweep's last tick considering this account skipped it, or null once a tick actually proceeds. Some reasons (auto-sweep not configured) are expected; others (an unacknowledged sync failure) never self-clear on their own until whatever caused them is fixed.",
+            "title": "Glacier Sweep Last Refusal"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -1006,6 +1018,12 @@
           },
           "affected_count": {
             "title": "Affected Count",
+            "type": "integer"
+          },
+          "duplicate_count": {
+            "default": 0,
+            "description": "Of affected_count, how many were byte-identical to a message already in the glacier -- the server's duplicate copy was removed rather than a new one copied. Always 0 outside a bulk move into the glacier.",
+            "title": "Duplicate Count",
             "type": "integer"
           },
           "errors": {
@@ -12909,17 +12927,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/OrderDetail"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "title": "Response Detach Mail Orders  Order Id  Mails  Mail Key  Detach Post"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
