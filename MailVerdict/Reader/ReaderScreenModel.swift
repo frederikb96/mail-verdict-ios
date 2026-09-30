@@ -29,6 +29,17 @@ final class ReaderScreenModel {
         let accountId: UUID
     }
 
+    /// Archive or an explicit Move that would restore the open glaciered message to the mail
+    /// server, waiting on `GlacierRestoreWarning`'s confirmation. Trash never reaches this: the
+    /// bottom bar already turns it into Delete Forever for a glaciered message, which carries its
+    /// own confirmation.
+    struct PendingGlacierRestore: Identifiable {
+        let id = UUID()
+        let action: GlacierRestoreWarning.Action
+        let moveTarget: MVMoveTarget?
+        let moveAccountId: UUID?
+    }
+
     struct EventDetailsRequest: Identifiable {
         let id: UUID
         let calendars: [MVCalendar]
@@ -46,6 +57,7 @@ final class ReaderScreenModel {
     var addressChoice: AddressChoice?
     var moveRequest: MoveRequest?
     var pendingGlacierMove: PendingGlacierMove?
+    var pendingGlacierRestore: PendingGlacierRestore?
     var eventDetails: EventDetailsRequest?
     var calendarChoice: CalendarChoice?
     var noteMessageId: UUID?
@@ -105,9 +117,33 @@ final class ReaderScreenModel {
         pager?.turn(direction)
     }
 
-    func archive() { apply(session.remove(with: .archive)) }
+    func archive() {
+        // Archive on a glaciered message restores it to the mail server -- confirmed first,
+        // the same way entering the glacier is, rather than performed straight away. Trash
+        // needs no equivalent gate: `isCurrentInTrash || isCurrentInGlacier` already turns it
+        // into Delete Forever before this is ever reached.
+        if session.isCurrentInGlacier {
+            pendingGlacierRestore = PendingGlacierRestore(action: .archive, moveTarget: nil, moveAccountId: nil)
+            return
+        }
+        apply(session.remove(with: .archive))
+    }
     func delete() { apply(session.remove(with: .trash)) }
     func deleteForever() { apply(session.remove(with: .expunge)) }
+
+    func confirmGlacierRestore() {
+        guard let pending = pendingGlacierRestore else { return }
+        pendingGlacierRestore = nil
+        switch pending.action {
+        case .archive:
+            apply(session.remove(with: .archive))
+        case .move:
+            guard let target = pending.moveTarget, let accountId = pending.moveAccountId else { return }
+            performMove(target: target, accountId: accountId)
+        case .trash:
+            break
+        }
+    }
 
     private func apply(_ outcome: ReaderActionOutcome) {
         switch outcome {
@@ -177,6 +213,13 @@ final class ReaderScreenModel {
         // every other target.
         if target.isGlacier {
             pendingGlacierMove = PendingGlacierMove(target: target, accountId: accountId)
+            return
+        }
+        // The reverse direction: moving the open glaciered message to an ordinary folder
+        // restores it to the mail server, the same consequence Archive has.
+        if session.isCurrentInGlacier {
+            pendingGlacierRestore = PendingGlacierRestore(
+                action: .move, moveTarget: target, moveAccountId: accountId)
             return
         }
         performMove(target: target, accountId: accountId)

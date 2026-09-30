@@ -147,7 +147,7 @@ private struct ReaderContent: View {
     }
 
     private var withGlacierMoveAlert: some View {
-        withNoteAndMoveSheet
+        withGlacierRestoreAlert
             .alert(
                 GlacierMoveWarning.title(count: 1), isPresented: isPresented($model.pendingGlacierMove)
             ) {
@@ -155,6 +155,23 @@ private struct ReaderContent: View {
                 Button("Cancel", role: .cancel) { model.pendingGlacierMove = nil }
             } message: {
                 Text(GlacierMoveWarning.message(count: 1))
+            }
+    }
+
+    private var withGlacierRestoreAlert: some View {
+        withNoteAndMoveSheet
+            .alert(
+                model.pendingGlacierRestore.map { GlacierRestoreWarning.title(action: $0.action, count: 1) } ?? "",
+                isPresented: isPresented($model.pendingGlacierRestore)
+            ) {
+                if let action = model.pendingGlacierRestore?.action {
+                    Button(GlacierRestoreWarning.confirmLabel(action), role: .destructive) {
+                        model.confirmGlacierRestore()
+                    }
+                }
+                Button("Cancel", role: .cancel) { model.pendingGlacierRestore = nil }
+            } message: {
+                Text(GlacierRestoreWarning.message(count: 1))
             }
     }
 

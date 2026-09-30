@@ -1065,12 +1065,15 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     /// Runs a bulk action on the selection. An explicit selection is applied optimistically and
     /// offered back with Undo where the action has one; a predicate is resolved server-side over
     /// however many messages match, so the list is re-read from the newest edge afterwards.
-    /// Confirmation (`MVBulkRequestBuilder.needsConfirmation`) is the caller's, before this.
-    public func performBulk(_ action: MVBulkAction, target: MVMoveTarget? = nil) async {
+    /// Confirmation (`MVBulkRequestBuilder.needsConfirmation`, or the glacier's own restore/expunge
+    /// warnings) is the caller's, before this -- `confirmed` only ever reaches the server for a
+    /// permanent delete of a selection already in the glacier, the same shape a single message's
+    /// own `confirm` has.
+    public func performBulk(_ action: MVBulkAction, target: MVMoveTarget? = nil, confirmed: Bool = false) async {
         let current = effectiveSelection
         guard !current.isEmpty else { return }
         let built = MVBulkRequestBuilder.plans(
-            for: current, action: action, targetFolderId: { target?.folderId(forAccount: $0) }
+            for: current, action: action, targetFolderId: { target?.folderId(forAccount: $0) }, confirm: confirmed
         )
         let count = current.count
         if current.predicate != nil {
@@ -1115,7 +1118,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                         planOriginals.map { ($0.id, $0.folderId) }, uniquingKeysWith: { first, _ in first }),
                     snapshots: planOriginals,
                     seenThrough: plan.request.expandThreads ? conversationBound(for: planOriginals) : nil,
-                    targetIsGlacier: target?.isGlacier ?? false))
+                    confirm: confirmed, targetIsGlacier: target?.isGlacier ?? false))
         }
         if let phrase = action.bulkUndoPhrase, !intentIds.isEmpty {
             // Offered at once, like a single action's: undoing what has not been sent yet simply

@@ -25,7 +25,8 @@ public enum MVBulkRequestBuilder {
     /// has a different id in each account. An account it cannot resolve for a `move` is left
     /// out and reported in `skippedAccountIds` rather than sent without a target.
     public static func plans(
-        for selection: MVSelection, action: MVBulkAction, targetFolderId: (UUID) -> UUID? = { _ in nil }
+        for selection: MVSelection, action: MVBulkAction, targetFolderId: (UUID) -> UUID? = { _ in nil },
+        confirm: Bool = false
     ) -> (plans: [MVBulkRequestPlan], skippedAccountIds: [UUID]) {
         var requests: [(accountId: UUID, ids: [UUID]?, scope: BulkActionScope?, expand: Bool)] = []
 
@@ -55,7 +56,7 @@ public enum MVBulkRequestBuilder {
             }
             let request = BulkActionRequest(
                 action: action, targetFolderId: target, ids: entry.ids, scope: entry.scope,
-                expandThreads: entry.expand
+                expandThreads: entry.expand, confirm: confirm
             )
             plans.append(MVBulkRequestPlan(accountId: entry.accountId, request: request))
         }

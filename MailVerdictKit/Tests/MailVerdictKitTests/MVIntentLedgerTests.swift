@@ -187,6 +187,24 @@ final class MVIntentLedgerTests: XCTestCase {
         XCTAssertTrue(intent.confirm)
     }
 
+    /// A `.bulk`-delivery intent's own `confirm` reaches the actual `BulkActionRequest` sent to
+    /// the server -- the single-message path already did this (the assertion above and
+    /// `RecordingIntentTransport.confirms`), but the bulk path silently dropped it at the
+    /// construction site: a bulk permanent delete of a glacier selection needs this to be
+    /// refused nowhere but the confirmation UI in front of it.
+    func testABulkDeliveryCarriesConfirmThroughToTheServer() async {
+        let transport = RecordingIntentTransport()
+        let ledger = makeTestLedger(transport: transport)
+        let req = MVIntentRequest(
+            accountId: testAccount, action: .expunge, messageIds: [testUUID(1), testUUID(2)],
+            delivery: .bulk(expandThreads: false), confirm: true)
+
+        ledger.enqueue(req)
+        await waitUntil { ledger.intents.first?.state == .done }
+
+        XCTAssertEqual(transport.bulkRequests.last?.confirm, true)
+    }
+
     // MARK: - Delivery order
 
     func testDeliversOneAtATimeInTheOrderTheActionsWereTaken() async {
@@ -467,6 +485,52 @@ final class MVIntentLedgerTests: XCTestCase {
         await waitUntil { transport.calls.count == 2 }
 
         XCTAssertEqual(transport.calls, ["flag 1", "unflag 1"])
+    }
+
+    /// A move into the glacier is a one-way door -- reversing it server-side would be an
+    /// unconfirmed restore, exactly what `GlacierRestoreWarning` exists to gate. Undo must
+    /// leave it alone: no reversal request, and the original intent simply stays as it landed.
+    func testUndoingADoneMoveIntoTheGlacierBuildsNoReversal() async {
+        let transport = RecordingIntentTransport()
+        let ledger = makeTestLedger(transport: transport)
+        let glacierFolder = testUUID(900_003)
+        let req = MVIntentRequest(
+            accountId: testAccount, action: .move, targetFolderId: glacierFolder, messageIds: [testUUID(1)],
+            originFolderIds: [testUUID(1): testFolder], snapshots: [testRow(1)], targetIsGlacier: true)
+
+        let id = ledger.enqueue(req)
+        await waitUntil { ledger.intents.first?.state == .done }
+        ledger.undo([id])
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(transport.calls, ["move 1"], "a glacier move must never be reversed")
+        XCTAssertEqual(ledger.intents.count, 1, "the original intent stays -- nothing was appended in its place")
+    }
+
+    /// The same guard for Discard (`MVMailListStore.discardAttentionActions`), which reaches
+    /// `undo` through the exact same path once an intent has been attempted at least once --
+    /// the shape a held-for-confirmation glacier move takes after backing off from a transient
+    /// failure, the case `testARetryHoldsBackTheSameMessageButNotOthers` above also builds.
+    func testDiscardingABackedOffMoveIntoTheGlacierBuildsNoReversal() async {
+        let clock = TestIntentClock()
+        let transport = RecordingIntentTransport()
+        let failures = CallCounter()
+        transport.handler = { call in
+            if call == "move 1", failures.next() == 1 { throw MVError.detail("slow down", statusCode: 429) }
+        }
+        let ledger = makeTestLedger(transport: transport, clock: clock)
+        let glacierFolder = testUUID(900_003)
+        let req = MVIntentRequest(
+            accountId: testAccount, action: .move, targetFolderId: glacierFolder, messageIds: [testUUID(1)],
+            originFolderIds: [testUUID(1): testFolder], snapshots: [testRow(1)], targetIsGlacier: true)
+
+        let id = ledger.enqueue(req)
+        await waitUntil { ledger.intents.first?.state == .pending && ledger.intents.first?.attempts == 1 }
+        ledger.discard([id])
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(transport.calls, ["move 1"], "a glacier move must never be reversed, discarded or not")
+        XCTAssertTrue(ledger.intents.isEmpty, "the attempted intent is simply gone, with no reversal in its place")
     }
 
     // MARK: - Retirement

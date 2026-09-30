@@ -119,3 +119,32 @@ final class GlacierDeleteWarningTests: XCTestCase {
         XCTAssertTrue(message.contains("permanent"))
     }
 }
+
+final class GlacierRestoreWarningTests: XCTestCase {
+
+    func testTitleNamesTheActionAndTheCount() {
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .archive, count: 1), "Archive?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .archive, count: 3), "Archive 3 Messages?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .trash, count: 1), "Move to Trash?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .trash, count: 2), "Move 2 Messages to Trash?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .move, count: 1), "Move to This Folder?")
+        XCTAssertEqual(GlacierRestoreWarning.title(action: .move, count: 4), "Move 4 Messages?")
+    }
+
+    func testConfirmLabelMatchesEachAction() {
+        XCTAssertEqual(GlacierRestoreWarning.confirmLabel(.archive), "Archive")
+        XCTAssertEqual(GlacierRestoreWarning.confirmLabel(.trash), "Move to Trash")
+        XCTAssertEqual(GlacierRestoreWarning.confirmLabel(.move), "Move")
+    }
+
+    /// The reverse of `GlacierMoveWarning`'s wording: this one says the message goes back onto
+    /// the server, singular and plural, and never mentions "leave" -- the two are never
+    /// confusable by a glance at the dialog alone.
+    func testMessageNamesTheCountAndTheDirection() {
+        XCTAssertTrue(GlacierRestoreWarning.message(count: 1).hasPrefix("This message"))
+        XCTAssertTrue(GlacierRestoreWarning.message(count: 1).contains("goes back onto the mail server"))
+        XCTAssertTrue(GlacierRestoreWarning.message(count: 3).hasPrefix("These 3 messages"))
+        XCTAssertTrue(GlacierRestoreWarning.message(count: 3).contains("go back onto the mail server"))
+        XCTAssertFalse(GlacierRestoreWarning.message(count: 1).contains("leave"))
+    }
+}

@@ -22,6 +22,8 @@ struct MailListScreen: View {
     @State private var deleteForeverRow: MessageSummary?
     @State private var bulkConfirmation: BulkConfirmation?
     @State private var glacierMoveConfirmation: GlacierMoveConfirmation?
+    @State private var pendingGlacierRestore: PendingGlacierRestore?
+    @State private var glacierBulkExpungeConfirmation: GlacierBulkExpungeConfirmation?
     @State private var emptyFolderSnapshot: SelectionSnapshotResponse?
     @State private var reviewingActions = false
 
@@ -108,8 +110,39 @@ struct MailListScreen: View {
             }
     }
 
-    private var withFolderConfirmations: some View {
+    private var withGlacierRestoreConfirmation: some View {
         withGlacierMoveConfirmation
+            .alert(
+                pendingGlacierRestore.map { GlacierRestoreWarning.title(action: $0.action, count: $0.count) } ?? "",
+                isPresented: isPresented($pendingGlacierRestore), presenting: pendingGlacierRestore
+            ) { (confirmation: PendingGlacierRestore) in
+                Button(GlacierRestoreWarning.confirmLabel(confirmation.action), role: .destructive) {
+                    confirmation.perform()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { (confirmation: PendingGlacierRestore) in
+                Text(GlacierRestoreWarning.message(count: confirmation.count))
+            }
+            .alert(
+                glacierBulkExpungeTitle, isPresented: isPresented($glacierBulkExpungeConfirmation),
+                presenting: glacierBulkExpungeConfirmation
+            ) { (_: GlacierBulkExpungeConfirmation) in
+                Button("Delete Forever", role: .destructive) {
+                    Task { await store.performBulk(.expunge, confirmed: true) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { (confirmation: GlacierBulkExpungeConfirmation) in
+                Text(GlacierDeleteWarning.message(count: confirmation.count))
+            }
+    }
+
+    private var glacierBulkExpungeTitle: String {
+        let count = glacierBulkExpungeConfirmation?.count ?? 1
+        return "Delete \(count) \(count == 1 ? "Message" : "Messages") Forever?"
+    }
+
+    private var withFolderConfirmations: some View {
+        withGlacierRestoreConfirmation
             .alert(emptyFolderTitle, isPresented: isPresented($emptyFolderSnapshot), presenting: emptyFolderSnapshot) {
                 (snapshot: SelectionSnapshotResponse) in
                 Button("Empty Folder", role: .destructive) { confirmEmptyFolder(snapshot) }
@@ -284,11 +317,31 @@ struct MailListScreen: View {
                     bulkButton(.moveToJunk, .spam)
                 }
             }
+            // The glacier's own permanent delete -- unlike Archive/Trash on this same
+            // selection, which restore it to the mail server, this destroys it. The only
+            // copy that exists, the same reason a single glaciered row's own Delete becomes
+            // Delete Forever.
+            if isGlacierFolder {
+                Section {
+                    Button(role: .destructive) {
+                        presentBulkExpunge()
+                    } label: {
+                        Label("Delete Forever", systemImage: MVSymbols.deleteForever)
+                    }
+                    .accessibilityIdentifier("maillist-bulk-delete-forever")
+                }
+            }
         } label: {
             Label("Options", systemImage: MVSymbols.options)
         }
         .disabled(store.effectiveSelection.isEmpty)
         .accessibilityIdentifier("maillist-bulk-options")
+    }
+
+    private func presentBulkExpunge() {
+        let count = store.effectiveSelection.count
+        guard count > 0 else { return }
+        glacierBulkExpungeConfirmation = GlacierBulkExpungeConfirmation(count: count)
     }
 
     private func bulkButton(_ action: MVMessageUIAction, _ bulkAction: MVBulkAction) -> some View {
@@ -519,6 +572,10 @@ struct MailListScreen: View {
         case .reply: environment.presentedCompose = ComposeIntent(kind: .reply(messageId: row.id))
         case .replyAll: environment.presentedCompose = ComposeIntent(kind: .replyAll(messageId: row.id))
         case .forward: environment.presentedCompose = ComposeIntent(kind: .forward(messageId: row.id))
+        case .archive where row.isGlacier:
+            pendingGlacierRestore = PendingGlacierRestore(action: .archive, count: 1) {
+                store.perform(.archive, on: row.id)
+            }
         case .moveTo:
             movePicker = MovePickerRequest(
                 source: .folders(accountId: row.accountId, excludingFolderId: row.folderId), rowId: row.id
@@ -556,7 +613,24 @@ struct MailListScreen: View {
             glacierMoveConfirmation = GlacierMoveConfirmation(pending: pending, count: count)
             return
         }
+        // The reverse direction: moving out of the glacier to an ordinary folder restores the
+        // message (or the whole selection) to the mail server, the same consequence Archive and
+        // Trash have from there -- confirmed the same way, rather than performed straight away.
+        if isMoveSourceGlacier(pending) {
+            let count = pending.request.rowId != nil ? 1 : store.effectiveSelection.count
+            pendingGlacierRestore = PendingGlacierRestore(action: .move, count: count) {
+                performMove(pending)
+            }
+            return
+        }
         performMove(pending)
+    }
+
+    private func isMoveSourceGlacier(_ pending: PendingMove) -> Bool {
+        if let rowId = pending.request.rowId {
+            return store.row(id: rowId)?.isGlacier ?? false
+        }
+        return isGlacierFolder
     }
 
     private func performMove(_ pending: PendingMove) {
@@ -572,6 +646,16 @@ struct MailListScreen: View {
     private func bulk(_ action: MVBulkAction, target: MVMoveTarget? = nil) {
         let selection = store.effectiveSelection
         guard !selection.isEmpty else { return }
+        // Archive and Trash on a selection sitting in the glacier restore it to the mail
+        // server -- the bottom bar offers both unconditionally, so this is the one place that
+        // distinguishes the glacier's "leave the folder" from every other folder's.
+        if isGlacierFolder, action == .archive || action == .trash {
+            let restoreAction: GlacierRestoreWarning.Action = action == .archive ? .archive : .trash
+            pendingGlacierRestore = PendingGlacierRestore(action: restoreAction, count: selection.count) {
+                Task { await store.performBulk(action, target: target) }
+            }
+            return
+        }
         if MVBulkRequestBuilder.needsConfirmation(selection, action: action) {
             bulkConfirmation = BulkConfirmation(action: action, target: target, count: selection.count)
         } else {
@@ -683,6 +767,24 @@ private struct PendingMove {
 private struct GlacierMoveConfirmation: Identifiable {
     let id = UUID()
     let pending: PendingMove
+    let count: Int
+}
+
+/// Archive, Trash or an explicit Move that would restore a glaciered row (or a selection sitting
+/// entirely in the glacier) to the mail server, waiting on `GlacierRestoreWarning`'s confirmation
+/// before `perform` is allowed to run -- one type shared by the row-level and select-mode paths,
+/// since the wording and the shape of the wait are identical either way.
+private struct PendingGlacierRestore: Identifiable {
+    let id = UUID()
+    let action: GlacierRestoreWarning.Action
+    let count: Int
+    let perform: () -> Void
+}
+
+/// A glacier-scoped selection's own permanent delete, waiting on `GlacierDeleteWarning`'s
+/// confirmation -- the bulk counterpart of a single glaciered row's Delete Forever.
+private struct GlacierBulkExpungeConfirmation: Identifiable {
+    let id = UUID()
     let count: Int
 }
 

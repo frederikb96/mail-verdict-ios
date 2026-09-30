@@ -406,3 +406,22 @@ the extra ones are invisible on screen. Confirm: use the app normally for a few 
 `GET /api/events` and `GET /api/accounts/<id>/folders` in the server's own log over that period —
 single figures, never hundreds inside one second — and check that the mail list keeps loading while
 an action is waiting for the network.
+
+### Restoring a glaciered message needs its own confirmation everywhere it can start — web anchor: `ui/src/components/mail/reading-pane.tsx`'s `pendingGlacierRestore`
+Needs a device because: `GlacierRestoreWarning`'s wiring (the row's swipe sheet and context menu
+Archive, the reader's Archive and its own "Move to…", the list's select-mode Archive/Trash/"Move
+to…", and a new bulk "Delete Forever" for a glacier-scoped selection) is package logic already
+covered by `MailVerdictKitTests`, each watched failing first, but every alert's actual title,
+wording and button placement is unverified until seen on a real screen. Confirm: with a message
+already in the glacier, swipe it and choose Archive from the sheet — the alert must appear before
+anything happens, naming the restore, not perform it straight away; open it in the reader and press
+Archive, then its own "Move to…" to an ordinary folder — same gate, same wording; in select mode,
+tick a glacier-folder selection and use the bottom bar's Archive and Trash, and the Options menu's
+"Move to…" to an ordinary folder — each confirms before acting; still in select mode, confirm the
+Options menu now also offers a destructive "Delete Forever" for a glacier-scoped selection, naming
+the count and the "only copy" wording, and that confirming it actually removes the selection for
+good. Undo/Discard on a glacier move (`MVIntentLedger.reversal(of:)`) is also package-tested
+(watched failing first) but worth a device pass too: move a message into the glacier, let the
+action fail once (turn the network off at the right moment) so it backs off, then Discard it from
+the attention banner — the message must not silently reappear outside the glacier; a reversed
+glacier move would be an unconfirmed restore, exactly what this whole entry exists to prevent.
