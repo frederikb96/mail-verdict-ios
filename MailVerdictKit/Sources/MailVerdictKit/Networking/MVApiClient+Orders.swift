@@ -35,13 +35,21 @@ extension MVApiClient {
     }
 
     /// `mailKey` is the mail's own `order_mails.id` (`OrderMailOut.key`), never `messageId`.
-    /// Returns the order the mail left, or `nil` when removing it emptied the order and deleted
-    /// it.
+    /// Returns the order the mail left, or `nil` (a `204` with no body) when removing it emptied
+    /// the order and deleted it -- `send()` can't be used here since it always expects a decodable
+    /// body, which a `204` never has.
     public func detachOrderMail(orderId: UUID, mailKey: UUID, moveTo: UUID? = nil) async throws -> OrderDetail? {
-        try await send(
-            path: "/api/orders/\(orderId)/mails/\(mailKey)/detach", method: "POST",
-            body: try Self.encodeBody(OrderDetachRequest(moveTo: moveTo))
+        let (data, response) = try await rawSend(
+            path: "/api/orders/\(orderId)/mails/\(mailKey)/detach", method: "POST", query: [],
+            body: try Self.encodeBody(OrderDetachRequest(moveTo: moveTo)), contentType: "application/json"
         )
+        try checkStatus(response: response, data: data)
+        guard !data.isEmpty else { return nil }
+        do {
+            return try JSONDecoder.mvDefault.decode(OrderDetail.self, from: data)
+        } catch {
+            throw MVError.decoding("\(error)")
+        }
     }
 
     public func catchUpOrders(accountId: UUID, days: Int, dryRun: Bool = false) async throws -> OrderCatchUpResponse {

@@ -122,7 +122,7 @@ final class OrderDetailStoreTests: XCTestCase {
         let store = makeStore(orderId: orderId)
         await store.load()
 
-        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data("null".utf8))
+        MVStubURLProtocol.stub = .init(statusCode: 204, headers: [:], body: Data())
         try await store.detachMail(store.order!.mails[0])
         XCTAssertTrue(store.wasDeleted)
         XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "POST")
