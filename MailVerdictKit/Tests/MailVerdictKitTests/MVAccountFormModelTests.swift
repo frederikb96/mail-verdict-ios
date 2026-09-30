@@ -107,6 +107,26 @@ final class MVAccountFormModelTests: XCTestCase {
         XCTAssertFalse(object.keys.contains("imap_user"))
     }
 
+    func testCreateRequestCarriesOrdersEnabled() async throws {
+        var input = MVAccountFormInput()
+        input.name = "Work"
+        input.imapHost = "imap.example.com"
+        input.imapUser = "user@example.com"
+        input.ordersEnabled = true
+        let request = try MVAccountFormModel.buildCreateRequest(input)
+        XCTAssertTrue(request.ordersEnabled)
+    }
+
+    func testFormInputPrefillsOrdersEnabledFromTheAccount() {
+        let account = AccountResponse(
+            id: UUID(), name: "Work", imapHost: "imap.example.com", imapPort: 993,
+            imapUser: "user@example.com", smtpHost: nil, smtpPort: nil, smtpUser: nil,
+            stateError: nil, capabilities: nil, createdAt: Date(), updatedAt: Date(), emoji: nil,
+            ordersEnabled: true, folderOrder: nil, trashRetentionDays: nil, junkRetentionDays: nil
+        )
+        XCTAssertTrue(MVAccountFormInput(account: account).ordersEnabled)
+    }
+
     func testUpdateRequestRejectsAMissingName() async throws {
         let input = MVAccountFormInput()
         XCTAssertThrowsError(try MVAccountFormModel.buildUpdateRequest(input)) { error in

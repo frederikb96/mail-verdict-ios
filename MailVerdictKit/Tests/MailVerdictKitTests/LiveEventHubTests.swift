@@ -117,6 +117,14 @@ final class LiveEventHubMappingTests: XCTestCase {
         )
     }
 
+    func testOrderUpdatedCarriesTheOrderIdAndChange() {
+        let orderId = UUID()
+        XCTAssertEqual(
+            LiveEventHub.mapRecord(record("order.updated", "{\"order_id\":\"\(orderId)\",\"change\":\"created\"}")),
+            .orderChanged(orderId: orderId, change: "created")
+        )
+    }
+
     func testCalendarObjectInvalidatesTheInvitationCard() {
         XCTAssertEqual(LiveEventHub.mapRecord(record("calendar.object")), .invitationOrEventChanged)
     }
@@ -149,7 +157,7 @@ final class LiveEventHubMappingTests: XCTestCase {
             "folder.changed", "outbox.updated", "settings.changed", "identity.changed",
             "calendar.account", "calendar.collection", "calendar.links_changed", "calendar.object",
             "contact.collection", "contact.object", "pipeline.document_changed", "pipeline.notify",
-            "pipeline.run_finished",
+            "pipeline.run_finished", "order.updated",
         ]
         XCTAssertEqual(covered, Set(SSEEventName.allCases.map(\.rawValue)))
     }

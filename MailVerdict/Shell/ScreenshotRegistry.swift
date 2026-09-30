@@ -53,6 +53,7 @@ import SwiftUI
             + ComposerScreenshots.entries
             + SearchScreenshots.entries
             + SpamReviewScreenshots.entries
+            + OrdersScreenshots.entries
             + NotificationsScreenshots.entries
             + SettingsScreenshots.entries
             + AccountsScreenshots.entries

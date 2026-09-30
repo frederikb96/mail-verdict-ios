@@ -13,4 +13,5 @@ public enum MVSettingsCategory: String, Sendable, Equatable, CaseIterable {
     case semantic
     case outbox
     case mail
+    case orders
 }

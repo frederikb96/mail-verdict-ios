@@ -432,3 +432,32 @@ good. Undo/Discard on a glacier move (`MVIntentLedger.reversal(of:)`) is also pa
 action fail once (turn the network off at the right moment) so it backs off, then Discard it from
 the attention banner — the message must not silently reappear outside the glacier; a reversed
 glacier move would be an unconfirmed restore, exactly what this whole entry exists to prevent.
+
+### Moving an order's mail to another order — web anchor: ui/src/components/orders/order-picker-dialog.tsx
+Needs a device because: the target picker and its network write aren't ported to the phone this
+release, only remove-from-this-order is. Confirm: from an order's mail row, move it to another
+order and check both orders' mail counts and identifiers updated correctly, and the source order's
+summary is queued for a rewrite.
+
+### Merging two orders — web anchor: ui/src/components/orders/order-picker-dialog.tsx
+Needs a device because: the merge target picker isn't ported to the phone this release. Confirm:
+merge one order into another and check the target's mail count and identifiers combine correctly
+and the source order disappears with none of its mail touched.
+
+### The "Look through recent mail…" catch-up dialog — web anchor: ui/src/components/accounts/accounts-page.tsx
+Needs a device because: it triggers real, billed model calls against a live account, which a
+screenshot sweep must never do. Confirm: for an account with orders bundling on, run a dry run and
+check the reported count against the real mailbox, then run it for real and watch the orders queue
+drain to zero.
+
+### A Wallet pass document opens in Quick Look, not Wallet — web anchor: ui/src/components/orders/order-detail.tsx
+Needs a device because: `PKAddPassesViewController` needs a physical pass and a real Wallet app;
+Quick Look substitutes for it this release and never offers "Add to Wallet". Confirm: open a
+`.pkpass` document from an order and check whether Quick Look's own pass preview is enough, or
+whether the missing "Add to Wallet" affordance is worth a dedicated pass sheet later.
+
+### Scroll position holds after Back from an opened mail — web anchor: ui/src/components/orders/order-detail.tsx
+Needs a device because: whether `NavigationStack` keeps the detail view's scroll position across a
+push/pop is a claim about UIKit's own view lifecycle, not verifiable from a screenshot. Confirm:
+open a mail from the middle of a long order, back out, and check the list is still scrolled to
+where it was rather than reset to the top.

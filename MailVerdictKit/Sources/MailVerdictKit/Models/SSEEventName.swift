@@ -27,4 +27,5 @@ public enum SSEEventName: String, Sendable, Equatable, CaseIterable, Codable {
     case pipelineDocumentChanged = "pipeline.document_changed"
     case pipelineNotify = "pipeline.notify"
     case pipelineRunFinished = "pipeline.run_finished"
+    case orderUpdated = "order.updated"
 }

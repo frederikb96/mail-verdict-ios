@@ -19,6 +19,9 @@ public enum MVLiveInvalidation: Sendable, Equatable {
     case outboxUpdated(MVOutboxEventPayload)
     case settingsChanged(category: String?)
     case identitiesChanged(accountId: UUID?)
+    /// `order.updated` -- `orderId` names which order; `change` is `"created"`, `"updated"` or
+    /// `"deleted"` (the register spans accounts, so this is broadcast on every account's ring).
+    case orderChanged(orderId: UUID?, change: String?)
     /// `outbox.updated` carrying `itip: "reply"`, or `calendar.object` — the reader's invitation
     /// card and its event-details sheet are what this refreshes, never a mail toast or list
     /// refresh.

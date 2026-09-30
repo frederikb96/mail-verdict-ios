@@ -13,6 +13,7 @@ public enum MVMessageActionSource: Sendable, Equatable {
     case reader
     case search
     case spamReview
+    case order
 }
 
 /// The verdict fields the Verdict action group needs — `nil` on `MVMessageContext.verdict` means
@@ -147,7 +148,7 @@ public enum MessageActionSet {
             }
             tools.append(context.canvasIsDark ? .lightBackground : .darkBackground)
             tools.append(.shareMessageFile)
-            if context.source == .search || context.source == .spamReview {
+            if context.source == .search || context.source == .spamReview || context.source == .order {
                 tools.append(.showInFolder)
             }
             groups.append(MVMessageActionGroup(kind: .tools, actions: tools))

@@ -76,6 +76,42 @@ final class DateFormattingTests: XCTestCase {
         XCTAssertEqual(MVDateFormat.fullDate(nil), "")
     }
 
+    func testDateRangeAcrossTwoDaysInTheCurrentYearOmitsTheYear() {
+        let now = date("2026-04-25T00:00:00Z")
+        XCTAssertEqual(
+            MVDateFormat.dateRange(
+                date("2026-04-21T09:00:00Z"), date("2026-04-23T18:00:00Z"), now: now, calendar: calendar),
+            "21 Apr – 23 Apr")
+    }
+
+    func testDateRangeOnTheSameDayShowsOneDate() {
+        let now = date("2026-04-25T00:00:00Z")
+        XCTAssertEqual(
+            MVDateFormat.dateRange(
+                date("2026-04-21T09:00:00Z"), date("2026-04-21T18:00:00Z"), now: now, calendar: calendar),
+            "21 Apr")
+    }
+
+    func testDateRangeInAPastYearAppendsItToEachBound() {
+        let now = date("2026-04-25T00:00:00Z")
+        XCTAssertEqual(
+            MVDateFormat.dateRange(
+                date("2025-04-21T09:00:00Z"), date("2025-04-23T18:00:00Z"), now: now, calendar: calendar),
+            "21 Apr 2025 – 23 Apr 2025")
+    }
+
+    func testDateRangeWithOnlyOneBoundShowsThatOneAlone() {
+        let now = date("2026-04-25T00:00:00Z")
+        XCTAssertEqual(
+            MVDateFormat.dateRange(date("2026-04-21T09:00:00Z"), nil, now: now, calendar: calendar), "21 Apr")
+        XCTAssertEqual(
+            MVDateFormat.dateRange(nil, date("2026-04-21T09:00:00Z"), now: now, calendar: calendar), "21 Apr")
+    }
+
+    func testDateRangeWithNoBoundsIsEmpty() {
+        XCTAssertEqual(MVDateFormat.dateRange(nil, nil), "")
+    }
+
     func testFormatSizeZeroAndNil() {
         XCTAssertEqual(formatSize(nil), "0 B")
         XCTAssertEqual(formatSize(0), "0 B")

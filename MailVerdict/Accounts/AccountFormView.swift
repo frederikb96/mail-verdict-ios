@@ -93,6 +93,7 @@ struct AccountFormView: View {
 
             Section {
                 Toggle("Enable spam detection", isOn: $input.spamEnabled)
+                Toggle("Bundle orders and tickets", isOn: $input.ordersEnabled)
             }
 
             Section("Trash retention (days)") {

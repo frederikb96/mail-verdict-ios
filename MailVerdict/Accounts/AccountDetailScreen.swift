@@ -192,6 +192,7 @@ private struct DetailsSection: View {
                 LabeledContent("SMTP server", value: "\(smtpHost):\(account.smtpPort ?? 0)")
             }
             LabeledContent("Spam detection", value: account.spamEnabled ? "Enabled" : "Disabled")
+            LabeledContent("Orders & tickets", value: account.ordersEnabled ? "Enabled" : "Disabled")
             LabeledContent(
                 "Trash retention",
                 value: account.trashRetentionDays.map { "\($0) days" } ?? "Off")

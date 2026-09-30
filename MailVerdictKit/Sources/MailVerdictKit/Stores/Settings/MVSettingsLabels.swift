@@ -35,6 +35,8 @@ public enum MVSettingsLabels {
         "mark_read_on_file_to_archive_or_junk",
         "bell_badge_counts_new_mail",
         "notify_wait_seconds",
+        "language",
+        "filter",
     ]
 
     private static let labels: [String: String] = [
@@ -64,6 +66,8 @@ public enum MVSettingsLabels {
         "mark_read_on_file_to_archive_or_junk": "Mark read when filed to Archive or Junk",
         "bell_badge_counts_new_mail": "Bell badge counts new mail",
         "notify_wait_seconds": "Wait before notifying (seconds)",
+        "language": "Language of titles and summaries",
+        "filter": "First filter (patterns)",
     ]
 
     /// `SETTING_LABELS[key]` if named, otherwise `humanized(key)` — display text only; the field's
@@ -94,6 +98,7 @@ extension MVSettingsCategory {
         case .pipeline: return "Pipeline"
         case .outbox: return "Outbox"
         case .mail: return "Filing and Notifications"
+        case .orders: return "Orders"
         }
     }
 }

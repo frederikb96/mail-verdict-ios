@@ -54,6 +54,26 @@ public enum MVSymbols {
     public static let device = "iphone"
     public static let nothingToReview = "checkmark.shield"
     public static let disclosureChevron = "chevron.right"
+    public static let orders = "shippingbox"
+
+    /// Which SF Symbol an order's own `icon` value draws as -- mirrors the web's identical table
+    /// (`order-icon.tsx`); an unrecognized value falls back to `receipt`'s own symbol, the same
+    /// fallback the server itself uses.
+    public static func orderIcon(_ icon: String) -> String {
+        switch icon {
+        case "package": return "shippingbox"
+        case "ticket": return "ticket"
+        case "train": return "tram"
+        case "plane": return "airplane"
+        case "bus": return "bus"
+        case "car": return "car"
+        case "bed": return "bed.double"
+        case "food": return "fork.knife"
+        case "download": return "arrow.down.circle"
+        case "wrench": return "wrench.and.screwdriver"
+        default: return "doc.text"
+        }
+    }
 
     /// Folder special-use icons, keyed by PostIMAP's own `special_use` string
     /// (`inbox`/`drafts`/`sent`/`archive`/`junk`/`trash`), with `folder` as the fallback for an

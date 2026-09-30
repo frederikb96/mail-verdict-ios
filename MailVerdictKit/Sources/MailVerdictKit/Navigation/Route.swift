@@ -17,6 +17,7 @@ public struct ReaderContext: Hashable, Codable, Sendable {
         case list(ListScope)
         case search(SearchContext)
         case spamReview
+        case order(UUID)
     }
 
     public let source: Source
@@ -73,6 +74,8 @@ public enum Route: Hashable, Codable, Sendable {
     case reader(ReaderContext)
     case search(initialQuery: String?)
     case spamReview
+    case orders
+    case order(UUID)
     case notifications
     case settings
     case settingsCategory(String)

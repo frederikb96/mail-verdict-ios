@@ -113,8 +113,8 @@ final class MessageActionSetTests: XCTestCase {
         XCTAssertTrue(light?.contains(.darkBackground) ?? false)
     }
 
-    func testShowInFolderOnlyAppearsForSearchAndSpamReviewSources() {
-        for source in [MVMessageActionSource.search, .spamReview] {
+    func testShowInFolderOnlyAppearsForSearchSpamReviewAndOrderSources() {
+        for source in [MVMessageActionSource.search, .spamReview, .order] {
             let tools = actions(
                 MessageActionSet.actions(for: context(surface: .readerOptionsMenu, source: source)), in: .tools)
             XCTAssertTrue(tools?.contains(.showInFolder) ?? false, "\(source)")
