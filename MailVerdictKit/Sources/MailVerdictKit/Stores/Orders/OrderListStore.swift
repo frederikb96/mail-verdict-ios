@@ -22,6 +22,10 @@ public final class OrderListStore {
     public private(set) var hasMore = false
     public private(set) var filter: Filter
     private var nextCursor: String?
+    /// The server's own current order, kept up to date by every fetch regardless of `rows`/`held`
+    /// -- what `takeOverHeld()` adopts wholesale, the same role `itemsRef` plays for the web's own
+    /// `takeOverFresh`.
+    private var latestFresh: [OrderListItem] = []
 
     /// The screen's own "is the first row visible" signal -- read only when a live invalidation
     /// arrives (`apply(_:)`), never written by this store. Defaults to `true`: an empty or
@@ -49,6 +53,7 @@ public final class OrderListStore {
         do {
             let response = try await apiClient.listOrders(state: filter.rawValue, limit: 50)
             rows = response.items
+            latestFresh = response.items
             hasMore = response.hasMore
             nextCursor = response.nextCursor
         } catch {
@@ -70,11 +75,11 @@ public final class OrderListStore {
         isLoadingMore = false
     }
 
-    /// "New activity" tapped, or the reader scrolled back to the very top -- a local merge, no
-    /// network round trip: `held` is already in the server's own order, so it is simply what goes
-    /// first.
+    /// "New activity" tapped, or the reader scrolled back to the very top -- a local swap, no
+    /// network round trip: `latestFresh` is already the server's own current order, kept current
+    /// by every `refreshInPlace` regardless of whether it was shown yet.
     public func takeOverHeld() {
-        let result = MVStableOrder.takeOver(rows: rows, held: held)
+        let result = MVStableOrder.takeOver(fresh: latestFresh)
         rows = result.rows
         held = result.held
     }
@@ -89,6 +94,7 @@ public final class OrderListStore {
         let result = MVStableOrder.apply(shown: rows, fresh: response.items, atTop: atTop)
         rows = result.rows
         held = result.held
+        latestFresh = response.items
         hasMore = response.hasMore
         nextCursor = response.nextCursor
     }

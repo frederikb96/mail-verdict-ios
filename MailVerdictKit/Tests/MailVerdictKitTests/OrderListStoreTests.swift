@@ -124,6 +124,40 @@ final class OrderListStoreTests: XCTestCase {
         XCTAssertTrue(store.held.isEmpty)
     }
 
+    /// The regression this guards: an order already visible before the hold that also received new
+    /// mail during it moves in the server's own order too, ahead of even the order that newly
+    /// arrived -- `held + previously shown` (the earlier `takeOverHeld` implementation) could never
+    /// see that, since it always puts every held row ahead of every previously-shown one regardless
+    /// of the server's actual order.
+    func testTakeOverMovesABumpedExistingOrderToItsFreshPositionAheadOfTheNewOne() async throws {
+        let bumped = UUID(), other = UUID(), brandNew = UUID()
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:],
+            body: Data(
+                "{\"items\":[\(itemJSON(id: bumped)),\(itemJSON(id: other))],\"has_more\":false,\"next_cursor\":null}"
+                    .utf8))
+        let store = makeStore()
+        await store.load()
+
+        store.isAtTop = false
+        // bumped received new mail of its own during the hold, moving it ahead of brandNew --
+        // the order arriving is not simply prepended to what was already there.
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:],
+            body: Data(
+                "{\"items\":[\(itemJSON(id: bumped)),\(itemJSON(id: brandNew)),\(itemJSON(id: other))],\"has_more\":false,\"next_cursor\":null}"
+                    .utf8))
+        store.apply([.orderChanged(orderId: brandNew, change: "created")])
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(store.rows.map(\.id), [bumped, other])
+        XCTAssertEqual(store.held.map(\.id), [brandNew])
+
+        store.takeOverHeld()
+        XCTAssertEqual(store.rows.map(\.id), [bumped, brandNew, other])
+        XCTAssertTrue(store.held.isEmpty)
+    }
+
     func testResyncAlwaysReloadsRegardlessOfScrollPosition() async throws {
         let a = UUID()
         MVStubURLProtocol.stub = .init(

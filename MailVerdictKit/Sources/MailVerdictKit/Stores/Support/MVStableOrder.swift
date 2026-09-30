@@ -32,12 +32,15 @@ public enum MVStableOrder {
         return Result(rows: rows, held: held)
     }
 
-    /// What a "New activity" tap, or scrolling back to the very top, resolves to: the full fresh
-    /// list, nothing held -- the same result `apply` gives for `atTop: true`, without needing a
-    /// second `fresh` array to already be at hand.
-    public static func takeOver<T: Identifiable & Sendable>(rows: [T], held: [T]) -> Result<T> {
-        guard !held.isEmpty else { return Result(rows: rows, held: []) }
-        let heldIds = Set(held.map(\.id))
-        return Result(rows: held + rows.filter { !heldIds.contains($0.id) }, held: [])
+    /// What a "New activity" tap, or scrolling back to the very top, resolves to: the current
+    /// fresh list wholesale, nothing held -- exactly `apply`'s own `atTop: true` answer.
+    ///
+    /// Deliberately not `held + previously shown`: an order already visible before the hold, that
+    /// also received a new mail during it, has moved in the server's own order too -- its fresh
+    /// position is not derivable from which rows are held and which were already shown, only from
+    /// the fresh list itself. The caller keeps that list current the same way it keeps `held`
+    /// current, so it is always at hand by the time a take-over can happen at all.
+    public static func takeOver<T: Identifiable & Sendable>(fresh: [T]) -> Result<T> {
+        Result(rows: fresh, held: [])
     }
 }
