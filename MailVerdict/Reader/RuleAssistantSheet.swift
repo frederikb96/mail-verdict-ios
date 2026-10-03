@@ -103,6 +103,9 @@ private struct RuleAssistantProposal: View {
         List {
             Section { Text(response.message) }
             Section(change.title) {
+                if let effects = change.effectsText {
+                    RuleTextBlock(label: "What this rule does", text: effects)
+                }
                 if let before = change.beforeText {
                     RuleTextBlock(label: "Now", text: before)
                 }

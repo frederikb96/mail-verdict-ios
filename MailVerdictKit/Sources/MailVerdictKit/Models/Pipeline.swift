@@ -125,7 +125,7 @@ public struct RuleAssistantChange: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "RuleAssistantChange"
     public enum ContractKeys: String, CodingKey, CaseIterable {
         case kind, baseRevision = "base_revision", isNew = "is_new", stage, title,
-            beforeText = "before_text", afterText = "after_text"
+            beforeText = "before_text", afterText = "after_text", effectsText = "effects_text"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -138,11 +138,15 @@ public struct RuleAssistantChange: ContractModel, Codable, Sendable, Equatable {
     /// The rule as it reads today; present for a replaced rule only.
     public let beforeText: String?
     public let afterText: String
+    /// An `add_condition` proposal's existing rule effects as JSON text -- what the rule being
+    /// widened actually does.
+    public let effectsText: String?
 
     public init(
         kind: String, baseRevision: Int, isNew: Bool, stage: StageOut, title: String, beforeText: String?,
-        afterText: String
+        afterText: String, effectsText: String? = nil
     ) {
+        self.effectsText = effectsText
         self.kind = kind
         self.baseRevision = baseRevision
         self.isNew = isNew

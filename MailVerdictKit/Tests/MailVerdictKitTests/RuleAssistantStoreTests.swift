@@ -22,7 +22,8 @@ final class RuleAssistantStoreTests: XCTestCase {
             {"kind":"\(isNew ? "new_rule" : "add_condition")","base_revision":7,"is_new":\(isNew),
             "stage":{"stage_id":"rule-1","type":"rule","name":"Newsletter","config":{"when":{"from":"a@b.c"}},
             "enabled":true,"halt":false,"accounts":null},
-            "title":"Add a condition to Newsletter","before_text":null,"after_text":"when from a@b.c"}
+            "title":"Add a condition to Newsletter","before_text":null,
+            "effects_text":\(isNew ? "null" : "\"[{\\\"move\\\":\\\"Newsletter\\\"}]\""),"after_text":"when from a@b.c"}
             """
             : "null"
         return """
@@ -46,6 +47,7 @@ final class RuleAssistantStoreTests: XCTestCase {
         await propose(store, json: responseJSON(isNew: false))
         guard case .result(let response, let change) = store.phase else { return XCTFail("\(store.phase)") }
         XCTAssertEqual(change.baseRevision, 7)
+        XCTAssertEqual(change.effectsText, #"[{"move":"Newsletter"}]"#)
         XCTAssertEqual(response.preview?.summaryLine, "Would have caught 9 of your last 100 mails (now: 2)")
         XCTAssertEqual(response.warnings, ["Broad"])
         XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.path, "/api/pipeline/assistant")
