@@ -55,7 +55,7 @@ private struct ReaderContent: View {
     // what the type checker resolves in reasonable time (the same shape `MailListScreen` already
     // uses for the same reason).
     var body: some View {
-        withGlacierMoveAlert
+        withRuleSheet
             .sheet(item: $model.eventDetails) { request in
                 EventDetailsSheet(objectId: request.id, calendars: request.calendars, api: api)
             }
@@ -67,6 +67,13 @@ private struct ReaderContent: View {
                 }
             }
             .quickLookPreview($model.quickLookURL)
+    }
+
+    private var withRuleSheet: some View {
+        withGlacierMoveAlert
+            .sheet(item: $model.ruleRequest) { request in
+                RuleAssistantSheet(messageId: request.messageId, api: api) { model.ruleSaved() }
+            }
     }
 
     private var base: some View {

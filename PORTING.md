@@ -461,3 +461,28 @@ Needs a device because: whether `NavigationStack` keeps the detail view's scroll
 push/pop is a claim about UIKit's own view lifecycle, not verifiable from a screenshot. Confirm:
 open a mail from the middle of a long order, back out, and check the list is still scrolled to
 where it was rather than reset to the top.
+
+### Orders list: swipes, long-press menu and filter field — web anchor: ui/src/components/orders/orders-page.tsx, ui/src/lib/order-actions.ts
+Needs a device because: swipe, long-press and the search field's behaviour inside a `List` are
+gesture and UIKit-lifecycle claims. Confirm: on the orders list, swipe a row from the left edge
+to close or reopen it and from the right edge to favorite or unfavorite it (each shows a toast and
+the row updates in place); long-press a row and check the menu offers Favorite, Close, Seal,
+Rewrite Summary and Delete Order… with "Add no more mail" under Seal (a two-line menu item is the
+part to look at); pull the filter field down, type, and check the list narrows after a pause and
+shows "No matching orders" when nothing fits; pick Favorites from the filter menu and check an
+empty list reads "No favorites yet".
+
+### Merging an order from the list and detail menus — web anchor: ui/src/components/orders/order-actions.tsx
+Needs a device because: merge still has no target picker on the phone, so the shared order menu
+omits the web's "Merge into another order…" entry. Confirm: once the picker exists, add the entry
+to `OrderActionSet` and check both menus and the merge confirmation.
+
+### "Add Rule…" in the reader's Options menu — web anchor: ui/src/components/mail/add-rule-dialog.tsx
+Needs a device because: it runs a real, billed model call against the server's configured
+provider, and the sheet's behaviour (keyboard, cancel on dismiss, swipe-down while a request runs)
+is UIKit presentation. Confirm: open a live mail, Options → Add Rule…, type a sentence and propose;
+check the "Now" / "Proposed" rule text, the "Would have caught N of your last M mails" line and its
+examples, then Accept and look at the rule in the web Pipeline page. Also confirm that dismissing
+the sheet while "Working out a rule…" shows stops the request (the server log shows no further
+model call), that Accept cannot be dismissed mid-write, that a rule edited elsewhere in between
+gives "Rules changed meanwhile — ask again.", and that the item is absent for a glaciered mail.

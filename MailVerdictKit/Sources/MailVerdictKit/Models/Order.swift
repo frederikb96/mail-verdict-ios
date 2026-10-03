@@ -9,7 +9,8 @@ public struct OrderListItem: ContractModel, Codable, Sendable, Equatable, Identi
         case id, merchant, subject, status, title, isOpen = "is_open", icon,
             summaryPreview = "summary_preview", firstMailAt = "first_mail_at",
             lastMailAt = "last_mail_at", mailCount = "mail_count", accountIds = "account_ids",
-            textStale = "text_stale", updatedAt = "updated_at"
+            textStale = "text_stale", updatedAt = "updated_at", isFavorite = "is_favorite",
+            isSealed = "is_sealed", openSetBy = "open_set_by", expectedUntil = "expected_until"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -27,12 +28,25 @@ public struct OrderListItem: ContractModel, Codable, Sendable, Equatable, Identi
     public let accountIds: [UUID]
     public let textStale: Bool
     public let updatedAt: Date
+    /// Per-order flags a person sets; `@MVDefaulted` so a server that predates them still decodes.
+    @MVDefaulted<MVDefaultFalse> public var isFavorite: Bool
+    /// A sealed order takes no further mail.
+    @MVDefaulted<MVDefaultFalse> public var isSealed: Bool
+    /// Who decided the current `isOpen`: `"ai"`, `"user"` or `"auto"`.
+    @MVDefaulted<MVDefaultOpenSetByAi> public var openSetBy: String
+    /// `YYYY-MM-DD` of the last thing still expected; a date-only value, so kept as the wire string.
+    public let expectedUntil: String?
 
     public init(
         id: UUID, merchant: String, subject: String, status: String, title: String, isOpen: Bool,
         icon: String, summaryPreview: String, firstMailAt: Date?, lastMailAt: Date?, mailCount: Int,
-        accountIds: [UUID], textStale: Bool, updatedAt: Date
+        accountIds: [UUID], textStale: Bool, updatedAt: Date, isFavorite: Bool = false,
+        isSealed: Bool = false, openSetBy: String = "ai", expectedUntil: String? = nil
     ) {
+        self.isFavorite = isFavorite
+        self.isSealed = isSealed
+        self.openSetBy = openSetBy
+        self.expectedUntil = expectedUntil
         self.id = id
         self.merchant = merchant
         self.subject = subject
@@ -164,8 +178,9 @@ public struct OrderDetail: ContractModel, Codable, Sendable, Equatable, Identifi
         case id, merchant, subject, status, title, isOpen = "is_open", icon,
             summaryPreview = "summary_preview", firstMailAt = "first_mail_at",
             lastMailAt = "last_mail_at", mailCount = "mail_count", accountIds = "account_ids",
-            textStale = "text_stale", updatedAt = "updated_at", summary, identifiers, mails,
-            documents
+            textStale = "text_stale", updatedAt = "updated_at", isFavorite = "is_favorite",
+            isSealed = "is_sealed", openSetBy = "open_set_by", expectedUntil = "expected_until",
+            summary, identifiers, mails, documents
     }
     public typealias CodingKeys = ContractKeys
 
@@ -183,6 +198,14 @@ public struct OrderDetail: ContractModel, Codable, Sendable, Equatable, Identifi
     public let accountIds: [UUID]
     public let textStale: Bool
     public let updatedAt: Date
+    /// Per-order flags a person sets; `@MVDefaulted` so a server that predates them still decodes.
+    @MVDefaulted<MVDefaultFalse> public var isFavorite: Bool
+    /// A sealed order takes no further mail.
+    @MVDefaulted<MVDefaultFalse> public var isSealed: Bool
+    /// Who decided the current `isOpen`: `"ai"`, `"user"` or `"auto"`.
+    @MVDefaulted<MVDefaultOpenSetByAi> public var openSetBy: String
+    /// `YYYY-MM-DD` of the last thing still expected; a date-only value, so kept as the wire string.
+    public let expectedUntil: String?
     public let summary: String
     public let identifiers: [OrderIdentifierOut]
     /// Oldest first -- the server's own order (`order_mails.received_at` ascending).
@@ -194,8 +217,14 @@ public struct OrderDetail: ContractModel, Codable, Sendable, Equatable, Identifi
         id: UUID, merchant: String, subject: String, status: String, title: String, isOpen: Bool,
         icon: String, summaryPreview: String, firstMailAt: Date?, lastMailAt: Date?, mailCount: Int,
         accountIds: [UUID], textStale: Bool, updatedAt: Date, summary: String,
-        identifiers: [OrderIdentifierOut], mails: [OrderMailOut], documents: [OrderDocumentOut]
+        identifiers: [OrderIdentifierOut], mails: [OrderMailOut], documents: [OrderDocumentOut],
+        isFavorite: Bool = false, isSealed: Bool = false, openSetBy: String = "ai",
+        expectedUntil: String? = nil
     ) {
+        self.isFavorite = isFavorite
+        self.isSealed = isSealed
+        self.openSetBy = openSetBy
+        self.expectedUntil = expectedUntil
         self.id = id
         self.merchant = merchant
         self.subject = subject
@@ -223,7 +252,8 @@ public struct OrderDetail: ContractModel, Codable, Sendable, Equatable, Identifi
             id: id, merchant: merchant, subject: subject, status: status, title: title,
             isOpen: isOpen, icon: icon, summaryPreview: summaryPreview, firstMailAt: firstMailAt,
             lastMailAt: lastMailAt, mailCount: mailCount, accountIds: accountIds,
-            textStale: textStale, updatedAt: updatedAt
+            textStale: textStale, updatedAt: updatedAt, isFavorite: isFavorite, isSealed: isSealed,
+            openSetBy: openSetBy, expectedUntil: expectedUntil
         )
     }
 }
@@ -283,5 +313,25 @@ public struct OrderCatchUpResponse: ContractModel, Codable, Sendable, Equatable 
         self.considered = considered
         self.passed = passed
         self.queued = queued
+    }
+}
+
+/// A person's change to an order's flags; an omitted field is left alone, so every field is a
+/// plain optional (a `nil` is simply not sent). Setting `isOpen` records the decision as theirs.
+public struct OrderUpdateRequest: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "OrderUpdateRequest"
+    public enum ContractKeys: String, CodingKey, CaseIterable {
+        case isFavorite = "is_favorite", isOpen = "is_open", isSealed = "is_sealed"
+    }
+    public typealias CodingKeys = ContractKeys
+
+    public let isFavorite: Bool?
+    public let isOpen: Bool?
+    public let isSealed: Bool?
+
+    public init(isFavorite: Bool? = nil, isOpen: Bool? = nil, isSealed: Bool? = nil) {
+        self.isFavorite = isFavorite
+        self.isOpen = isOpen
+        self.isSealed = isSealed
     }
 }

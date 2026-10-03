@@ -88,3 +88,14 @@ public enum MVDefaultAccountStateCreated: MVDefaultValueSource {
 public enum MVDefaultFolderKindImap: MVDefaultValueSource {
     public static let defaultValue = "imap"
 }
+
+/// `OrderListItem.open_set_by`'s own default -- the model decides an order's open state until a
+/// person or the auto-close sweep does.
+public enum MVDefaultOpenSetByAi: MVDefaultValueSource {
+    public static let defaultValue = "ai"
+}
+
+/// An omitted JSON object -- `StageCreateRequest.config`'s own default.
+public struct MVDefaultEmptyObject: MVDefaultValueSource {
+    public static var defaultValue: [String: MVAnyJSON] { [:] }
+}

@@ -3,7 +3,8 @@ import QuickLook
 import SwiftUI
 
 /// One order's detail -- summary, numbers, documents and its mails in time order, plus the three
-/// corrections a person can make here: remove a mail, rewrite the summary, delete the order.
+/// corrections a person can make here: remove a mail, rewrite the summary, delete the order, and
+/// the flags (favorite, closed, sealed) through the Options menu.
 struct OrderDetailScreen: View {
     let orderId: UUID
     let environment: AppEnvironment
@@ -63,11 +64,13 @@ struct OrderDetailScreen: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                Button("Rewrite Summary") { Task { try? await store.rewrite() } }
-                Button("Delete Order…", role: .destructive) { confirmDelete = true }
+                if let order = store.order {
+                    OrderActionMenuItems(flags: order.flags) { action in run(action) }
+                }
             } label: {
                 Image(systemName: MVSymbols.options)
             }
+            .disabled(store.order == nil)
         }
     }
 
@@ -94,6 +97,22 @@ struct OrderDetailScreen: View {
             // run at all -- `store.isLoading` starts `false`, so without this fallback the very
             // first render (no error, no order, not yet loading) would draw nothing.
             ProgressView()
+        }
+    }
+
+    private func run(_ action: OrderAction) {
+        if action == .delete {
+            confirmDelete = true
+            return
+        }
+        Task {
+            do {
+                if let message = try await store.perform(action) {
+                    environment.toasts.show(.init(variant: .info, message: message, duration: 2.5))
+                }
+            } catch {
+                environment.toasts.show(.init(variant: .error, message: "Could not update: \(error.mvUserMessage)"))
+            }
         }
     }
 
@@ -153,15 +172,6 @@ extension View {
             Text("It is never bundled into this order again.")
         }
     }
-
-    fileprivate func deleteOrderAlert(isPresented: Binding<Bool>, onConfirm: @escaping () -> Void) -> some View {
-        alert("Delete this order?", isPresented: isPresented) {
-            Button("Delete", role: .destructive, action: onConfirm)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Its mails stay where they are.")
-        }
-    }
 }
 
 private struct OrderHeaderSection: View {
@@ -186,6 +196,14 @@ private struct OrderHeaderSection: View {
                         .font(.title3.weight(.semibold))
                         .lineLimit(3)
                     HStack(spacing: 6) {
+                        if order.isFavorite {
+                            Image(systemName: MVSymbols.starFilled).foregroundStyle(.yellow)
+                                .accessibilityLabel("Favorite")
+                        }
+                        if order.isSealed {
+                            Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                                .accessibilityLabel("Sealed, takes no more mail")
+                        }
                         if !order.status.isEmpty {
                             Chip(text: order.status.capitalized, tint: order.isOpen ? .blue : .secondary)
                         }

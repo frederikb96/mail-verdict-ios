@@ -43,6 +43,27 @@ public final class OrderDetailStore {
         try await apiClient.rewriteOrder(id: orderId)
     }
 
+    /// Runs one of the order actions on this order; returns the toast text, or `nil` when the
+    /// action has none. A flag flip adopts the order the server reports back.
+    @discardableResult
+    public func perform(_ action: OrderAction) async throws -> String? {
+        guard let order else { return nil }
+        if let toggle = OrderActionSet.toggle(action, order.flags) {
+            self.order = try await apiClient.updateOrder(id: orderId, toggle.update)
+            return toggle.message
+        }
+        switch action {
+        case .rewrite:
+            try await rewrite()
+            return "Rewriting the summary…"
+        case .delete:
+            try await delete()
+            return nil
+        case .favorite, .close, .seal:
+            return nil
+        }
+    }
+
     public func delete() async throws {
         try await apiClient.deleteOrder(id: orderId)
         wasDeleted = true

@@ -28,6 +28,7 @@ public enum MVSymbols {
     public static let darkBackground = "moon"
     public static let lightBackground = "sun.max"
     public static let shareMessageFile = "square.and.arrow.up"
+    public static let addRule = "wand.and.stars"
     public static let showInFolder = "folder.badge.gearshape"
     public static let compose = "square.and.pencil"
     public static let filterUnread = "line.3.horizontal.decrease.circle"

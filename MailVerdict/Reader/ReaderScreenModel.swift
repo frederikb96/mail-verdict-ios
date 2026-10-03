@@ -51,6 +51,12 @@ final class ReaderScreenModel {
         let calendars: [MVCalendar]
     }
 
+    /// The open mail an "Add rule" sheet is about.
+    struct RuleRequest: Identifiable {
+        let id = UUID()
+        let messageId: UUID
+    }
+
     let session: ReaderSession
     @ObservationIgnored weak var pager: ReaderViewController?
 
@@ -60,6 +66,7 @@ final class ReaderScreenModel {
     var pendingGlacierRestore: PendingGlacierRestore?
     var eventDetails: EventDetailsRequest?
     var calendarChoice: CalendarChoice?
+    var ruleRequest: RuleRequest?
     var noteMessageId: UUID?
     var noteText = ""
     var quickLookURL: URL?
@@ -196,6 +203,8 @@ final class ReaderScreenModel {
                     showError("Could not download the message file", error)
                 }
             }
+        case .addRule:
+            ruleRequest = RuleRequest(messageId: message.id)
         case .showInFolder:
             Task {
                 if let route = await session.showInFolderRoute() {
@@ -207,6 +216,10 @@ final class ReaderScreenModel {
         case .deleteForever:
             confirmingDeleteForever = true
         }
+    }
+
+    func ruleSaved() {
+        environment.toasts.show(.init(variant: .info, message: "Rule saved", duration: 2.5))
     }
 
     func move(to target: MVMoveTarget, accountId: UUID) {

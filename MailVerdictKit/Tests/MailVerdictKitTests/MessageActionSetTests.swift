@@ -85,6 +85,21 @@ final class MessageActionSetTests: XCTestCase {
         XCTAssertFalse(actions(groups, in: .state)?.contains(.archive) ?? true)
     }
 
+    func testAddRuleIsAReaderToolForLiveMailOnly() {
+        let live = actions(MessageActionSet.actions(for: context(surface: .readerOptionsMenu)), in: .tools) ?? []
+        XCTAssertTrue(live.contains(.addRule))
+
+        let glacier =
+            actions(MessageActionSet.actions(for: context(surface: .readerOptionsMenu, isInGlacier: true)), in: .tools)
+            ?? []
+        XCTAssertFalse(glacier.contains(.addRule))
+
+        for surface in [MVMessageActionSurface.swipeSheet, .contextMenu] {
+            let groups = MessageActionSet.actions(for: context(surface: surface))
+            XCTAssertFalse(groups.flatMap(\.actions).contains(.addRule))
+        }
+    }
+
     func testToolsGroupOnlyAppearsInTheReaderOptionsMenu() {
         XCTAssertNil(actions(MessageActionSet.actions(for: context(surface: .swipeSheet)), in: .tools))
         XCTAssertNil(actions(MessageActionSet.actions(for: context(surface: .contextMenu)), in: .tools))
