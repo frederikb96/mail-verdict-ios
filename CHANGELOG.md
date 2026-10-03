@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
+### Added
+
+- Orders & tickets: a Favorites option beside All and Open, a filter field that narrows the list
+  by merchant, subject, status or summary, and sealing an order so it takes no further mail. An
+  order can be closed or reopened by hand. A row's long-press menu offers the same actions as the
+  order's Options menu; swiping a row from the left closes or reopens it and from the right
+  favorites or unfavorites it. Favorite and sealed orders carry a mark in the list and the detail.
+- Add Rule… in a mail's Options menu: one sentence about the open mail becomes a proposed rule
+  change, shown as the rule text before and after, what the rule does, and how many of the latest
+  mails it would have caught, with Accept and Decline. Not offered for mail in the glacier.
+
 ## [0.3.0] - 2026-09-30
 
 ### Added
