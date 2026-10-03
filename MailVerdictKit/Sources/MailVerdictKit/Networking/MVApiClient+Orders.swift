@@ -3,19 +3,29 @@ import Foundation
 extension MVApiClient {
 
     /// `before` is the id of the last order of the previous page -- the same cursor shape
-    /// `listSpamReview` uses.
-    public func listOrders(state: String = "all", before: UUID? = nil, limit: Int = 50) async throws
-        -> OrderListResponse
-    {
-        var query: [URLQueryItem] = [
+    /// `listSpamReview` uses. `favorites` narrows to starred orders; `query` is the server's fuzzy
+    /// filter over merchant, subject, status and summary and is omitted when blank.
+    public func listOrders(
+        state: String = "all", favorites: Bool = false, query: String? = nil, before: UUID? = nil,
+        limit: Int = 50
+    ) async throws -> OrderListResponse {
+        var items: [URLQueryItem] = [
             URLQueryItem(name: "state", value: state), URLQueryItem(name: "limit", value: String(limit)),
         ]
-        if let before { query.append(URLQueryItem(name: "before", value: before.uuidString)) }
-        return try await send(path: "/api/orders", query: query)
+        if favorites { items.append(URLQueryItem(name: "favorites", value: "true")) }
+        if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
+        if let before { items.append(URLQueryItem(name: "before", value: before.uuidString)) }
+        return try await send(path: "/api/orders", query: items)
     }
 
     public func getOrder(id: UUID) async throws -> OrderDetail {
         try await send(path: "/api/orders/\(id)")
+    }
+
+    /// Flips whichever flags the request names and returns the order as it now stands.
+    public func updateOrder(id: UUID, _ update: OrderUpdateRequest) async throws -> OrderDetail {
+        try await send(
+            path: "/api/orders/\(id)", method: "PATCH", body: try Self.encodeBody(update))
     }
 
     public func deleteOrder(id: UUID) async throws {

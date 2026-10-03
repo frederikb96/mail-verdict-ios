@@ -185,4 +185,26 @@ final class OrderDetailStoreTests: XCTestCase {
         XCTAssertFalse(store.wasDeleted)
         XCTAssertNotNil(store.order)
     }
+
+    func testSealingPatchesTheOrderAndAdoptsTheServersAnswer() async throws {
+        let orderId = UUID()
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:], body: Data(detailJSON(id: orderId, mails: "").utf8))
+        let store = makeStore(orderId: orderId)
+        await store.load()
+        XCTAssertEqual(store.order?.isSealed, false)
+
+        let sealed = detailJSON(id: orderId, mails: "").replacingOccurrences(
+            of: "\"icon\":", with: "\"is_sealed\":true,\"icon\":")
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(sealed.utf8))
+        let message = try await store.perform(.seal)
+
+        XCTAssertEqual(message, "Order sealed")
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "PATCH")
+        let body = try XCTUnwrap(MVStubURLProtocol.capturedRequest?.httpBody)
+        XCTAssertEqual(
+            try JSONDecoder().decode(OrderUpdateRequest.self, from: body),
+            OrderUpdateRequest(isSealed: true))
+        XCTAssertEqual(store.order?.isSealed, true)
+    }
 }

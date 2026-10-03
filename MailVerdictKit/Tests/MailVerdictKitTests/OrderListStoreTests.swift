@@ -188,4 +188,97 @@ final class OrderListStoreTests: XCTestCase {
         XCTAssertEqual(store.rows.map(\.id), [a])
         XCTAssertNil(store.errorMessage)
     }
+
+    // MARK: - Favorites, filter field and row actions
+
+    private func detailJSON(id: UUID, isFavorite: Bool = false, isOpen: Bool = true) -> String {
+        """
+        {"id":"\(id)","merchant":"Nordlicht Keramik","subject":"Your order","status":"shipped",
+        "title":"Your order — shipped","is_open":\(isOpen),"is_favorite":\(isFavorite),"icon":"package",
+        "summary_preview":"On its way","first_mail_at":"2026-04-21T09:00:00+00:00",
+        "last_mail_at":"2026-04-23T10:00:00+00:00","mail_count":2,"account_ids":[],
+        "text_stale":false,"updated_at":"2026-04-23T10:00:00+00:00","summary":"s",
+        "identifiers":[],"mails":[],"documents":[]}
+        """
+    }
+
+    private func stubList(_ ids: [UUID]) {
+        let items = ids.map { itemJSON(id: $0) }.joined(separator: ",")
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:],
+            body: Data("{\"items\":[\(items)],\"has_more\":false,\"next_cursor\":null}".utf8))
+    }
+
+    func testFavoritesFilterAsksForAllStateWithTheFavoritesFlag() async {
+        stubList([UUID()])
+        let store = makeStore()
+        await store.setFilter(.favorites)
+        let query = MVStubURLProtocol.capturedRequest?.url?.query ?? ""
+        XCTAssertTrue(query.contains("state=all"))
+        XCTAssertTrue(query.contains("favorites=true"))
+    }
+
+    func testTheFilterFieldReloadsOnceTypingPausesAndSendsTheText() async throws {
+        stubList([UUID()])
+        let factory = try! MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none })
+        let client = MVApiClient(requestFactory: factory, urlSession: MVStubURLProtocol.makeSession())
+        let store = OrderListStore(apiClient: client, queryDebounce: .milliseconds(20))
+        store.setQuery("nord")
+        store.setQuery("nordlicht ")
+        XCTAssertNil(MVStubURLProtocol.capturedRequest)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(store.query, "nordlicht")
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.query?.contains("q=nordlicht"), true)
+        XCTAssertEqual(store.rows.count, 1)
+    }
+
+    func testFavoritingARowPatchesItAndReplacesTheRowInPlace() async throws {
+        let a = UUID()
+        stubList([a])
+        let store = makeStore()
+        await store.load()
+
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:], body: Data(detailJSON(id: a, isFavorite: true).utf8))
+        let message = try await store.perform(.favorite, on: store.rows[0])
+
+        XCTAssertEqual(message, "Added to favorites")
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "PATCH")
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.path, "/api/orders/\(a)")
+        let body = try XCTUnwrap(MVStubURLProtocol.capturedRequest?.httpBody)
+        XCTAssertEqual(
+            try JSONDecoder().decode(OrderUpdateRequest.self, from: body),
+            OrderUpdateRequest(isFavorite: true))
+        XCTAssertEqual(store.rows.map(\.isFavorite), [true])
+    }
+
+    func testClosingAnOpenRowSendsIsOpenFalse() async throws {
+        let a = UUID()
+        stubList([a])
+        let store = makeStore()
+        await store.load()
+
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:], body: Data(detailJSON(id: a, isOpen: false).utf8))
+        try await store.perform(.close, on: store.rows[0])
+
+        let body = try XCTUnwrap(MVStubURLProtocol.capturedRequest?.httpBody)
+        XCTAssertEqual(
+            try JSONDecoder().decode(OrderUpdateRequest.self, from: body),
+            OrderUpdateRequest(isOpen: false))
+        XCTAssertEqual(store.rows.map(\.isOpen), [false])
+    }
+
+    func testDeletingARowRemovesIt() async throws {
+        let a = UUID(), b = UUID()
+        stubList([a, b])
+        let store = makeStore()
+        await store.load()
+
+        MVStubURLProtocol.stub = .init(statusCode: 204, headers: [:], body: Data())
+        try await store.perform(.delete, on: store.rows[0])
+
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "DELETE")
+        XCTAssertEqual(store.rows.map(\.id), [b])
+    }
 }

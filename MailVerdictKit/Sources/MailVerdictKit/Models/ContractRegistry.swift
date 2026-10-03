@@ -109,6 +109,7 @@ public enum ContractRegistry {
         OrderMailOut.self,
         OrderDocumentOut.self,
         OrderDetail.self,
+        OrderUpdateRequest.self,
         OrderMergeRequest.self,
         OrderDetachRequest.self,
         OrderCatchUpRequest.self,

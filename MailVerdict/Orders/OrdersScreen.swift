@@ -9,6 +9,8 @@ struct OrdersScreen: View {
 
     @State private var store: OrderListStore
     @State private var isFirstRowVisible = true
+    @State private var searchText = ""
+    @State private var pendingDelete: OrderListItem?
 
     init(environment: AppEnvironment, connection: AppEnvironment.Connection) {
         self.environment = environment
@@ -43,6 +45,9 @@ struct OrdersScreen: View {
                     }
                 }
             }
+            .searchable(text: $searchText, prompt: "Filter orders")
+            .onChange(of: searchText) { _, text in store.setQuery(text) }
+            .deleteOrderAlert(order: $pendingDelete) { item in run(.delete, on: item) }
             .task {
                 store.subscribeToLive(connection.liveEventHub)
                 await store.load()
@@ -60,12 +65,21 @@ struct OrdersScreen: View {
         } else if let errorMessage = store.errorMessage {
             ErrorStateView(message: errorMessage) { Task { await store.load() } }
         } else if store.rows.isEmpty {
-            EmptyStateView(systemImage: MVSymbols.orders, message: "No orders yet")
+            EmptyStateView(systemImage: MVSymbols.orders, message: emptyMessage)
         } else {
             List {
                 ForEach(store.rows) { item in
                     NavigationLink(value: Route.order(item.id)) {
                         OrderRow(item: item)
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        swipeButton(.close, for: item).tint(.blue)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        swipeButton(.favorite, for: item).tint(.yellow)
+                    }
+                    .contextMenu {
+                        OrderActionMenuItems(flags: item.flags) { action in perform(action, on: item) }
                     }
                     .onAppear { if store.rows.first?.id == item.id { setAtTop(true) } }
                     .onDisappear { if store.rows.first?.id == item.id { setAtTop(false) } }
@@ -87,6 +101,41 @@ struct OrdersScreen: View {
                         .padding(.top, 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
+            }
+        }
+    }
+
+    private var emptyMessage: String {
+        if !store.query.isEmpty { return "No matching orders" }
+        return store.filter == .favorites ? "No favorites yet" : "No orders yet"
+    }
+
+    private func swipeButton(_ action: OrderAction, for item: OrderListItem) -> some View {
+        let entry = OrderActionSet.entries(for: item.flags).first { $0.action == action }
+        return Button {
+            perform(action, on: item)
+        } label: {
+            Label(entry?.title ?? "", systemImage: entry?.systemImage ?? "questionmark")
+        }
+    }
+
+    /// Delete asks first; everything else runs at once and confirms with a toast.
+    private func perform(_ action: OrderAction, on item: OrderListItem) {
+        if action == .delete {
+            pendingDelete = item
+        } else {
+            run(action, on: item)
+        }
+    }
+
+    private func run(_ action: OrderAction, on item: OrderListItem) {
+        Task {
+            do {
+                if let message = try await store.perform(action, on: item) {
+                    environment.toasts.show(.init(variant: .info, message: message, duration: 2.5))
+                }
+            } catch {
+                environment.toasts.show(.init(variant: .error, message: "Could not update: \(error.mvUserMessage)"))
             }
         }
     }
@@ -120,6 +169,18 @@ private struct OrderRow: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    if item.isFavorite {
+                        Image(systemName: MVSymbols.starFilled)
+                            .font(.caption)
+                            .foregroundStyle(.yellow)
+                            .accessibilityLabel("Favorite")
+                    }
+                    if item.isSealed {
+                        Image(systemName: "lock.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Sealed, takes no more mail")
+                    }
                     Spacer()
                     Text(MVDateFormat.dateRange(item.firstMailAt, item.lastMailAt))
                         .font(.caption)
