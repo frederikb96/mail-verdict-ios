@@ -63,7 +63,7 @@ import MailVerdictKit
                         firstMailAt: Date(timeIntervalSinceNow: -86400 * 4),
                         lastMailAt: Date(timeIntervalSinceNow: -86400 * 2), mailCount: 3,
                         accountIds: [MailboxesFixtures.accountId],
-                        textStale: false, updatedAt: Date(timeIntervalSinceNow: -86400 * 2)
+                        textStale: false, updatedAt: Date(timeIntervalSinceNow: -86400 * 2), isFavorite: true
                     ),
                     OrderListItem(
                         id: ticketOrderId, merchant: "Hafenklang Festival", subject: "Weekend pass",
@@ -72,7 +72,8 @@ import MailVerdictKit
                         firstMailAt: Date(timeIntervalSinceNow: -86400 * 30),
                         lastMailAt: Date(timeIntervalSinceNow: -86400 * 30), mailCount: 1,
                         accountIds: [MailboxesFixtures.accountId],
-                        textStale: false, updatedAt: Date(timeIntervalSinceNow: -86400 * 30)
+                        textStale: false, updatedAt: Date(timeIntervalSinceNow: -86400 * 30), isSealed: true,
+                        openSetBy: "auto"
                     ),
                 ],
                 hasMore: false, nextCursor: nil

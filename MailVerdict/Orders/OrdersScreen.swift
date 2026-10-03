@@ -48,14 +48,18 @@ struct OrdersScreen: View {
             .searchable(text: $searchText, prompt: "Filter orders")
             .onChange(of: searchText) { _, text in store.setQuery(text) }
             .deleteOrderAlert(order: $pendingDelete) { item in run(.delete, on: item) }
+            #if DEBUG
+                // Ahead of the data-loading `.task` below, on purpose: a fixture-mode sweep's own
+                // screenshot-readiness task registers this screen's routes, and it has to win the
+                // race against this screen's own first load -- a load that gets there first is a
+                // request no fixture route answered.
+                .screenshotReady(route: .orders, environment: environment, connection: connection)
+            #endif
             .task {
                 store.subscribeToLive(connection.liveEventHub)
                 await store.load()
             }
             .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
-            #if DEBUG
-                .screenshotReady(route: .orders, environment: environment, connection: connection)
-            #endif
     }
 
     @ViewBuilder
