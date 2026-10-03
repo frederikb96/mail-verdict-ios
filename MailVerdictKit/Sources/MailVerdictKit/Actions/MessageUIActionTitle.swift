@@ -25,6 +25,7 @@ extension MVMessageUIAction {
         case .darkBackground: return "Dark Background"
         case .lightBackground: return "Light Background"
         case .shareMessageFile: return "Share Message File…"
+        case .addRule: return "Add Rule…"
         case .showInFolder: return "Show in Folder"
         case .delete: return "Delete"
         case .deleteForever: return "Delete Forever"
@@ -52,6 +53,7 @@ extension MVMessageUIAction {
         case .darkBackground: return MVSymbols.darkBackground
         case .lightBackground: return MVSymbols.lightBackground
         case .shareMessageFile: return MVSymbols.shareMessageFile
+        case .addRule: return MVSymbols.addRule
         case .showInFolder: return MVSymbols.showInFolder
         case .delete: return MVSymbols.delete
         case .deleteForever: return MVSymbols.deleteForever

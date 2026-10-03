@@ -102,6 +102,15 @@ public enum ContractRegistry {
         NativeSubscriptionCreate.self,
         AlertLookupRequest.self,
         AlertBadgeResponse.self,
+        // Pipeline.swift
+        StageOut.self,
+        StageCreateRequest.self,
+        StageUpdateRequest.self,
+        RuleAssistantRequest.self,
+        RuleAssistantChange.self,
+        RuleAssistantPreviewExample.self,
+        RuleAssistantPreview.self,
+        RuleAssistantResponse.self,
         // Order.swift
         OrderListItem.self,
         OrderListResponse.self,

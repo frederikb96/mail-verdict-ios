@@ -89,6 +89,7 @@ public enum MVMessageUIAction: Sendable, Equatable {
     case darkBackground
     case lightBackground
     case shareMessageFile
+    case addRule
     case showInFolder
     case delete
     case deleteForever
@@ -148,6 +149,10 @@ public enum MessageActionSet {
             }
             tools.append(context.canvasIsDark ? .lightBackground : .darkBackground)
             tools.append(.shareMessageFile)
+            // The assistant reads the message from the mailbox, which a glaciered one is not in.
+            if !context.isInGlacier {
+                tools.append(.addRule)
+            }
             if context.source == .search || context.source == .spamReview || context.source == .order {
                 tools.append(.showInFolder)
             }
