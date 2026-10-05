@@ -104,9 +104,9 @@ public enum ContractRegistry {
         AlertBadgeResponse.self,
         // Pipeline.swift
         StageOut.self,
-        StageCreateRequest.self,
-        StageUpdateRequest.self,
+        PipelineWriteRequest.self,
         RuleAssistantRequest.self,
+        RuleAssistantRuleChange.self,
         RuleAssistantChange.self,
         RuleAssistantPreviewExample.self,
         RuleAssistantPreview.self,

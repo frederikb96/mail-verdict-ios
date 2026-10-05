@@ -1,8 +1,9 @@
 import Foundation
 import Observation
 
-/// One sentence about the open mail becomes one proposed rule change, which is accepted or
-/// declined -- no history and no second prompt. Dismissing the sheet calls `cancel()`, which
+/// One sentence about the open mail becomes one proposed change to the rules -- any number of rules
+/// added, changed, moved or removed -- which is accepted or declined as a whole, with no history and
+/// no second prompt. Dismissing the sheet calls `cancel()`, which
 /// drops a request still running; the server stops before its next model call once the
 /// connection closes.
 @Observable
@@ -70,7 +71,7 @@ public final class RuleAssistantStore {
         }
     }
 
-    /// Writes the proposed stage through the ordinary pipeline routes, with the revision the
+    /// Writes the proposed document through the ordinary pipeline route, with the revision the
     /// proposal was made against.
     public func accept() {
         guard case .result(_, let change) = phase, !isBusy else { return }
@@ -81,20 +82,7 @@ public final class RuleAssistantStore {
         inFlight = Task { [apiClient] in
             let outcome: Phase
             do {
-                let stage = change.stage
-                if change.isNew {
-                    try await apiClient.createStage(
-                        StageCreateRequest(
-                            stageId: stage.stageId, type: stage.type, name: stage.name, config: stage.config,
-                            enabled: stage.enabled, halt: stage.halt, accounts: stage.accounts,
-                            baseRevision: change.baseRevision))
-                } else {
-                    try await apiClient.updateStage(
-                        id: stage.stageId,
-                        StageUpdateRequest(
-                            name: stage.name, config: stage.config, halt: stage.halt,
-                            baseRevision: change.baseRevision))
-                }
+                try await apiClient.replacePipeline(change.writeRequest)
                 outcome = .accepted
             } catch {
                 if error.mvIsCancellation { return }

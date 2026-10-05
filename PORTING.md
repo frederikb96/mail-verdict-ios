@@ -481,8 +481,10 @@ to `OrderActionSet` and check both menus and the merge confirmation.
 Needs a device because: it runs a real, billed model call against the server's configured
 provider, and the sheet's behaviour (keyboard, cancel on dismiss, swipe-down while a request runs)
 is UIKit presentation. Confirm: open a live mail, Options → Add Rule…, type a sentence and propose;
-check the "Now" / "Proposed" rule text, the "Would have caught N of your last M mails" line and its
-examples, then Accept and look at the rule in the web Pipeline page. Also confirm that dismissing
-the sheet while "Working out a rule…" shows stops the request (the server log shows no further
+check one section per affected rule (New / Changed / Moved / Removed, each with its "Now" and
+"Proposed" text) — ask for something touching two rules at once, such as splitting one rule by
+sender — the "Would have caught N of your last M mails" line and its examples, then Accept and look
+at the rules in the web Pipeline page. Also confirm that dismissing the sheet while "Working out a
+change…" shows stops the request (the server log shows no further
 model call), that Accept cannot be dismissed mid-write, that a rule edited elsewhere in between
 gives "Rules changed meanwhile — ask again.", and that the item is absent for a glaciered mail.

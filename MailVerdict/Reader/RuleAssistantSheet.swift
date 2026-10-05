@@ -1,8 +1,8 @@
 import MailVerdictKit
 import SwiftUI
 
-/// "Add rule" on the open mail: a sentence in, one proposed rule change out, accepted or
-/// declined. Dismissing the sheet drops a request still running.
+/// "Add rule" on the open mail: a sentence in, one proposed change to the rules out, accepted or
+/// declined as a whole. Dismissing the sheet drops a request still running.
 struct RuleAssistantSheet: View {
     @State private var store: RuleAssistantStore
     let onSaved: () -> Void
@@ -42,7 +42,7 @@ struct RuleAssistantSheet: View {
         case .running:
             VStack(spacing: 12) {
                 ProgressView()
-                Text("Working out a rule…").foregroundStyle(.secondary)
+                Text("Working out a change…").foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .result(let response, let change):
@@ -81,10 +81,12 @@ private struct RuleAssistantPromptForm: View {
                     .focused($isFocused)
                     .accessibilityLabel("What should the rule do?")
             } footer: {
-                Text("Say in one sentence what should happen to mail like the one you have open.")
+                Text(
+                    "Say in a sentence what should happen to mail like the one you have open. The assistant may add, change, reorder or remove several rules at once."
+                )
             }
             Section {
-                Button("Propose Rule") { store.send() }
+                Button("Propose Change") { store.send() }
                     .disabled(!store.canSend)
             }
         }
@@ -102,14 +104,16 @@ private struct RuleAssistantProposal: View {
     var body: some View {
         List {
             Section { Text(response.message) }
-            Section(change.title) {
-                if let effects = change.effectsText {
-                    RuleTextBlock(label: "What this rule does", text: effects)
+            Section { Text(change.title).font(.headline) }
+            ForEach(change.rules, id: \.stageId) { rule in
+                Section("\(rule.kindLabel) — \(rule.name)") {
+                    if let before = rule.beforeText {
+                        RuleTextBlock(label: "Now", text: before)
+                    }
+                    if let after = rule.afterText {
+                        RuleTextBlock(label: rule.kind == "moved" ? "Unchanged" : "Proposed", text: after)
+                    }
                 }
-                if let before = change.beforeText {
-                    RuleTextBlock(label: "Now", text: before)
-                }
-                RuleTextBlock(label: "Proposed", text: change.afterText)
             }
             if let preview = response.preview {
                 RuleAssistantPreviewSection(preview: preview)
