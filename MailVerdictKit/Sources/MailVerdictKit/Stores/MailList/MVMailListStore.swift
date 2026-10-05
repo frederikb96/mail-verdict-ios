@@ -956,10 +956,15 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         guard let bulk = MailActionService.bulkAction(for: action, targetFolderId: targetFolderId) else { return }
         if bulk == .markRead { keptWhileUnread.insert(rowId) }
         if bulk == .markUnread { Task { await MVExplicitUnreadTracker.shared.markExplicit(rowId) } }
+        // A conversation row stands for every message of its conversation in this folder, so
+        // taking it out of the list takes all of them, as a ticked one does in `performBulk`.
+        let expands = identity.threaded && bulk.removesFromList
         ledger.enqueue(
             MVIntentRequest(
                 accountId: row.accountId, action: bulk, targetFolderId: targetFolderId, messageIds: [rowId],
+                delivery: expands ? .bulk(expandThreads: true) : .message,
                 originFolderIds: [rowId: row.folderId], snapshots: [row],
+                seenThrough: expands ? conversationBound(for: [row]) : nil,
                 // Only ever read server-side for a permanent delete of a message already in the
                 // glacier -- ignored everywhere else, and this action always reaches here from
                 // its own already-confirmed "Delete Forever" alert.

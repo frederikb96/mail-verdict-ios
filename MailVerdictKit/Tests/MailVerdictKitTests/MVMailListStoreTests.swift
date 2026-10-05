@@ -439,6 +439,41 @@ final class MVMailListStoreTests: XCTestCase {
         XCTAssertEqual(Set(backend.bulkRequests.last?.1.ids ?? []), [testUUID(1), testUUID(11), testUUID(2)])
     }
 
+    /// A swipe on a conversation row stands for the whole conversation in this folder, exactly as
+    /// ticking it does — archiving only the newest message would leave the rest behind, and the
+    /// row would come straight back. Undo returns every message the server moved.
+    func testSwipingAConversationRowArchivesTheWholeConversation() async {
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...3)) }
+        backend.bulkHandler = { _, request in
+            BulkActionResponse(
+                success: true, action: request.action.rawValue, affectedCount: 2,
+                sources: [
+                    BulkActionSource(id: testUUID(1), folderId: testFolder),
+                    BulkActionSource(id: testUUID(11), folderId: testFolder),
+                ]
+            )
+        }
+        let toasts = MVToastStore()
+        let ledger = makeTestLedger(transport: backend, toasts: toasts)
+        let store = makeStore(backend, threaded: true, toasts: toasts, ledger: ledger)
+        await store.start()
+
+        store.perform(.archive, on: testUUID(1))
+        store.perform(.star, on: testUUID(2))
+
+        XCTAssertEqual(store.rowIds, [testUUID(2), testUUID(3)])
+        await waitUntil { ledger.intents.allSatisfy { $0.state == .done } && backend.messageActions.count == 1 }
+        XCTAssertEqual(backend.bulkRequests.map(\.1.ids), [[testUUID(1)]])
+        XCTAssertEqual(backend.bulkRequests.first?.1.expandThreads, true)
+        XCTAssertEqual(backend.messageActions.map(\.0), [testUUID(2)], "starring marks only the row's own message")
+
+        ledger.undo([ledger.intents.first { $0.action == .archive }!.id])
+        await waitUntil { backend.bulkRequests.count == 2 }
+        XCTAssertEqual(backend.bulkRequests.last?.1.action, .move)
+        XCTAssertEqual(Set(backend.bulkRequests.last?.1.ids ?? []), [testUUID(1), testUUID(11)])
+    }
+
     /// `perform` maps each UI action to the exact wire action the backend receives — the swipe
     /// sheet and Options menu both funnel through this one call, so a mistake here sends the
     /// wrong IMAP-side effect for every surface at once (an Archive swipe landing in Trash, say).
