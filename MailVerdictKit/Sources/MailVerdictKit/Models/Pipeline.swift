@@ -35,72 +35,27 @@ public struct StageOut: ContractModel, Codable, Sendable, Equatable {
     }
 }
 
-/// Adds one stage at the end of the current pipeline. `baseRevision` makes the write fail with a
-/// `409` when the rules changed since the proposal was made.
-public struct StageCreateRequest: ContractModel, Codable, Sendable, Equatable {
-    public static let schemaName = "StageCreateRequest"
+/// Replaces the whole pipeline document. `baseRevision` makes the write fail with a `409` when the
+/// rules changed since the proposal was made.
+public struct PipelineWriteRequest: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "PipelineWriteRequest"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case stageId = "stage_id", type, name, config, enabled, halt, accounts,
-            baseRevision = "base_revision", position
+        case baseRevision = "base_revision", enabled, stages
     }
     public typealias CodingKeys = ContractKeys
 
-    public let stageId: String
-    public let type: String
-    public let name: String?
-    @MVDefaulted<MVDefaultEmptyObject> public var config: [String: MVAnyJSON]
+    public let baseRevision: Int?
     @MVDefaulted<MVDefaultTrue> public var enabled: Bool
-    @MVDefaulted<MVDefaultFalse> public var halt: Bool
-    public let accounts: [UUID]?
-    public let baseRevision: Int?
-    public let position: Int?
+    @MVDefaulted<MVDefaultEmptyArray<StageOut>> public var stages: [StageOut]
 
-    public init(
-        stageId: String, type: String, name: String? = nil, config: [String: MVAnyJSON] = [:],
-        enabled: Bool = true, halt: Bool = false, accounts: [UUID]? = nil, baseRevision: Int? = nil,
-        position: Int? = nil
-    ) {
-        self.stageId = stageId
-        self.type = type
-        self.name = name
-        self.config = config
-        self.enabled = enabled
-        self.halt = halt
-        self.accounts = accounts
+    public init(baseRevision: Int?, enabled: Bool, stages: [StageOut]) {
         self.baseRevision = baseRevision
-        self.position = position
+        self.enabled = enabled
+        self.stages = stages
     }
 }
 
-/// A partial update to one stage: an omitted (`nil`) field is left as it is.
-public struct StageUpdateRequest: ContractModel, Codable, Sendable, Equatable {
-    public static let schemaName = "StageUpdateRequest"
-    public enum ContractKeys: String, CodingKey, CaseIterable {
-        case name, config, enabled, halt, accounts, baseRevision = "base_revision"
-    }
-    public typealias CodingKeys = ContractKeys
-
-    public let name: String?
-    public let config: [String: MVAnyJSON]?
-    public let enabled: Bool?
-    public let halt: Bool?
-    public let accounts: [UUID]?
-    public let baseRevision: Int?
-
-    public init(
-        name: String? = nil, config: [String: MVAnyJSON]? = nil, enabled: Bool? = nil, halt: Bool? = nil,
-        accounts: [UUID]? = nil, baseRevision: Int? = nil
-    ) {
-        self.name = name
-        self.config = config
-        self.enabled = enabled
-        self.halt = halt
-        self.accounts = accounts
-        self.baseRevision = baseRevision
-    }
-}
-
-/// One sentence about the open mail, for the assistant to turn into one rule change.
+/// One sentence about the open mail, for the assistant to turn into one proposed change to the rules.
 public struct RuleAssistantRequest: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "RuleAssistantRequest"
     public enum ContractKeys: String, CodingKey, CaseIterable { case messageId = "message_id", prompt }
@@ -118,46 +73,73 @@ public struct RuleAssistantRequest: ContractModel, Codable, Sendable, Equatable 
     }
 }
 
-/// The one change the assistant proposes. `stage` is the complete stage as it should be after
-/// Accept; Accept is an ordinary pipeline write (create when `isNew`, else update) carrying
-/// `baseRevision`.
-public struct RuleAssistantChange: ContractModel, Codable, Sendable, Equatable {
-    public static let schemaName = "RuleAssistantChange"
+/// One rule the proposal adds, changes, moves or removes, each text the whole stage as JSON.
+public struct RuleAssistantRuleChange: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "RuleAssistantRuleChange"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case kind, baseRevision = "base_revision", isNew = "is_new", stage, title,
-            beforeText = "before_text", afterText = "after_text", effectsText = "effects_text"
+        case kind, stageId = "stage_id", name, beforeText = "before_text", afterText = "after_text"
     }
     public typealias CodingKeys = ContractKeys
 
-    /// `add_condition`, `new_rule` or `replace_rule`.
+    /// `added`, `changed`, `moved` or `removed`.
     public let kind: String
-    public let baseRevision: Int
-    public let isNew: Bool
-    public let stage: StageOut
-    public let title: String
-    /// The rule as it reads today; present for a replaced rule only.
+    public let stageId: String
+    public let name: String
+    /// `nil` for an added or moved rule.
     public let beforeText: String?
-    public let afterText: String
-    /// An `add_condition` proposal's existing rule effects as JSON text -- what the rule being
-    /// widened actually does.
-    public let effectsText: String?
+    /// `nil` for a removed rule.
+    public let afterText: String?
 
-    public init(
-        kind: String, baseRevision: Int, isNew: Bool, stage: StageOut, title: String, beforeText: String?,
-        afterText: String, effectsText: String? = nil
-    ) {
-        self.effectsText = effectsText
+    public init(kind: String, stageId: String, name: String, beforeText: String?, afterText: String?) {
         self.kind = kind
-        self.baseRevision = baseRevision
-        self.isNew = isNew
-        self.stage = stage
-        self.title = title
+        self.stageId = stageId
+        self.name = name
         self.beforeText = beforeText
         self.afterText = afterText
     }
+
+    /// "New", "Changed", "Moved" or "Removed".
+    public var kindLabel: String {
+        switch kind {
+        case "added": "New"
+        case "changed": "Changed"
+        case "moved": "Moved"
+        case "removed": "Removed"
+        default: kind.capitalized
+        }
+    }
 }
 
-/// One recent mail the changed rule newly catches.
+/// The change the assistant proposes: the complete pipeline document as it should be after Accept,
+/// and the rules in it that differ. Accept replaces the document, carrying `baseRevision`.
+public struct RuleAssistantChange: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "RuleAssistantChange"
+    public enum ContractKeys: String, CodingKey, CaseIterable {
+        case baseRevision = "base_revision", enabled, stages, title, rules
+    }
+    public typealias CodingKeys = ContractKeys
+
+    public let baseRevision: Int
+    public let enabled: Bool
+    public let stages: [StageOut]
+    public let title: String
+    public let rules: [RuleAssistantRuleChange]
+
+    public init(baseRevision: Int, enabled: Bool, stages: [StageOut], title: String, rules: [RuleAssistantRuleChange]) {
+        self.baseRevision = baseRevision
+        self.enabled = enabled
+        self.stages = stages
+        self.title = title
+        self.rules = rules
+    }
+
+    /// What Accept sends.
+    public var writeRequest: PipelineWriteRequest {
+        PipelineWriteRequest(baseRevision: baseRevision, enabled: enabled, stages: stages)
+    }
+}
+
+/// One recent mail the changed rules newly catch.
 public struct RuleAssistantPreviewExample: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "RuleAssistantPreviewExample"
     public enum ContractKeys: String, CodingKey, CaseIterable { case fromAddr = "from_addr", subject }
@@ -172,7 +154,7 @@ public struct RuleAssistantPreviewExample: ContractModel, Codable, Sendable, Equ
     }
 }
 
-/// What the change would have done to the account's newest mails.
+/// What the rules the change touches catch among the account's newest mails, together, before and after.
 public struct RuleAssistantPreview: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "RuleAssistantPreview"
     public enum ContractKeys: String, CodingKey, CaseIterable {

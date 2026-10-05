@@ -15,15 +15,19 @@ final class RuleAssistantStoreTests: XCTestCase {
         return RuleAssistantStore(messageId: UUID(), apiClient: client)
     }
 
-    private func responseJSON(isNew: Bool, withChange: Bool = true) -> String {
+    private func responseJSON(withChange: Bool = true) -> String {
         let change =
             withChange
             ? """
-            {"kind":"\(isNew ? "new_rule" : "add_condition")","base_revision":7,"is_new":\(isNew),
-            "stage":{"stage_id":"rule-1","type":"rule","name":"Newsletter","config":{"when":{"from":"a@b.c"}},
+            {"base_revision":7,"enabled":true,
+            "stages":[{"stage_id":"spam","type":"classify","name":"Spam","config":{},
             "enabled":true,"halt":false,"accounts":null},
-            "title":"Add a condition to Newsletter","before_text":null,
-            "effects_text":\(isNew ? "null" : "\"[{\\\"move\\\":\\\"Newsletter\\\"}]\""),"after_text":"when from a@b.c"}
+            {"stage_id":"rule-1","type":"match","name":"Newsletter","config":{"when":{"from":"a@b.c"}},
+            "enabled":true,"halt":false,"accounts":null}],
+            "title":"Change 2 rules: 1 added, 1 removed",
+            "rules":[{"kind":"added","stage_id":"rule-1","name":"Newsletter","before_text":null,
+            "after_text":"{}"},
+            {"kind":"removed","stage_id":"old","name":"Old","before_text":"{}","after_text":null}]}
             """
             : "null"
         return """
@@ -44,10 +48,11 @@ final class RuleAssistantStoreTests: XCTestCase {
 
     func testAProposalShowsTheChangeAndTheTrimmedPromptWasSent() async throws {
         let store = makeStore()
-        await propose(store, json: responseJSON(isNew: false))
+        await propose(store, json: responseJSON())
         guard case .result(let response, let change) = store.phase else { return XCTFail("\(store.phase)") }
         XCTAssertEqual(change.baseRevision, 7)
-        XCTAssertEqual(change.effectsText, #"[{"move":"Newsletter"}]"#)
+        XCTAssertEqual(change.rules.map(\.kindLabel), ["New", "Removed"])
+        XCTAssertEqual(change.rules[1].afterText, nil)
         XCTAssertEqual(response.preview?.summaryLine, "Would have caught 9 of your last 100 mails (now: 2)")
         XCTAssertEqual(response.warnings, ["Broad"])
         XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.path, "/api/pipeline/assistant")
@@ -57,7 +62,7 @@ final class RuleAssistantStoreTests: XCTestCase {
 
     func testAnAnswerWithoutAChangeIsTheEmptyState() async {
         let store = makeStore()
-        await propose(store, json: responseJSON(isNew: false, withChange: false))
+        await propose(store, json: responseJSON(withChange: false))
         XCTAssertEqual(store.phase, .empty("Here is a rule"))
     }
 
@@ -71,43 +76,27 @@ final class RuleAssistantStoreTests: XCTestCase {
         XCTAssertTrue(store.canSend)
     }
 
-    func testAcceptingANewRulePostsTheStageWithTheProposalsRevision() async throws {
+    func testAcceptingReplacesTheDocumentWithTheProposalsRevision() async throws {
         let store = makeStore()
-        await propose(store, json: responseJSON(isNew: true))
+        await propose(store, json: responseJSON())
         MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data("{}".utf8))
         store.accept()
         await store.inFlight?.value
 
         XCTAssertEqual(store.phase, .accepted)
-        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "POST")
-        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.path, "/api/pipeline/stages")
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "PUT")
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.path, "/api/pipeline")
         let body = try XCTUnwrap(MVStubURLProtocol.capturedRequest?.httpBody)
-        let sent = try JSONDecoder().decode(StageCreateRequest.self, from: body)
-        XCTAssertEqual(sent.stageId, "rule-1")
+        let sent = try JSONDecoder().decode(PipelineWriteRequest.self, from: body)
         XCTAssertEqual(sent.baseRevision, 7)
-        XCTAssertEqual(sent.config["when"], .object(["from": .string("a@b.c")]))
-    }
-
-    func testAcceptingAChangeToAnExistingRulePatchesIt() async throws {
-        let store = makeStore()
-        await propose(store, json: responseJSON(isNew: false))
-        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data("{}".utf8))
-        store.accept()
-        await store.inFlight?.value
-
-        XCTAssertEqual(store.phase, .accepted)
-        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.httpMethod, "PATCH")
-        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.path, "/api/pipeline/stages/rule-1")
-        let body = try XCTUnwrap(MVStubURLProtocol.capturedRequest?.httpBody)
-        let sent = try JSONDecoder().decode(StageUpdateRequest.self, from: body)
-        XCTAssertEqual(sent.baseRevision, 7)
-        XCTAssertNil(sent.enabled)
-        XCTAssertNil(sent.accounts)
+        XCTAssertTrue(sent.enabled)
+        XCTAssertEqual(sent.stages.map(\.stageId), ["spam", "rule-1"])
+        XCTAssertEqual(sent.stages[1].config["when"], .object(["from": .string("a@b.c")]))
     }
 
     func testAConflictOnAcceptSaysTheRulesChanged() async {
         let store = makeStore()
-        await propose(store, json: responseJSON(isNew: true))
+        await propose(store, json: responseJSON())
         MVStubURLProtocol.stub = .init(statusCode: 409, headers: [:], body: Data(#"{"detail":"stale"}"#.utf8))
         store.accept()
         await store.inFlight?.value
@@ -126,7 +115,7 @@ final class RuleAssistantStoreTests: XCTestCase {
 
     func testCancellingWhileRunningDiscardsTheLateAnswer() async throws {
         let store = makeStore()
-        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(responseJSON(isNew: true).utf8))
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(responseJSON().utf8))
         store.promptText = "x"
         store.send()
         let running = store.inFlight
@@ -138,7 +127,7 @@ final class RuleAssistantStoreTests: XCTestCase {
 
     func testASecondSendWhileRunningIsIgnored() {
         let store = makeStore()
-        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(responseJSON(isNew: true).utf8))
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(responseJSON().utf8))
         store.promptText = "x"
         store.send()
         let first = store.inFlight

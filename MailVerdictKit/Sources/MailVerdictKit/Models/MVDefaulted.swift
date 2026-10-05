@@ -94,8 +94,3 @@ public enum MVDefaultFolderKindImap: MVDefaultValueSource {
 public enum MVDefaultOpenSetByAi: MVDefaultValueSource {
     public static let defaultValue = "ai"
 }
-
-/// An omitted JSON object -- `StageCreateRequest.config`'s own default.
-public struct MVDefaultEmptyObject: MVDefaultValueSource {
-    public static var defaultValue: [String: MVAnyJSON] { [:] }
-}
