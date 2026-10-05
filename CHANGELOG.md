@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-05
+
+### Fixed
+
+- Swiping a conversation row to Archive, Delete or Junk -- or choosing one of them from its
+  long-press menu -- in a list grouped by conversation acts on every message of that conversation
+  in the folder, not only the newest one. Undo puts all of them back.
+
 ## [0.5.0] - 2026-10-05
 
 ### Changed
