@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-05
+
+### Changed
+
+- Add Rule… shows proposals that touch several rules at once -- rules added, changed, moved or
+  removed, each with its text before and after -- and Accept saves them together. Needs MailVerdict
+  6.9.0 or later.
+
 ## [0.4.0] - 2026-10-03
 
 ### Added
