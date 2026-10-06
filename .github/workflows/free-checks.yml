@@ -61,7 +61,7 @@ jobs:
           apt-get update -qq
           apt-get install -y --no-install-recommends ca-certificates curl git python3 zstd
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # The workspace belongs to the runner's user and the container runs as root, so git refuses
       # it as unsafe in every later step; checkout only marks it safe for its own commands.
@@ -76,7 +76,7 @@ jobs:
 
       # Dependencies are fetched and rebuilt on every run otherwise, which is most of the wall
       # time here. Keyed on the manifest so a dependency change invalidates it.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: MailVerdictKit/.build
           key: spm-${{ runner.os }}-${{ steps.toolchain.outputs.version }}-${{ hashFiles('MailVerdictKit/Package.swift') }}
@@ -144,7 +144,7 @@ jobs:
           apt-get update -qq
           apt-get install -y --no-install-recommends ca-certificates curl git
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # The workspace belongs to the runner's user and the container runs as root, so git refuses
       # it as unsafe in every later step; checkout only marks it safe for its own commands.
