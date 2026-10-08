@@ -488,3 +488,7 @@ at the rules in the web Pipeline page. Also confirm that dismissing the sheet wh
 change…" shows stops the request (the server log shows no further
 model call), that Accept cannot be dismissed mid-write, that a rule edited elsewhere in between
 gives "Rules changed meanwhile — ask again.", and that the item is absent for a glaciered mail.
+
+### Copy link to this message in the reader's Options menu — web anchor: ui/src/components/mail/reading-pane.tsx (`messageLink`)
+Needs a device because: it writes `<server origin>/?message=<id>` to the pasteboard, and whether
+the copied link opens that message in the web UI is a check across the phone and a browser.
