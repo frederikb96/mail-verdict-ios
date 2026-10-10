@@ -197,7 +197,7 @@ same reasoning as the list's own swipe checks above.
 ### Int field's stepper range renders sanely — web anchor: ui/src/components/settings (generic category renderer)
 Needs a device because: the generic settings renderer's `Stepper` over a wide integer range has
 never been seen rendered; confirm the control itself handles it, not only that `Int.min...Int.max`
-doesn't crash (bounded already, per the `ios` skill's own Stepper warning).
+doesn't crash (bounded already: a `Stepper` over `Int.min...Int.max` traps when it renders).
 
 ### JSON editor's `TextEditor` keyboard behavior and live validity check — web anchor: ui/src/components/settings (object/array field editor)
 Needs a device because: a monospaced `TextEditor`'s real keyboard interaction and
