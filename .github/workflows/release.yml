@@ -29,7 +29,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The simulator lane (boot, install, debug bridge, screenshot sweep) gates the upload: `build`
+  # below is what reaches TestFlight.
+  simulator:
+    uses: ./.github/workflows/mac.yml
+    with:
+      run_app: true
+
   build:
+    needs: simulator
     runs-on: macos-26
     # The 6-hour default would hold a scarce Mac runner for a whole afternoon before failing.
     timeout-minutes: 45
