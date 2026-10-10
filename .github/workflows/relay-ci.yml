@@ -2,32 +2,18 @@ name: Relay checks
 
 # Everything that does not require publishing anything: does the Go service build, do its tests
 # pass, does the Helm chart lint, does the container image actually build. Scoped to this
-# component's own paths so an app-only PR never queues it.
+# component's own paths: `free-checks.yml` calls it on pull requests only when they change them.
 #
 # 🚨 GitHub-hosted `ubuntu-latest` only, same reasoning as every other workflow here: this
 # repository is public, so standard runners are free, and a `pull_request` trigger runs the
 # workflow file as it exists on the PR's own head — a self-hosted runner named here would let a
 # stranger's fork execute inside the cluster.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'relay/**'
-      - 'charts/mail-verdict-push-relay/**'
-      - '.github/workflows/relay-ci.yml'
-  pull_request:
-    paths:
-      - 'relay/**'
-      - 'charts/mail-verdict-push-relay/**'
-      - '.github/workflows/relay-ci.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   go:
