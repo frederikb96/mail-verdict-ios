@@ -58,7 +58,7 @@ the required gate.
 | Workflow | Answers | Runner | Runs on |
 |---|---|---|---|
 | `Free checks` | compiles, tests pass, formatted; nightly, the vendored API contract still matches the backend | Linux | pull requests, manual dispatch, nightly |
-| `Mac` | the app target compiles and the built bundle declares what it needs; with the simulator lane it also boots the app, screenshots every registered screen (fixture mode, no backend needed) and queries the debug bridge | macOS | pull requests that change the app, package, extension or project (through `Free checks`), manual dispatch, and before every `Release` upload |
+| `Mac` | the app target compiles and the built bundle declares what it needs; with the simulator lane (manual dispatch only) it also boots the app, screenshots every registered screen (fixture mode, no backend needed) and queries the debug bridge | macOS | pull requests that change the app, package, extension or project (through `Free checks`), manual dispatch, and before every `Release` upload |
 | `Relay checks` | the push relay's Go tests, vet, formatting and Helm chart render | Linux | pull requests that change `relay/` or the chart (through `Free checks`), manual dispatch |
 | `Release` | signs and ships the app to TestFlight | macOS | a `v*.*.*` tag, manual dispatch |
 | `Relay release` | publishes the relay image and Helm chart to GHCR | Linux | a `relay-v*.*.*` tag |
