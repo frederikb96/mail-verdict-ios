@@ -32,29 +32,39 @@ runs — so views stay thin, and anything a unit test could catch lives in the p
 | `Tooling/` | checks that catch macOS-only compile errors without a Mac |
 | `fastlane/` | build, sign, upload — the same lanes locally and in CI |
 
-## Building
+## Building and checks
 
 The package needs only a Swift toolchain, 6.2.4 or later, on any platform (6.2.1 fails to link the
 tests on Linux):
 
 ```
-swift build --package-path MailVerdictKit --build-tests
-swift test  --package-path MailVerdictKit --skip-build
+swift build --package-path MailVerdictKit --build-tests && \
+  swift test --package-path MailVerdictKit --skip-build
+swift format lint --recursive --strict MailVerdictKit MailVerdict MailVerdictNotify
 ```
+
+Scans for what only a Mac would otherwise find: `./Tooling/parse-swift.sh` checks the app and
+extension sources for syntax errors without an iOS SDK, `./Tooling/swift6-lint.py` flags Swift 6
+constructs that compile on Linux and fail on a Mac, and `plutil -lint
+MailVerdict.xcodeproj/project.pbxproj` validates the hand-written project file after an edit.
 
 The app target needs Xcode. CI builds it on a macOS runner.
 
 ## CI
 
-| Workflow | Answers | Runner |
-|---|---|---|
-| `Free checks` | compiles, tests pass, formatted | Linux |
-| `Mac` | does it actually run — boots it, screenshots it, queries the debug bridge | macOS |
-| `Release` | signs and ships to TestFlight | macOS |
+Checks run on pull requests only; `main` runs nothing, and the `Validation` job of `Free checks` is
+the required gate.
 
-`Mac` publishes a screenshot per registered screen (fixture mode, no backend needed) plus the
-device log as artifacts, because every automated assertion in that job can pass while the screen
-renders nothing.
+| Workflow | Answers | Runner | Runs on |
+|---|---|---|---|
+| `Free checks` | compiles, tests pass, formatted; nightly, the vendored API contract still matches the backend | Linux | pull requests, manual dispatch, nightly |
+| `Mac` | the app target compiles and the built bundle declares what it needs; with the simulator lane it also boots the app, screenshots every registered screen (fixture mode, no backend needed) and queries the debug bridge | macOS | pull requests that change the app, package, extension or project (through `Free checks`), manual dispatch, and before every `Release` upload |
+| `Relay checks` | the push relay's Go tests, vet, formatting and Helm chart render | Linux | pull requests that change `relay/` or the chart (through `Free checks`), manual dispatch |
+| `Release` | signs and ships the app to TestFlight | macOS | a `v*.*.*` tag, manual dispatch |
+| `Relay release` | publishes the relay image and Helm chart to GHCR | Linux | a `relay-v*.*.*` tag |
+
+`Mac` publishes a screenshot per registered screen plus the device log as artifacts, because every
+automated assertion in that job can pass while the screen renders nothing.
 
 ## Releasing
 
@@ -62,3 +72,8 @@ Push a `v*.*.*` tag, or dispatch the workflow. The tag is the single source of t
 version; the build number is the CI run number. TestFlight builds expire after 90 days;
 dispatching with `refresh_tag` rebuilds an existing release under a new build number to keep an
 installed copy launching.
+
+The push relay (`relay/`, `charts/mail-verdict-push-relay/`) is versioned and released
+independently: a `relay-v*.*.*` tag publishes its image and chart. The tag versions only the image,
+so the chart's `version` and `appVersion` are bumped to match in a pull request merged before
+tagging.
