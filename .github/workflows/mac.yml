@@ -10,8 +10,8 @@ name: Mac
 # one run rather than spending several to answer them one at a time.
 #
 # On pull requests only the compile and the built-bundle assertions run. The simulator lane (boot,
-# screenshots, debug bridge) runs on manual dispatch with `run_app`, and `release.yml` calls this
-# with `run_app` so it gates every upload.
+# screenshots, debug bridge) runs on manual dispatch with `run_app`; `release.yml` calls this
+# without it, so the compile and the bundle assertions gate every upload.
 on:
   # Called from `free-checks.yml` on pull requests that change the app (concurrency is set there)
   # and from `release.yml`.
@@ -20,6 +20,10 @@ on:
       run_app:
         type: boolean
         default: false
+      # Checked out instead of the calling ref when set (a release refresh rebuilds an old tag).
+      ref:
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       run_app:
@@ -49,6 +53,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:

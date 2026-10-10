@@ -63,6 +63,7 @@ jobs:
               - 'MailVerdict/**'
               - 'MailVerdictKit/**'
               - 'MailVerdictNotify/**'
+              - 'Config/**'
               - 'MailVerdict.xcodeproj/**'
               - '.github/workflows/mac.yml'
             relay:
