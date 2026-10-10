@@ -2,8 +2,8 @@ apiVersion: v2
 name: mail-verdict-push-relay
 description: "Forwards encrypted push notifications to Apple on behalf of any self-hosted MailVerdict server"
 type: application
-version: 0.1.2
-appVersion: "0.1.2"
+version: 0.1.3
+appVersion: "0.1.3"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/frederikb96/mail-verdict-ios
 sources:
