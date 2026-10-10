@@ -6,7 +6,7 @@ private let folderLeadOrder = ["inbox", "drafts", "sent", "archive", "junk", "tr
 
 /// The two shapes `MailboxesSupport.leadOrderedFolders` sorts — `/folder-order`'s
 /// `FolderOrderItem` and the plain `/folders` list's `FolderResponse` — conformed here rather
-/// than alongside the models themselves, which the CLAUDE.md layering keeps behaviour-free.
+/// than alongside the models themselves, which the package layering keeps behaviour-free.
 public protocol MVFolderLeadSortable {
     var specialUse: String? { get }
     var imapName: String { get }
