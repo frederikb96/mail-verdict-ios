@@ -203,7 +203,8 @@ public struct MessageDetail: ContractModel, Codable, Sendable, Equatable, Identi
             isSeen = "is_seen", isFlagged = "is_flagged", isAnswered = "is_answered",
             isDraft = "is_draft", snippet, pendingSync = "pending_sync",
             isTruncated = "is_truncated", messageId = "message_id", ccAddrs = "cc_addrs",
-            bccAddrs = "bcc_addrs", replyTo = "reply_to", inReplyTo = "in_reply_to",
+            bccAddrs = "bcc_addrs", replyTo = "reply_to", envelopeSender = "envelope_sender",
+            inReplyTo = "in_reply_to",
             references, bodyText = "body_text", bodyHtml = "body_html", sizeBytes = "size_bytes",
             keywords, hasBlockedImages = "has_blocked_images", imagesAllowed = "images_allowed",
             createdAt = "created_at", isGlacier = "is_glacier",
@@ -230,6 +231,8 @@ public struct MessageDetail: ContractModel, Codable, Sendable, Equatable, Identi
     public let ccAddrs: MVJSONValue?
     public let bccAddrs: MVJSONValue?
     public let replyTo: String?
+    /// The SMTP envelope sender (Return-Path), which can differ from `fromAddr`.
+    public let envelopeSender: String?
     public let inReplyTo: String?
     public let references: [String]?
     public let bodyText: String?
@@ -253,7 +256,7 @@ public struct MessageDetail: ContractModel, Codable, Sendable, Equatable, Identi
         isFlagged: Bool = false, isAnswered: Bool = false, isDraft: Bool = false,
         snippet: String?, pendingSync: Bool = false, isTruncated: Bool = false,
         messageId: String?, ccAddrs: MVJSONValue?, bccAddrs: MVJSONValue?, replyTo: String?,
-        inReplyTo: String?, references: [String]?, bodyText: String?, bodyHtml: String?,
+        envelopeSender: String? = nil, inReplyTo: String?, references: [String]?, bodyText: String?, bodyHtml: String?,
         sizeBytes: Int?, keywords: [String] = [], hasBlockedImages: Bool = false,
         imagesAllowed: Bool = false, createdAt: Date, isGlacier: Bool = false,
         originFolderName: String? = nil, tags: [TagResponse] = [],
@@ -278,6 +281,7 @@ public struct MessageDetail: ContractModel, Codable, Sendable, Equatable, Identi
         self.ccAddrs = ccAddrs
         self.bccAddrs = bccAddrs
         self.replyTo = replyTo
+        self.envelopeSender = envelopeSender
         self.inReplyTo = inReplyTo
         self.references = references
         self.bodyText = bodyText

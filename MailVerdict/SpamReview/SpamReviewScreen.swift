@@ -163,7 +163,7 @@ private struct SpamReviewRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(extractSenderName(item.fromAddr)).font(.subheadline).bold()
+                Text(extractSenderName(item.fromAddr)).font(.subheadline).bold().lineLimit(1)
                 if item.isJunk {
                     Chip(text: "Junk", tint: .orange)
                 }
@@ -172,6 +172,12 @@ private struct SpamReviewRow: View {
                 }
                 Spacer()
                 Text(MVDateFormat.relativeDate(item.receivedAt)).font(.caption).foregroundStyle(.secondary)
+            }
+            // The address, and the envelope sender when it differs: a display name alone is
+            // exactly what a mail impersonating the account's own domain fakes.
+            Text(extractEmail(item.fromAddr)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            if let envelopeSender = distinctEnvelopeSender(item.envelopeSender, from: item.fromAddr) {
+                Text("Envelope sender: \(envelopeSender)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             if let subject = item.subject {
                 Text(subject).font(.subheadline)

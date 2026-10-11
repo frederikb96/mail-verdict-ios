@@ -90,6 +90,19 @@ final class ConversationDocumentBuilderTests: XCTestCase {
         XCTAssertFalse(document([m], opened: m.id).contains("in the glacier"))
     }
 
+    func testVerdictLineCarriesTheEnvelopeSenderEscaped() {
+        let verdict = VerdictResponse(
+            id: UUID(), messageId: UUID(), isSpam: true, modelUsed: nil, reasoning: "phishing", source: "ai",
+            createdAt: Date())
+        let m = ReaderFixtures.message(
+            id: UUID(), from: "Alice <alice@example.org>", to: ["me@example.org"], subject: "Hi", html: "<p>x</p>",
+            text: nil, minutesAgo: 5, verdict: verdict, envelopeSender: "<b>bounce@mailer.example")
+        let doc = document([m], opened: m.id)
+        XCTAssertTrue(doc.contains("Envelope sender: &lt;b&gt;bounce@mailer.example"))
+        let plain = message()
+        XCTAssertFalse(document([plain], opened: plain.id).contains("Envelope sender"))
+    }
+
     func testImageBannerOnlyWhenImagesAreBlockedAndNotAllowed() {
         var blocked = message()
         blocked.hasBlockedImages = true

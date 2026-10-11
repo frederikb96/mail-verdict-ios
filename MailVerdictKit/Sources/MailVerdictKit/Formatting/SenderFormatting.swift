@@ -26,6 +26,13 @@ public func extractEmail(_ from: String?) -> String {
     return from
 }
 
+/// The envelope sender worth showing beside a From header: `nil` when it is missing or is the From
+/// address itself, since then it says nothing the From address does not.
+public func distinctEnvelopeSender(_ envelopeSender: String?, from: String?) -> String? {
+    guard let envelopeSender, !envelopeSender.isEmpty else { return nil }
+    return envelopeSender.lowercased() == extractEmail(from).lowercased() ? nil : envelopeSender
+}
+
 /// 1-2 letter initials from a name — the first and last word's first letter for a multi-word
 /// name, or the first two characters otherwise.
 public func getInitials(_ name: String) -> String {

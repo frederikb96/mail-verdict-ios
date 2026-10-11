@@ -25,7 +25,8 @@ import MailVerdictKit
                     SpamReviewItem(
                         messageId: UUID(uuidString: "00000000-0000-0000-0000-0000000061a1")!,
                         accountId: MailboxesFixtures.accountId, folderId: MailboxesFixtures.inboxId, isJunk: true,
-                        subject: "You have won a prize!", fromAddr: "noreply@totally-legit.example",
+                        subject: "You have won a prize!", fromAddr: "Your Bank <noreply@totally-legit.example>",
+                        envelopeSender: "bounce@mass-mailer.example",
                         receivedAt: Date(timeIntervalSinceNow: -1800), snippet: "Click here to claim",
                         verdictId: UUID(), modelUsed: "gpt-4o-mini",
                         reasoning: "Generic prize-claim language, no prior relationship with sender.",

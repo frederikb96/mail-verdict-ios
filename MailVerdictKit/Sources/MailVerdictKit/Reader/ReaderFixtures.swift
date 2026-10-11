@@ -135,13 +135,14 @@
             id: UUID, from: String, to: [String], subject: String, html: String?, text: String?,
             minutesAgo: Double, isSeen: Bool = true, verdict: VerdictResponse? = nil,
             attachments: [AttachmentSummary] = [], hasBlockedImages: Bool = false, isGlacier: Bool = false,
-            originFolderName: String? = nil, folderId: UUID = inboxId
+            originFolderName: String? = nil, folderId: UUID = inboxId, envelopeSender: String? = nil
         ) -> MessageDetail {
             MessageDetail(
                 id: id, accountId: accountId, folderId: folderId, threadId: id, subject: subject, fromAddr: from,
                 toAddrs: .array(to), receivedAt: reference.addingTimeInterval(-minutesAgo * 60), isSeen: isSeen,
                 snippet: text.map { String($0.prefix(120)) } ?? "", messageId: "<\(id)@fixture.invalid>",
-                ccAddrs: nil, bccAddrs: nil, replyTo: nil, inReplyTo: nil, references: nil, bodyText: text,
+                ccAddrs: nil, bccAddrs: nil, replyTo: nil, envelopeSender: envelopeSender, inReplyTo: nil,
+                references: nil, bodyText: text,
                 bodyHtml: html, sizeBytes: 4096, hasBlockedImages: hasBlockedImages, imagesAllowed: false,
                 createdAt: reference, isGlacier: isGlacier, originFolderName: originFolderName, tags: [],
                 attachments: attachments, verdict: verdict)
