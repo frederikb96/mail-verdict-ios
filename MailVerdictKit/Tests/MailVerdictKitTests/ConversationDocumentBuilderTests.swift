@@ -101,6 +101,10 @@ final class ConversationDocumentBuilderTests: XCTestCase {
         XCTAssertTrue(doc.contains("Envelope sender: &lt;b&gt;bounce@mailer.example"))
         let plain = message()
         XCTAssertFalse(document([plain], opened: plain.id).contains("Envelope sender"))
+        let sameAsFrom = ReaderFixtures.message(
+            id: UUID(), from: "Alice <alice@example.org>", to: ["me@example.org"], subject: "Hi", html: "<p>x</p>",
+            text: nil, minutesAgo: 5, verdict: verdict, envelopeSender: "Alice@example.org")
+        XCTAssertFalse(document([sameAsFrom], opened: sameAsFrom.id).contains("Envelope sender"))
     }
 
     func testImageBannerOnlyWhenImagesAreBlockedAndNotAllowed() {

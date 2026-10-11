@@ -107,11 +107,21 @@ private struct RuleAssistantProposal: View {
             Section { Text(change.title).font(.headline) }
             ForEach(change.rules, id: \.stageId) { rule in
                 Section("\(rule.kindLabel) — \(rule.name)") {
-                    if let before = rule.beforeText {
-                        RuleTextBlock(label: "Now", text: before)
-                    }
-                    if let after = rule.afterText {
-                        RuleTextBlock(label: rule.kind == "moved" ? "Unchanged" : "Proposed", text: after)
+                    if rule.kind == "moved" {
+                        Text("Only its place in the rule order changes; the rule itself stays as it is.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if !rule.diff.isEmpty {
+                        RuleDiffView(rows: rule.diff)
+                            .listRowInsets(EdgeInsets())
+                    } else {
+                        // A server older than the diff sends only the two texts.
+                        if let before = rule.beforeText {
+                            RuleTextBlock(label: "Now", text: before)
+                        }
+                        if let after = rule.afterText {
+                            RuleTextBlock(label: "Proposed", text: after)
+                        }
                     }
                 }
             }
@@ -147,6 +157,67 @@ private struct RuleAssistantProposal: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding()
         .background(.bar)
+    }
+}
+
+/// The rule's JSON as a diff: removed lines red, added green, the changed characters inside a
+/// replaced line marked, long unchanged stretches folded into a count.
+private struct RuleDiffView: View {
+    let rows: [DiffRow]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                if row.op == "gap" {
+                    Text(row.gapLabel)
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 2)
+                        .padding(.horizontal, 8)
+                } else {
+                    HStack(alignment: .top, spacing: 6) {
+                        Text(sign(row.op)).foregroundStyle(.secondary).accessibilityHidden(true)
+                        Text(attributed(row))
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(tint(row.op).opacity(0.15))
+                }
+            }
+        }
+        .font(.caption.monospaced())
+        .padding(.vertical, 4)
+        .textSelection(.enabled)
+    }
+
+    private func sign(_ op: String) -> String {
+        switch op {
+        case "added": "+"
+        case "removed": "−"
+        default: " "
+        }
+    }
+
+    private func tint(_ op: String) -> Color {
+        switch op {
+        case "added": .green
+        case "removed": .red
+        default: .clear
+        }
+    }
+
+    private func attributed(_ row: DiffRow) -> AttributedString {
+        var result = AttributedString()
+        for segment in row.segments {
+            var part = AttributedString(segment.text)
+            if segment.changed {
+                part.backgroundColor = tint(row.op).opacity(0.45)
+            }
+            if row.op == "context" {
+                part.foregroundColor = .secondary
+            }
+            result += part
+        }
+        return result
     }
 }
 

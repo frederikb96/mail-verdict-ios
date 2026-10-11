@@ -107,6 +107,8 @@ public enum ContractRegistry {
         PipelineWriteRequest.self,
         RuleAssistantRequest.self,
         RuleAssistantRuleChange.self,
+        DiffRow.self,
+        DiffSegment.self,
         RuleAssistantChange.self,
         RuleAssistantPreviewExample.self,
         RuleAssistantPreview.self,
