@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-11
+
+### Changed
+
+- Add Rule shows a proposed rule change as a diff: removed lines red, added lines green, the
+  changed characters inside a line marked, and long unchanged stretches folded away. Needs
+  MailVerdict 6.13.0 or later; older servers keep the full before and after text.
+- An opened message shows its envelope sender only when it differs from the From address.
+
 ## [0.6.0] - 2026-10-11
 
 ### Added

@@ -77,7 +77,7 @@ public struct RuleAssistantRequest: ContractModel, Codable, Sendable, Equatable 
 public struct RuleAssistantRuleChange: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "RuleAssistantRuleChange"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case kind, stageId = "stage_id", name, beforeText = "before_text", afterText = "after_text"
+        case kind, stageId = "stage_id", name, beforeText = "before_text", afterText = "after_text", diff
     }
     public typealias CodingKeys = ContractKeys
 
@@ -89,13 +89,20 @@ public struct RuleAssistantRuleChange: ContractModel, Codable, Sendable, Equatab
     public let beforeText: String?
     /// `nil` for a removed rule.
     public let afterText: String?
+    /// The line diff from `beforeText` to `afterText` with unchanged runs folded; empty for a moved
+    /// rule.
+    @MVDefaulted<MVDefaultEmptyArray<DiffRow>> public var diff: [DiffRow]
 
-    public init(kind: String, stageId: String, name: String, beforeText: String?, afterText: String?) {
+    public init(
+        kind: String, stageId: String, name: String, beforeText: String?, afterText: String?,
+        diff: [DiffRow] = []
+    ) {
         self.kind = kind
         self.stageId = stageId
         self.name = name
         self.beforeText = beforeText
         self.afterText = afterText
+        self.diff = diff
     }
 
     /// "New", "Changed", "Moved" or "Removed".
@@ -107,6 +114,44 @@ public struct RuleAssistantRuleChange: ContractModel, Codable, Sendable, Equatab
         case "removed": "Removed"
         default: kind.capitalized
         }
+    }
+}
+
+/// Part of a diff line; `changed` marks the characters that differ from the paired line.
+public struct DiffSegment: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "DiffSegment"
+    public enum ContractKeys: String, CodingKey, CaseIterable { case text, changed }
+    public typealias CodingKeys = ContractKeys
+
+    public let text: String
+    public let changed: Bool
+
+    public init(text: String, changed: Bool) {
+        self.text = text
+        self.changed = changed
+    }
+}
+
+/// One row of a line diff: `context`, `added`, `removed`, or `gap` standing for `skipped` unchanged
+/// lines.
+public struct DiffRow: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "DiffRow"
+    public enum ContractKeys: String, CodingKey, CaseIterable { case op, segments, skipped }
+    public typealias CodingKeys = ContractKeys
+
+    public let op: String
+    public let segments: [DiffSegment]
+    @MVDefaulted<MVDefaultZero> public var skipped: Int
+
+    public init(op: String, segments: [DiffSegment], skipped: Int = 0) {
+        self.op = op
+        self.segments = segments
+        self.skipped = skipped
+    }
+
+    /// "⋯ 3 unchanged lines" for a gap row.
+    public var gapLabel: String {
+        "⋯ \(skipped) unchanged line\(skipped == 1 ? "" : "s")"
     }
 }
 

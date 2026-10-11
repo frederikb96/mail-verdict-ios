@@ -180,7 +180,7 @@ public enum ConversationDocumentBuilder {
                 ? #"<span class="mv-chip mv-chip-spam">Flagged as spam</span>"#
                 : #"<span class="mv-chip mv-chip-outline">Not spam</span>"#
             parts.append(#"<div class="mv-verdict">\#(chip)<span>\#(escape(verdict.reasoning ?? ""))</span></div>"#)
-            if let envelopeSender = message.envelopeSender {
+            if let envelopeSender = distinctEnvelopeSender(message.envelopeSender, from: message.fromAddr) {
                 parts.append(
                     #"<div class="mv-envelope">Envelope sender: \#(escape(envelopeSender))</div>"#)
             }
