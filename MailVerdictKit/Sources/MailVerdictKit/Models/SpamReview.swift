@@ -38,7 +38,8 @@ public struct SpamReviewItem: ContractModel, Codable, Sendable, Equatable, Ident
     public static let schemaName = "SpamReviewItem"
     public enum ContractKeys: String, CodingKey, CaseIterable {
         case messageId = "message_id", accountId = "account_id", folderId = "folder_id",
-            isJunk = "is_junk", subject, fromAddr = "from_addr", receivedAt = "received_at",
+            isJunk = "is_junk", subject, fromAddr = "from_addr", envelopeSender = "envelope_sender",
+            receivedAt = "received_at",
             snippet, verdictId = "verdict_id", modelUsed = "model_used", reasoning,
             verdictCreatedAt = "verdict_created_at"
     }
@@ -51,6 +52,8 @@ public struct SpamReviewItem: ContractModel, Codable, Sendable, Equatable, Ident
     public let isJunk: Bool
     public let subject: String?
     public let fromAddr: String?
+    /// The SMTP envelope sender (Return-Path), which can differ from `fromAddr`.
+    public let envelopeSender: String?
     public let receivedAt: Date?
     public let snippet: String?
     public let verdictId: UUID
@@ -60,8 +63,8 @@ public struct SpamReviewItem: ContractModel, Codable, Sendable, Equatable, Ident
 
     public init(
         messageId: UUID, accountId: UUID, folderId: UUID, isJunk: Bool, subject: String?,
-        fromAddr: String?, receivedAt: Date?, snippet: String?, verdictId: UUID,
-        modelUsed: String?, reasoning: String?, verdictCreatedAt: Date
+        fromAddr: String?, envelopeSender: String? = nil, receivedAt: Date?, snippet: String?,
+        verdictId: UUID, modelUsed: String?, reasoning: String?, verdictCreatedAt: Date
     ) {
         self.messageId = messageId
         self.accountId = accountId
@@ -69,6 +72,7 @@ public struct SpamReviewItem: ContractModel, Codable, Sendable, Equatable, Ident
         self.isJunk = isJunk
         self.subject = subject
         self.fromAddr = fromAddr
+        self.envelopeSender = envelopeSender
         self.receivedAt = receivedAt
         self.snippet = snippet
         self.verdictId = verdictId

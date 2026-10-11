@@ -24,6 +24,14 @@ final class SenderFormattingTests: XCTestCase {
         XCTAssertEqual(extractEmail("jane@example.com"), "jane@example.com")
     }
 
+    func testDistinctEnvelopeSenderIsShownOnlyWhenItDiffersFromTheFromAddress() {
+        let from = "Jane Doe <Jane@example.com>"
+        XCTAssertEqual(distinctEnvelopeSender("bounce@mailer.example", from: from), "bounce@mailer.example")
+        XCTAssertNil(distinctEnvelopeSender("jane@example.com", from: from))
+        XCTAssertNil(distinctEnvelopeSender(nil, from: from))
+        XCTAssertNil(distinctEnvelopeSender("", from: from))
+    }
+
     func testGetInitialsFromTwoWords() {
         XCTAssertEqual(getInitials("Jane Doe"), "JD")
     }

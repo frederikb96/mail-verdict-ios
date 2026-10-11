@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-11
+
+### Added
+
+- Spam Review shows each sender's address under the name, and the envelope sender (Return-Path)
+  when it differs from the From address. An opened message shows its envelope sender under the
+  spam verdict. Needs MailVerdict 6.12.0 or later.
+
 ## [0.5.1] - 2026-10-05
 
 ### Fixed

@@ -180,6 +180,10 @@ public enum ConversationDocumentBuilder {
                 ? #"<span class="mv-chip mv-chip-spam">Flagged as spam</span>"#
                 : #"<span class="mv-chip mv-chip-outline">Not spam</span>"#
             parts.append(#"<div class="mv-verdict">\#(chip)<span>\#(escape(verdict.reasoning ?? ""))</span></div>"#)
+            if let envelopeSender = message.envelopeSender {
+                parts.append(
+                    #"<div class="mv-envelope">Envelope sender: \#(escape(envelopeSender))</div>"#)
+            }
         }
         if hasCalendarAttachment(message) {
             parts.append(options.invitationCards[message.id] ?? InvitationCardBuilder.emptySlot(messageId: message.id))
@@ -340,6 +344,8 @@ public enum ConversationDocumentBuilder {
         .mv-chip-draft { background: var(--fill-strong); color: var(--destructive); }
         .mv-verdict { display: flex; gap: 8px; align-items: baseline; padding: 0 16px 10px; color: var(--secondary);
           font: -apple-system-footnote; }
+        .mv-envelope { padding: 0 16px 10px; margin-top: -6px; color: var(--secondary); font: -apple-system-footnote;
+          overflow-wrap: anywhere; }
         .mv-banner { margin: 0 16px 10px; padding: 10px 12px; border-radius: 10px; font: -apple-system-subheadline; }
         .mv-banner-muted { background: var(--fill); color: var(--secondary); }
         .mv-banner-row { display: flex; align-items: center; gap: 8px; }
