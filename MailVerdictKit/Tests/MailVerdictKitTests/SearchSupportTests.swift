@@ -62,29 +62,6 @@ final class SearchSupportResultsStateTests: XCTestCase {
     }
 }
 
-final class SearchSupportErrorMessageTests: XCTestCase {
-
-    func testSemantic503BecomesTheFixedSentence() {
-        XCTAssertEqual(
-            SearchSupport.errorMessage(mode: .semantic, statusCode: 503, serverDetail: "connection refused"),
-            "Semantic search is unavailable — no AI provider is configured for it."
-        )
-    }
-
-    func testTextMode503PassesTheServerDetailThrough() {
-        XCTAssertEqual(
-            SearchSupport.errorMessage(mode: .text, statusCode: 503, serverDetail: "maintenance"), "maintenance"
-        )
-    }
-
-    func testSemanticNon503PassesTheServerDetailThrough() {
-        XCTAssertEqual(
-            SearchSupport.errorMessage(mode: .semantic, statusCode: 500, serverDetail: "internal error"),
-            "internal error"
-        )
-    }
-}
-
 final class SearchSupportFolderIdsAfterAccountChangeTests: XCTestCase {
 
     func testNilStaysNil() {
@@ -113,6 +90,36 @@ final class SearchSupportFolderIdsAfterAccountChangeTests: XCTestCase {
             currentFolderIds: [keep, drop], newAccountFolderIds: [keep]
         )
         XCTAssertEqual(result, [keep])
+    }
+}
+
+final class SearchSupportSemanticPendingTests: XCTestCase {
+
+    func testAnEmptyFullTextAnswerWhileTheSemanticOneIsPendingIsNotNoResults() {
+        XCTAssertEqual(
+            SearchSupport.resultsState(
+                query: "hello", folderIds: nil, isLoading: true, errorMessage: nil, resultCount: 0,
+                hasSearched: true, semanticState: .pending
+            ), .searchingByMeaning
+        )
+    }
+
+    func testAnEmptySettledAnswerIsNoResults() {
+        XCTAssertEqual(
+            SearchSupport.resultsState(
+                query: "hello", folderIds: nil, isLoading: false, errorMessage: nil, resultCount: 0,
+                hasSearched: true, semanticState: .settled
+            ), .noResults
+        )
+    }
+
+    func testAnUnavailableSemanticAnswerWithNoHitsIsNoResults() {
+        XCTAssertEqual(
+            SearchSupport.resultsState(
+                query: "hello", folderIds: nil, isLoading: false, errorMessage: nil, resultCount: 0,
+                hasSearched: true, semanticState: .unavailable
+            ), .noResults
+        )
     }
 }
 

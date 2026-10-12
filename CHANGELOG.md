@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Searching by meaning shows the full-text matches straight away, muted, under a "Searching by
+  meaning…" label, and swaps in the grouped result when it arrives. When the server cannot answer
+  by meaning the full-text list stays with a note saying so. Changing only the time window asks
+  just the meaning query again. Typing waits 300 ms before searching.
+
 ## [0.8.0] - 2026-10-12
 
 ### Changed

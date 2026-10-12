@@ -19,17 +19,37 @@ final class MVStubURLProtocol: URLProtocol {
         /// one — proving a streaming client reassembles content (and framing) the network
         /// happened to split across chunk boundaries, rather than only ever seeing it whole.
         var bodyChunks: [Data]? = nil
+        /// Seconds before the response is delivered, so a test can make one request land after
+        /// another.
+        var delay: TimeInterval = 0
     }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var _stub: Stub?
+    nonisolated(unsafe) private static var _stubsByPath: [String: Stub] = [:]
     nonisolated(unsafe) private static var _capturedRequest: URLRequest?
+    nonisolated(unsafe) private static var _capturedRequests: [URLRequest] = []
     nonisolated(unsafe) private static var _requestTimes: [Date] = []
 
     static var stub: Stub? {
         get { lock.lock(); defer { lock.unlock() }; return _stub }
         set { lock.lock(); defer { lock.unlock() }; _stub = newValue }
     }
+
+    /// Per-path answers, consulted before `stub`, for a test whose code asks several routes.
+    static var stubsByPath: [String: Stub] {
+        get { lock.lock(); defer { lock.unlock() }; return _stubsByPath }
+        set { lock.lock(); defer { lock.unlock() }; _stubsByPath = newValue }
+    }
+
+    /// Every request that reached the stub, in arrival order.
+    static var capturedRequests: [URLRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _capturedRequests
+    }
+
+    static var capturedPaths: [String] { capturedRequests.map { $0.url?.path ?? "" } }
 
     static var capturedRequest: URLRequest? {
         get { lock.lock(); defer { lock.unlock() }; return _capturedRequest }
@@ -48,6 +68,8 @@ final class MVStubURLProtocol: URLProtocol {
         stub = nil
         capturedRequest = nil
         lock.lock()
+        _stubsByPath = [:]
+        _capturedRequests = []
         _requestTimes = []
         lock.unlock()
     }
@@ -72,12 +94,32 @@ final class MVStubURLProtocol: URLProtocol {
         Self.capturedRequest = request
         Self.lock.lock()
         Self._requestTimes.append(Date())
+        Self._capturedRequests.append(request)
         Self.lock.unlock()
 
-        guard let stub = Self.stub, let url = request.url else {
+        guard let stub = Self.stubsByPath[request.url?.path ?? ""] ?? Self.stub, let url = request.url else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return
         }
+        guard stub.delay > 0 else {
+            deliver(stub, for: url)
+            return
+        }
+        nonisolated(unsafe) let protocolInstance = self
+        DispatchQueue.global().asyncAfter(deadline: .now() + stub.delay) {
+            protocolInstance.deliver(stub, for: url)
+        }
+    }
+
+    private let stopLock = NSLock()
+    nonisolated(unsafe) private var isStopped = false
+
+    private func deliver(_ stub: Stub, for url: URL) {
+        // A cancelled task is already gone from the session's registry; answering it afterwards
+        // aborts the process inside swift-corelibs-foundation.
+        stopLock.lock()
+        defer { stopLock.unlock() }
+        guard !isStopped else { return }
         let response = HTTPURLResponse(
             url: url,
             statusCode: stub.statusCode,
@@ -93,5 +135,9 @@ final class MVStubURLProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        stopLock.lock()
+        isStopped = true
+        stopLock.unlock()
+    }
 }

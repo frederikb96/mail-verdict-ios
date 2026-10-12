@@ -7,6 +7,8 @@ public enum MVSearchResultsState: Sendable, Equatable {
     case enterQuery
     case selectAFolder
     case loading
+    /// Semantic mode, the full-text query found nothing and the meaning-based answer is pending.
+    case searchingByMeaning
     case error(String)
     case noResults
     case results
@@ -24,6 +26,15 @@ public struct MVSearchHit: Equatable, Sendable, Identifiable {
         self.result = result
         self.tier = tier
     }
+}
+
+public enum MVSemanticState: Sendable, Equatable {
+    /// Nothing to add to the list on screen.
+    case settled
+    /// The list is the full-text answer, shown until the semantic one replaces it.
+    case pending
+    /// The server could not answer by meaning; the list is the full-text one.
+    case unavailable
 }
 
 /// One line of the results list: a hit, or the divider that precedes the first less likely one.
@@ -61,24 +72,15 @@ public enum SearchSupport {
     /// the query is.
     public static func resultsState(
         query: String, folderIds: [UUID]?, isLoading: Bool, errorMessage: String?, resultCount: Int,
-        hasSearched: Bool
+        hasSearched: Bool, semanticState: MVSemanticState = .settled
     ) -> MVSearchResultsState {
         if folderIds?.isEmpty == true { return .selectAFolder }
         if query.count < 2 { return .enterQuery }
         if isLoading && !hasSearched { return .loading }
         if let errorMessage { return .error(errorMessage) }
+        if semanticState == .pending && resultCount == 0 { return .searchingByMeaning }
         if hasSearched && resultCount == 0 { return .noResults }
         return .results
-    }
-
-    /// Semantic search's 503 (`embeddings.py` raises it with the provider's own exception text)
-    /// reads as this fixed sentence rather than whatever that exception happened to say, which a
-    /// dynamic `str(exc)` would make unpredictable from the client's side.
-    public static func errorMessage(mode: SearchContext.Mode, statusCode: Int?, serverDetail: String) -> String {
-        if mode == .semantic, statusCode == 503 {
-            return "Semantic search is unavailable — no AI provider is configured for it."
-        }
-        return serverDetail
     }
 
     /// Changing the account scope drops a folder selection that no longer belongs to it, resetting
