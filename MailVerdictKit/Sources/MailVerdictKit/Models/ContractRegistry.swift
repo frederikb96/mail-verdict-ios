@@ -30,7 +30,7 @@ public enum ContractRegistry {
         // Search.swift
         SearchResult.self,
         SearchResponse.self,
-        SearchDateBoundsResponse.self,
+        SemanticSearchHit.self,
         SemanticSearchResponse.self,
         // Account.swift
         AccountResponse.self,

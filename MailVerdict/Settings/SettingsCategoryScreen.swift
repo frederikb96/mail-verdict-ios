@@ -128,16 +128,10 @@ private struct SettingsFieldRow: View {
                 focusedFieldKey: focusedFieldKey
             ) { commit(.float($0)) }
         case .string(let value):
-            if field.key == "default_strictness" {
-                StrictnessPicker(label: MVSettingsLabels.label(for: field.key), value: value) {
-                    commit(.string($0))
-                }
-            } else {
-                StringFieldControl(
-                    label: MVSettingsLabels.label(for: field.key), key: field.key, value: value,
-                    focusedFieldKey: focusedFieldKey
-                ) { commit(.string($0)) }
-            }
+            StringFieldControl(
+                label: MVSettingsLabels.label(for: field.key), key: field.key, value: value,
+                focusedFieldKey: focusedFieldKey
+            ) { commit(.string($0)) }
         case .json(let text):
             NavigationLink {
                 JSONFieldEditor(label: MVSettingsLabels.label(for: field.key), text: text) { commit(.json($0)) }
@@ -291,26 +285,6 @@ private struct StringFieldControl: View {
         .onChange(of: value) { _, newValue in text = newValue }
         .onChange(of: focusedFieldKey.wrappedValue) { old, new in
             if old == key, new != key { onCommit(text) }
-        }
-    }
-}
-
-private struct StrictnessPicker: View {
-    let label: String
-    let value: String
-    let onCommit: (String) -> Void
-
-    var body: some View {
-        Picker(
-            label,
-            selection: Binding(
-                get: { MVSemanticStrictness(rawValue: value) ?? .balanced },
-                set: { onCommit($0.rawValue) }
-            )
-        ) {
-            Text("Loose").tag(MVSemanticStrictness.loose)
-            Text("Balanced").tag(MVSemanticStrictness.balanced)
-            Text("Strict").tag(MVSemanticStrictness.strict)
         }
     }
 }

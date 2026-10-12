@@ -13,9 +13,19 @@ final class SearchPersistenceTests: XCTestCase {
     func testContextRoundTrips() {
         let persistence = SearchPersistence(defaults: makeDefaults())
         XCTAssertNil(persistence.loadContext())
-        let context = SearchContext(mode: .semantic, query: "invoices", strictness: .strict)
+        let context = SearchContext(mode: .semantic, query: "invoices", timeWindow: .preset(.last7Days))
         persistence.saveContext(context)
         XCTAssertEqual(persistence.loadContext(), context)
+    }
+
+    func testAContextSavedBeforeTheTimeWindowExistedStillLoads() throws {
+        let defaults = makeDefaults()
+        let legacy =
+            #"{"mode":"semantic","query":"invoices","strictness":"strict","sort":"chronological","receivedAfter":"2026-01-01T00:00:00Z"}"#
+        defaults.set(Data(legacy.utf8), forKey: "mv.search.context")
+        let loaded = try XCTUnwrap(SearchPersistence(defaults: defaults).loadContext())
+        XCTAssertEqual(loaded.query, "invoices")
+        XCTAssertNil(loaded.timeWindow)
     }
 
     func testAnchorRoundTripsUnderTheSameContext() {

@@ -115,3 +115,39 @@ final class SearchSupportFolderIdsAfterAccountChangeTests: XCTestCase {
         XCTAssertEqual(result, [keep])
     }
 }
+
+final class SearchSupportRowsTests: XCTestCase {
+
+    private func result(tier: Int?) -> MVSearchHit {
+        MVSearchHit(
+            result: SearchResult(
+                id: UUID(), accountId: UUID(), folderId: UUID(), threadId: UUID(), subject: nil, fromAddr: nil,
+                toAddrs: nil, receivedAt: nil, snippet: nil, mirroredAt: Date(timeIntervalSince1970: 0)),
+            tier: tier)
+    }
+
+    func testTheDividerSitsOnceBeforeTheFirstLessLikelyHit() {
+        let results = [1, 1, 2, 2].map { result(tier: $0) }
+        let rows = SearchSupport.rows(for: results)
+        XCTAssertEqual(rows.count, 5)
+        XCTAssertEqual(rows[2], .lessLikelyDivider)
+        XCTAssertEqual(rows.filter { $0 == .lessLikelyDivider }.count, 1)
+        XCTAssertEqual(rows[3], .hit(results[2]))
+    }
+
+    func testNoDividerWithoutALessLikelyHit() {
+        let rows = SearchSupport.rows(for: [result(tier: 1), result(tier: 1)])
+        XCTAssertFalse(rows.contains(.lessLikelyDivider))
+    }
+
+    func testFullTextHitsCarryNoTierAndGetNoDivider() {
+        let rows = SearchSupport.rows(for: [result(tier: nil), result(tier: nil)])
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertFalse(rows.contains(.lessLikelyDivider))
+    }
+
+    func testADividerStillLeadsWhenEveryHitIsLessLikely() {
+        let rows = SearchSupport.rows(for: [result(tier: 2)])
+        XCTAssertEqual(rows.first, .lessLikelyDivider)
+    }
+}

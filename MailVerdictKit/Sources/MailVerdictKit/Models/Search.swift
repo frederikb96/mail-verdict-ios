@@ -6,20 +6,6 @@ public enum MVSearchField: String, Sendable, Equatable, CaseIterable, Codable {
     case subject, from, to, body
 }
 
-public enum MVSearchSort: String, Sendable, Equatable, CaseIterable, Codable {
-    case relevance
-    case chronological
-}
-
-public enum MVSemanticSort: String, Sendable, Equatable, CaseIterable, Codable {
-    case relevance
-    case chronological
-}
-
-public enum MVSemanticStrictness: String, Sendable, Equatable, CaseIterable, Codable {
-    case loose, balanced, strict
-}
-
 /// A search hit: `MessageSummary`'s full shape (the web's own reasoning — a result carries the
 /// same row actions a list row does) plus how the query matched it. The backend's own
 /// `SearchResult` schema repeats every `MessageSummary` field rather than nesting it, so this
@@ -33,7 +19,7 @@ public struct SearchResult: ContractModel, Codable, Sendable, Equatable, Identif
             isDraft = "is_draft", snippet, pendingSync = "pending_sync",
             isTruncated = "is_truncated", threadCount = "thread_count",
             unreadInThread = "unread_in_thread", mirroredAt = "mirrored_at",
-            matchTier = "match_tier", similarity, hasAttachments = "has_attachments",
+            matchTier = "match_tier", hasAttachments = "has_attachments",
             verdictIsSpam = "verdict_is_spam"
     }
     public typealias CodingKeys = ContractKeys
@@ -57,7 +43,6 @@ public struct SearchResult: ContractModel, Codable, Sendable, Equatable, Identif
     public let unreadInThread: Int?
     public let mirroredAt: Date
     @MVDefaulted<MVDefaultZero> public var matchTier: Int
-    public let similarity: Double?
     public let hasAttachments: Bool
     public let verdictIsSpam: Bool?
 
@@ -67,7 +52,7 @@ public struct SearchResult: ContractModel, Codable, Sendable, Equatable, Identif
         isFlagged: Bool = false, isAnswered: Bool = false, isDraft: Bool = false,
         snippet: String?, pendingSync: Bool = false, isTruncated: Bool = false,
         threadCount: Int? = nil, unreadInThread: Int? = nil, mirroredAt: Date,
-        matchTier: Int = 0, similarity: Double? = nil, hasAttachments: Bool = false,
+        matchTier: Int = 0, hasAttachments: Bool = false,
         verdictIsSpam: Bool? = nil
     ) {
         self.id = id
@@ -89,7 +74,6 @@ public struct SearchResult: ContractModel, Codable, Sendable, Equatable, Identif
         self.unreadInThread = unreadInThread
         self.mirroredAt = mirroredAt
         self.matchTier = matchTier
-        self.similarity = similarity
         self.hasAttachments = hasAttachments
         self.verdictIsSpam = verdictIsSpam
     }
@@ -117,41 +101,55 @@ public struct SearchResponse: ContractModel, Codable, Sendable, Equatable {
     }
 }
 
-public struct SearchDateBoundsResponse: ContractModel, Codable, Sendable, Equatable {
-    public static let schemaName = "SearchDateBoundsResponse"
-    public enum ContractKeys: String, CodingKey, CaseIterable { case oldest, newest }
+/// A semantic hit: a `SearchResult` plus the server's tier, 1 for a likely match and 2 for a less
+/// likely one. The backend repeats every `SearchResult` field in this schema, so the same fields
+/// decode into the wrapped result.
+public struct SemanticSearchHit: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "SemanticSearchHit"
+    public enum ContractKeys: String, CodingKey, CaseIterable {
+        case id, accountId = "account_id", folderId = "folder_id", threadId = "thread_id",
+            subject, fromAddr = "from_addr", toAddrs = "to_addrs", receivedAt = "received_at",
+            isSeen = "is_seen", isFlagged = "is_flagged", isAnswered = "is_answered",
+            isDraft = "is_draft", snippet, pendingSync = "pending_sync",
+            isTruncated = "is_truncated", threadCount = "thread_count",
+            unreadInThread = "unread_in_thread", mirroredAt = "mirrored_at",
+            matchTier = "match_tier", hasAttachments = "has_attachments",
+            verdictIsSpam = "verdict_is_spam", tier
+    }
     public typealias CodingKeys = ContractKeys
 
-    public let oldest: Date?
-    public let newest: Date?
+    public let result: SearchResult
+    public let tier: Int
 
-    public init(oldest: Date?, newest: Date?) {
-        self.oldest = oldest
-        self.newest = newest
+    public init(result: SearchResult, tier: Int) {
+        self.result = result
+        self.tier = tier
+    }
+
+    public init(from decoder: Decoder) throws {
+        result = try SearchResult(from: decoder)
+        tier = try decoder.container(keyedBy: ContractKeys.self).decode(Int.self, forKey: .tier)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        try result.encode(to: encoder)
+        var container = encoder.container(keyedBy: ContractKeys.self)
+        try container.encode(tier, forKey: .tier)
     }
 }
 
 public struct SemanticSearchResponse: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "SemanticSearchResponse"
-    public enum ContractKeys: String, CodingKey, CaseIterable {
-        case results, query, model, strictness, minSimilarityApplied = "min_similarity_applied"
-    }
+    public enum ContractKeys: String, CodingKey, CaseIterable { case results, query, model }
     public typealias CodingKeys = ContractKeys
 
-    public let results: [SearchResult]
+    public let results: [SemanticSearchHit]
     public let query: String
     public let model: String
-    public let strictness: MVSemanticStrictness
-    public let minSimilarityApplied: Double
 
-    public init(
-        results: [SearchResult], query: String, model: String, strictness: MVSemanticStrictness,
-        minSimilarityApplied: Double
-    ) {
+    public init(results: [SemanticSearchHit], query: String, model: String) {
         self.results = results
         self.query = query
         self.model = model
-        self.strictness = strictness
-        self.minSimilarityApplied = minSimilarityApplied
     }
 }
