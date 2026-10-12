@@ -157,11 +157,16 @@ private struct TimeRangeSlider: View {
                     .offset(x: position(selection.lowerBound), y: (thumbSize - trackHeight) / 2)
 
                 ForEach(MVTimeWindow.monthMarks(now: now), id: \.stop) { mark in
-                    Text(mark.label)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .fixedSize()
-                        .position(x: position(mark.stop), y: thumbSize + 14)
+                    VStack(spacing: 0) {
+                        Text(mark.label)
+                        if let year = mark.year {
+                            Text(String(year)).fontWeight(.semibold)
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                    .position(x: position(mark.stop), y: thumbSize + 20)
                 }
 
                 thumb.position(x: position(selection.lowerBound), y: thumbSize / 2)
@@ -185,7 +190,7 @@ private struct TimeRangeSlider: View {
                     }
             )
         }
-        .frame(height: thumbSize + 32)
+        .frame(height: thumbSize + 44)
         .sensoryFeedback(.selection, trigger: selection)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Time range")

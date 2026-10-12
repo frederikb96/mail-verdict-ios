@@ -111,8 +111,10 @@ final class MVTimeWindowTests: XCTestCase {
     func testMonthMarksLabelTheFirstWeekOfEachMonth() {
         let marks = MVTimeWindow.monthMarks(now: now, calendar: calendar)
         XCTAssertEqual(marks.count, 12)
-        XCTAssertEqual(marks.first, .init(stop: 3, label: "Nov"))
-        XCTAssertEqual(marks.last, .init(stop: 51, label: "Oct"))
+        XCTAssertEqual(marks.first, .init(stop: 3, label: "Nov", year: 2025))
+        XCTAssertEqual(marks.last, .init(stop: 51, label: "Oct", year: nil))
+        XCTAssertEqual(marks.filter { $0.year != nil }.map(\.label), ["Nov", "Jan"])
+        XCTAssertEqual(marks.first { $0.label == "Jan" }?.year, 2026)
         XCTAssertEqual(marks.map(\.stop), marks.map(\.stop).sorted())
     }
 

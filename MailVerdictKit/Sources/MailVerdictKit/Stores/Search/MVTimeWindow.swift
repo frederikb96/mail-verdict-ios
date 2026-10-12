@@ -128,10 +128,12 @@ public enum MVTimeWindow: Hashable, Codable, Sendable {
         return false
     }
 
-    /// A month label on the slider's axis, at the first stop of that month.
+    /// A month label on the slider's axis, at the first stop of that month. `year` is set on the
+    /// first label and on every January, the places the axis needs a year for orientation.
     public struct MonthMark: Hashable, Sendable {
         public let stop: Int
         public let label: String
+        public let year: Int?
     }
 
     /// The stop in each month's first week, for the labels along the axis.
@@ -139,10 +141,16 @@ public enum MVTimeWindow: Hashable, Codable, Sendable {
         let names = [
             "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
         ]
-        return (0...sliderStops).compactMap { stop in
+        var marks: [MonthMark] = []
+        for stop in 0...sliderStops {
             let day = MVCalendarDay(sliderDate(stop: stop, now: now, calendar: calendar), calendar: calendar)
-            return day.day <= 7 ? MonthMark(stop: stop, label: names[day.month - 1]) : nil
+            guard day.day <= 7 else { continue }
+            marks.append(
+                MonthMark(
+                    stop: stop, label: names[day.month - 1],
+                    year: marks.isEmpty || day.month == 1 ? day.year : nil))
         }
+        return marks
     }
 
     /// The bounds to send for this window at `now`; `until` is `now` for every open-ended window.
