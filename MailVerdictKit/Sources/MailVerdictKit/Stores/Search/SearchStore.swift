@@ -14,19 +14,24 @@ public final class SearchStore {
     public private(set) var errorMessage: String?
     public private(set) var total: Int?
     public private(set) var hasSearched = false
+    /// Where semantic mode stands: `pending` while the list on screen is the full-text one shown
+    /// ahead of the meaning-based answer, `unavailable` once the server could not give one.
+    public private(set) var semanticState = MVSemanticState.settled
     private(set) var hasMore = false
     private var nextCursor: String?
 
     public var resultsState: MVSearchResultsState {
         SearchSupport.resultsState(
             query: context.query, folderIds: context.folderIds, isLoading: isLoading, errorMessage: errorMessage,
-            resultCount: results.count, hasSearched: hasSearched
+            resultCount: results.count, hasSearched: hasSearched,
+            semanticState: semanticState
         )
     }
 
     private let apiClient: MVApiClient
     private let persistence: SearchPersistence
     private var searchTask: Task<Outcome, Never>?
+    private var fullTextTask: Task<Outcome, Never>?
     private var debounceTask: Task<Void, Never>?
     private var generation = 0
     private var liveSubscriptionToken: MVSubscriptionToken?
@@ -58,19 +63,25 @@ public final class SearchStore {
     public func updateContext(_ newContext: SearchContext) async {
         guard newContext != context else { return }
         debounceTask?.cancel()
+        // A window change on a semantic list that is already showing answers only the semantic
+        // query: the server holds the query's vector, so it replies fast and the full-text list
+        // would only flash by.
+        var withOldWindow = newContext
+        withOldWindow.timeWindow = context.timeWindow
+        let windowOnly = hasSearched && context.mode == .semantic && withOldWindow == context
         context = newContext
         persistence.saveContext(newContext)
-        await runSearch()
+        await run(includeFullText: !windowOnly)
     }
 
-    /// Debounced 150 ms, cancelling whatever was in flight — a fast typist's earlier keystrokes
+    /// Debounced 300 ms, cancelling whatever was in flight — a fast typist's earlier keystrokes
     /// never race their own later ones for which result lands last.
     public func queryChanged(_ newQuery: String) {
         context.query = newQuery
         persistence.saveContext(context)
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 150_000_000)
+            try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
             await self?.runSearch()
         }
@@ -79,9 +90,17 @@ public final class SearchStore {
     // MARK: - Running the search
 
     public func runSearch() async {
+        await run(includeFullText: true)
+    }
+
+    /// Semantic mode asks twice: the semantic query, and — when `includeFullText` — the same
+    /// list's full-text query with the same window, whose answer is shown at once and replaced by
+    /// the semantic one when that lands. A response from a superseded run is dropped.
+    private func run(includeFullText: Bool) async {
         generation += 1
         let thisGeneration = generation
         searchTask?.cancel()
+        fullTextTask?.cancel()
 
         // Both gates — "search nothing" and "too short to search" — are checked here rather than
         // only by `resultsState` (the screen's own rendering decision), so an empty-folders or
@@ -91,25 +110,85 @@ public final class SearchStore {
             hasSearched = false
             errorMessage = nil
             total = nil
+            semanticState = .settled
             return
         }
 
         isLoading = true
         errorMessage = nil
-        let task = Task { [context] in
-            await Self.performSearch(context: context, apiClient: apiClient)
+        let searchContext = context
+        guard searchContext.mode == .semantic else {
+            semanticState = .settled
+            let task = Task { await Self.performSearch(context: searchContext, apiClient: apiClient) }
+            searchTask = task
+            let outcome = await task.value
+            guard thisGeneration == generation else { return }
+            apply(outcome)
+            return
         }
-        searchTask = task
-        let outcome = await task.value
-        guard thisGeneration == generation else { return }
 
+        semanticState = includeFullText ? .pending : .settled
+        let semantic = Task { await Self.performSearch(context: searchContext, apiClient: apiClient) }
+        searchTask = semantic
+        let fullTextContext = searchContext.fullTextCounterpart
+        var fullText: Task<Outcome, Never>?
+        if includeFullText {
+            let task = Task { await Self.performSearch(context: fullTextContext, apiClient: apiClient) }
+            fullText = task
+            fullTextTask = task
+            Task { [weak self] in
+                let outcome = await task.value
+                self?.showFullText(outcome, generation: thisGeneration)
+            }
+        }
+
+        let outcome = await semantic.value
+        guard thisGeneration == generation else { return }
+        guard case .failure(_, let unavailable) = outcome, unavailable else {
+            semanticState = .settled
+            apply(outcome)
+            return
+        }
+        // No meaning-based answer: keep (or fetch) the full-text list and say so.
+        let fallback: Outcome
+        if let fullText {
+            fallback = await fullText.value
+        } else {
+            fallback = await Self.performSearch(context: fullTextContext, apiClient: apiClient)
+        }
+        guard thisGeneration == generation else { return }
+        semanticState = .unavailable
+        apply(fallback)
+    }
+
+    /// The full-text list shown while the semantic answer is on its way; ignored once the
+    /// semantic one has landed or the run was superseded.
+    /// A live-event refresh: the list on screen stays put while the query is asked again, so a
+    /// semantic list is not swapped for the full-text one on every incoming mail.
+    private func reloadInPlace() async {
+        await run(includeFullText: context.mode != .semantic)
+    }
+
+    private func showFullText(_ outcome: Outcome, generation shownGeneration: Int) {
+        guard shownGeneration == generation, semanticState == .pending, case .success(let page) = outcome else {
+            return
+        }
+        results = page.results
+        hasMore = false
+        nextCursor = nil
+        total = page.total
+        hasSearched = true
+        reportDebugState()
+    }
+
+    private func apply(_ outcome: Outcome) {
         switch outcome {
         case .success(let page):
             results = page.results
             hasMore = page.hasMore
             nextCursor = page.nextCursor
             total = page.total
-        case .failure(let message):
+        case .failure(let message, _):
             errorMessage = message
             results = []
             hasMore = false
@@ -148,7 +227,8 @@ public final class SearchStore {
 
     private enum Outcome {
         case success(Page)
-        case failure(String)
+        /// `semanticUnavailable`: the server answered 503 to a semantic query.
+        case failure(String, semanticUnavailable: Bool)
     }
 
     private struct Page {
@@ -191,17 +271,13 @@ public final class SearchStore {
                 )
             }
         } catch {
-            let mvError = error as? MVError
             let statusCode: Int? = {
-                switch mvError {
+                switch error as? MVError {
                 case .detail(_, let code), .http(let code, _): return code
                 default: return nil
                 }
             }()
-            let message = SearchSupport.errorMessage(
-                mode: context.mode, statusCode: statusCode, serverDetail: error.mvUserMessage
-            )
-            return .failure(message)
+            return .failure(error.mvUserMessage, semanticUnavailable: context.mode == .semantic && statusCode == 503)
         }
     }
 }
@@ -247,6 +323,6 @@ extension SearchStore: LiveEventSubscriber {
             }
         }
         guard shouldReload else { return }
-        Task { await self.runSearch() }
+        Task { await self.reloadInPlace() }
     }
 }

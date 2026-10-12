@@ -513,3 +513,13 @@ search a topic with many mails and check the likely group has no header, "Less l
 before the second group, both groups run newest first, and leaving to the reader and coming back
 restores the scroll position.
 
+### Semantic search shows full-text matches first, then swaps in the tiered list — web anchor: ui/src/components/search/search-page.tsx
+Needs a device because: the muted list, the header label and the list swap are rendering and timing
+claims, and the unavailable path needs a server that answers 503. Confirm: with Semantic on, type a
+query and check the full-text rows appear muted under "Searching by meaning…" before the grouped
+list replaces them (no spinner on the label); with nothing matching in full text, the empty area
+reads "Searching by meaning…" instead of "No results found"; against a server whose embedding
+provider is unreachable, the full-text rows stay at normal strength under "Semantic search is
+unavailable right now"; moving the time window with the same text updates the list without the
+muted interlude; scroll position and the open reader still behave after the swap.
+

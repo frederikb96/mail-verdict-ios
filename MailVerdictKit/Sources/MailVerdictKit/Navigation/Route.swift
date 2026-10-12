@@ -57,6 +57,13 @@ public struct SearchContext: Hashable, Codable, Sendable {
         self.fields = fields
         self.timeWindow = timeWindow
     }
+
+    /// The full-text query that shows ahead of a semantic one: every field, same scope and window.
+    public var fullTextCounterpart: SearchContext {
+        SearchContext(
+            mode: .text, query: query, accountId: accountId, folderIds: folderIds, fields: nil,
+            timeWindow: timeWindow)
+    }
 }
 
 /// A pushed destination on the app's one `NavigationStack`. Persisted across relaunch (see

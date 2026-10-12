@@ -298,12 +298,28 @@ struct SearchScreen: View {
             EmptyStateView(systemImage: "folder", message: "Select at least one folder to search")
         case .loading:
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .searchingByMeaning:
+            EmptyStateView(systemImage: "sparkle.magnifyingglass", message: "Searching by meaning…")
         case .error(let message):
             ErrorStateView(message: message) { Task { await store.runSearch() } }
         case .noResults:
             EmptyStateView(systemImage: "magnifyingglass", message: "No results found")
         case .results:
             resultsList
+        }
+    }
+
+    @ViewBuilder
+    private var resultsHeader: some View {
+        switch store.semanticState {
+        case .pending:
+            Text("Searching by meaning…")
+        case .unavailable:
+            Text("Semantic search is unavailable right now")
+        case .settled:
+            if let total = store.total {
+                Text("\(total) results")
+            }
         }
     }
 
@@ -338,11 +354,11 @@ struct SearchScreen: View {
                         .task { await store.loadMore() }
                 }
             } header: {
-                if let total = store.total {
-                    Text("\(total) results")
-                }
+                resultsHeader
             }
         }
+        // The full-text list stands in until the answer by meaning lands; muted, and no motion.
+        .opacity(store.semanticState == .pending ? 0.55 : 1)
     }
 }
 
