@@ -492,3 +492,24 @@ gives "Rules changed meanwhile — ask again.", and that the item is absent for 
 ### Copy link to this message in the reader's Options menu — web anchor: ui/src/components/mail/reading-pane.tsx (`messageLink`)
 Needs a device because: it writes `<server origin>/?message=<id>` to the pasteboard, and whether
 the copied link opens that message in the web UI is a check across the phone and a browser.
+
+### Search time window: the clock menu, the slider overlay and the custom range sheet — web anchor: ui/src/components/search/time-picker.tsx, ui/src/lib/search-window.ts
+Needs a device because: the two-thumb slider is a custom drag gesture over the whole track, and
+the overlay is a transparent full-screen cover; neither compiles on Linux nor can be judged
+without a finger. Confirm: tap the clock beside Text/Semantic and check the menu (four presets,
+Slider…, Custom…, and Clear only while a window is active); pick Slider… with nothing chosen and
+check it opens with the full range and the chip reads "<date> – now"; drag a thumb by finger
+anywhere near it (it should follow the finger, snap weekly, never cross the other thumb) and check
+the search re-runs once on release, not per tick; close it by tapping the dimmed backdrop and by
+the X and check the selection stays; reopen and check the thumbs sit where they were left. In
+Custom… check the keyboard offers digits and the hyphen, Apply stays disabled for `12-10-2026` or
+a start after the end, and a valid range shows as `YYYY-MM-DD – YYYY-MM-DD` in the chip. Check the
+clock turns accent-coloured while a window is active and the chip clears it.
+
+### Tiered semantic results and the "Less likely" divider — web anchor: ui/src/components/search/search-page.tsx
+Needs a device because: it is a list row inserted into the results `List`, whose scroll
+restoration (`scrollPosition(id:)`) the divider's id now takes part in. Confirm: with Semantic on,
+search a topic with many mails and check the likely group has no header, "Less likely" appears once
+before the second group, both groups run newest first, and leaving to the reader and coming back
+restores the scroll position.
+

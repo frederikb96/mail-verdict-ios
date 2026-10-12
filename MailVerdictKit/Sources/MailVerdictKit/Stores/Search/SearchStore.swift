@@ -8,7 +8,7 @@ import Observation
 @MainActor
 public final class SearchStore {
     public private(set) var context: SearchContext
-    public private(set) var results: [SearchResult] = []
+    public private(set) var results: [MVSearchHit] = []
     public private(set) var isLoading = false
     public private(set) var isLoadingMore = false
     public private(set) var errorMessage: String?
@@ -38,11 +38,7 @@ public final class SearchStore {
         self.persistence = persistence
         var restored = persistence.loadContext() ?? SearchContext(mode: .text, query: "")
         if let initialQuery, !initialQuery.isEmpty {
-            restored = SearchContext(
-                mode: restored.mode, query: initialQuery, accountId: restored.accountId,
-                folderIds: restored.folderIds, fields: restored.fields, strictness: restored.strictness,
-                sort: restored.sort, receivedAfter: restored.receivedAfter, receivedBefore: restored.receivedBefore
-            )
+            restored.query = initialQuery
         }
         self.context = restored
     }
@@ -56,7 +52,7 @@ public final class SearchStore {
 
     // MARK: - Updating scope — every setter but the query field re-runs the search immediately
 
-    /// Called by every chip (mode, fields, strictness, sort, account, folders, dates) — none of
+    /// Called by every chip (mode, fields, account, folders, time window) — none of
     /// them need debouncing, unlike free-text typing, so this awaits the search directly rather
     /// than firing a detached task a caller has no handle on.
     public func updateContext(_ newContext: SearchContext) async {
@@ -70,11 +66,7 @@ public final class SearchStore {
     /// Debounced 150 ms, cancelling whatever was in flight — a fast typist's earlier keystrokes
     /// never race their own later ones for which result lands last.
     public func queryChanged(_ newQuery: String) {
-        context = SearchContext(
-            mode: context.mode, query: newQuery, accountId: context.accountId, folderIds: context.folderIds,
-            fields: context.fields, strictness: context.strictness, sort: context.sort,
-            receivedAfter: context.receivedAfter, receivedBefore: context.receivedBefore
-        )
+        context.query = newQuery
         persistence.saveContext(context)
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
@@ -160,7 +152,7 @@ public final class SearchStore {
     }
 
     private struct Page {
-        let results: [SearchResult]
+        let results: [MVSearchHit]
         let hasMore: Bool
         let nextCursor: String?
         let total: Int?
@@ -171,29 +163,31 @@ public final class SearchStore {
     private static func performSearch(
         context: SearchContext, apiClient: MVApiClient, before: String? = nil
     ) async -> Outcome {
+        // Resolved per query, so a preset such as "Last 7 days" keeps rolling with the clock.
+        let bounds = context.timeWindow?.bounds(now: Date())
         do {
             switch context.mode {
             case .text:
-                let sort: MVSearchSort = context.sort == .chronological ? .chronological : .relevance
                 let response = try await apiClient.search(
                     query: context.query, accountId: context.accountId, folderIds: context.folderIds,
-                    fields: context.fields, sort: sort, receivedAfter: context.receivedAfter,
-                    receivedBefore: context.receivedBefore, before: before.flatMap(UUID.init(uuidString:))
+                    fields: context.fields, receivedAfter: bounds?.since, receivedBefore: bounds?.until,
+                    before: before.flatMap(UUID.init(uuidString:))
                 )
                 return .success(
                     Page(
-                        results: response.results, hasMore: response.hasMore, nextCursor: response.nextCursor,
+                        results: response.results.map { MVSearchHit(result: $0) }, hasMore: response.hasMore,
+                        nextCursor: response.nextCursor,
                         total: response.total)
                 )
             case .semantic:
-                let sort: MVSemanticSort = context.sort == .chronological ? .chronological : .relevance
                 let response = try await apiClient.semanticSearch(
                     query: context.query, accountId: context.accountId, folderIds: context.folderIds,
-                    strictness: context.strictness, sort: sort, receivedAfter: context.receivedAfter,
-                    receivedBefore: context.receivedBefore
+                    receivedAfter: bounds?.since, receivedBefore: bounds?.until
                 )
                 return .success(
-                    Page(results: response.results, hasMore: false, nextCursor: nil, total: response.results.count)
+                    Page(
+                        results: response.results.map { MVSearchHit(result: $0.result, tier: $0.tier) },
+                        hasMore: false, nextCursor: nil, total: response.results.count)
                 )
             }
         } catch {

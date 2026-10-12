@@ -7,15 +7,22 @@ struct Chip: View {
     let text: String
     var tint: Color = .secondary
     var filled: Bool = false
+    /// An SF Symbol after the text, for a chip that clears itself when tapped.
+    var trailingSymbol: String?
 
     var body: some View {
-        Text(text)
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .foregroundStyle(filled ? Color.white : tint)
-            .background(
-                Capsule().fill(filled ? tint : tint.opacity(0.15))
-            )
+        HStack(spacing: 4) {
+            Text(text)
+            if let trailingSymbol {
+                Image(systemName: trailingSymbol).font(.system(size: 8, weight: .bold))
+            }
+        }
+        .font(.caption2.weight(.medium))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .foregroundStyle(filled ? Color.white : tint)
+        .background(
+            Capsule().fill(filled ? tint : tint.opacity(0.15))
+        )
     }
 }

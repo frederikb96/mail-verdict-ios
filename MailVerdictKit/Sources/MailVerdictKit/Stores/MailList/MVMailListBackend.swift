@@ -82,7 +82,7 @@ extension MVApiClient: MVMailListBackend {
     ) async throws -> SearchResponse {
         try await search(
             query: query, accountId: accountId, folderIds: folderIds, fields: [.subject, .from, .to],
-            sort: .chronological, isSeen: unreadOnly ? false : nil, before: before, limit: limit
+            isSeen: unreadOnly ? false : nil, before: before, limit: limit
         )
     }
 

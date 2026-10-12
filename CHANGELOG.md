@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Semantic search has no strictness or sort controls and shows no similarity: results come in two
+  groups, the likely ones first and, after a "Less likely" divider, the rest, each newest first.
+  Full-text search lost its sort control and ranks by field match, newest first within a rank. The
+  in-folder "Search all mail" filter follows the same ranking. Needs a MailVerdict release with
+  tiered search.
+- Search has a time window in both modes: a clock button with Today, Since yesterday, Last 7 days
+  and Last 30 days, a full-screen slider over the last 52 weeks, and a custom range entered as
+  YYYY-MM-DD. It replaces the two date pickers.
+- Settings no longer lists a default strictness for semantic search.
+
 ## [0.7.0] - 2026-10-11
 
 ### Changed

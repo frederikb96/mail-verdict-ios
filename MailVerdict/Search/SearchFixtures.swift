@@ -15,7 +15,6 @@ import MailVerdictKit
             guard MVFixtureLaunch.isEnabled() else { return }
 
             register(.get, "/api/search", response)
-            register(.get, "/api/search/date-bounds", dateBounds)
         }
 
         private static var response: SearchResponse {
@@ -41,12 +40,6 @@ import MailVerdictKit
                     ),
                 ],
                 hasMore: false, nextCursor: nil, query: "invoice", total: 2
-            )
-        }
-
-        private static var dateBounds: SearchDateBoundsResponse {
-            SearchDateBoundsResponse(
-                oldest: Date(timeIntervalSinceNow: -86400 * 365), newest: Date()
             )
         }
 

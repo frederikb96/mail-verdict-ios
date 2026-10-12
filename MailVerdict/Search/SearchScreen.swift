@@ -13,9 +13,10 @@ struct SearchScreen: View {
     @State private var scrollTarget: String?
     @State private var accounts: [AccountResponse] = []
     @State private var foldersByAccount: [UUID: [FolderResponse]] = [:]
-    @State private var dateBounds: SearchDateBoundsResponse?
     @State private var isFoldersSheetPresented = false
-    @State private var isDatesSheetPresented = false
+    @State private var isSliderPresented = false
+    @State private var isCustomRangePresented = false
+    @State private var sliderInitial = 0...MVTimeWindow.sliderStops
     @FocusState private var isSearchFieldFocused: Bool
 
     init(initialQuery: String?, environment: AppEnvironment, connection: AppEnvironment.Connection) {
@@ -28,6 +29,40 @@ struct SearchScreen: View {
     }
 
     var body: some View {
+        presentedContent
+            .task {
+                #if DEBUG
+                    SearchFixtures.activeStore = store
+                #endif
+                store.subscribeToLive(connection.liveEventHub)
+                ReaderSourceRegistry.shared.register(store, for: .search(store.context))
+                isSearchFieldFocused = true
+                scrollTarget = store.topVisibleRowId
+                accounts = (try? await connection.apiClient.listAccounts()) ?? []
+                if store.context.query.count >= 2 { await store.runSearch() }
+            }
+            .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
+            .onChange(of: scrollTarget) { _, newValue in store.topVisibleRowId = newValue }
+            // The reader is keyed by the exact identity a row was pushed with — re-registering
+            // under the new context on every chip change keeps that lookup valid.
+            .onChange(of: store.context) { _, newContext in
+                ReaderSourceRegistry.shared.register(store, for: .search(newContext))
+            }
+            #if DEBUG
+                .screenshotReady(
+                    route: .search(initialQuery: initialQuery), environment: environment, connection: connection
+                )
+            #endif
+    }
+
+    private var presentedContent: some View {
+        searchContent
+            .sheet(isPresented: $isFoldersSheetPresented) { foldersSheet }
+            .sheet(isPresented: $isCustomRangePresented) { customRangeSheet }
+            .fullScreenCover(isPresented: $isSliderPresented) { sliderOverlay }
+    }
+
+    private var searchContent: some View {
         VStack(spacing: 0) {
             chipBar
             resultsArea
@@ -37,36 +72,6 @@ struct SearchScreen: View {
         .searchFocused($isSearchFieldFocused)
         .onChange(of: queryText) { _, newValue in store.queryChanged(newValue) }
         .scrollPosition(id: $scrollTarget, anchor: .top)
-        .sheet(isPresented: $isFoldersSheetPresented) { foldersSheet }
-        .sheet(isPresented: $isDatesSheetPresented) { datesSheet }
-        .task {
-            #if DEBUG
-                SearchFixtures.activeStore = store
-            #endif
-            store.subscribeToLive(connection.liveEventHub)
-            ReaderSourceRegistry.shared.register(store, for: .search(store.context))
-            isSearchFieldFocused = true
-            scrollTarget = store.topVisibleRowId
-            async let accountList = try? connection.apiClient.listAccounts()
-            async let bounds = try? connection.apiClient.searchDateBounds(
-                accountId: store.context.accountId, folderIds: store.context.folderIds
-            )
-            accounts = await accountList ?? []
-            dateBounds = await bounds
-            if store.context.query.count >= 2 { await store.runSearch() }
-        }
-        .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
-        .onChange(of: scrollTarget) { _, newValue in store.topVisibleRowId = newValue }
-        // The reader is keyed by the exact identity a row was pushed with — re-registering
-        // under the new context on every chip change keeps that lookup valid.
-        .onChange(of: store.context) { _, newContext in
-            ReaderSourceRegistry.shared.register(store, for: .search(newContext))
-        }
-        #if DEBUG
-            .screenshotReady(
-                route: .search(initialQuery: initialQuery), environment: environment, connection: connection
-            )
-        #endif
     }
 
     // MARK: - Chip bar
@@ -81,12 +86,17 @@ struct SearchScreen: View {
                 .pickerStyle(.segmented)
                 .fixedSize()
 
+                TimeWindowMenu(
+                    window: store.context.timeWindow,
+                    onSelect: { window in applyContext { $0.timeWindow = window } },
+                    onSlider: openSlider, onCustom: { isCustomRangePresented = true }
+                )
+                if let window = store.context.timeWindow {
+                    TimeWindowChip(window: window) { applyContext { $0.timeWindow = nil } }
+                }
                 if store.context.mode == .text {
                     fieldsMenu
-                } else {
-                    strictnessMenu
                 }
-                sortMenu
                 if accounts.count > 1 {
                     accountMenu
                 }
@@ -95,11 +105,6 @@ struct SearchScreen: View {
                 } label: {
                     Chip(text: foldersChipLabel, tint: .accentColor)
                 }
-                Button {
-                    isDatesSheetPresented = true
-                } label: {
-                    Chip(text: datesChipLabel, tint: .accentColor)
-                }
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -107,7 +112,7 @@ struct SearchScreen: View {
     }
 
     private var modeBinding: Binding<SearchContext.Mode> {
-        Binding(get: { store.context.mode }, set: { newMode in applyContext { $0 = $0.withMode(newMode) } })
+        Binding(get: { store.context.mode }, set: { newMode in applyContext { $0.mode = newMode } })
     }
 
     private var fieldsMenu: some View {
@@ -140,33 +145,14 @@ struct SearchScreen: View {
             fields.append(field)
         }
         let ordered = MVSearchField.allCases.filter { fields.contains($0) }
-        applyContext { $0 = $0.withFields(ordered) }
-    }
-
-    private var strictnessMenu: some View {
-        Menu {
-            ForEach([MVSemanticStrictness.loose, .balanced, .strict], id: \.rawValue) { strictness in
-                Button(strictness.rawValue.capitalized) { applyContext { $0 = $0.withStrictness(strictness) } }
-            }
-        } label: {
-            Chip(text: (store.context.strictness ?? .balanced).rawValue.capitalized, tint: .accentColor)
-        }
-    }
-
-    private var sortMenu: some View {
-        Menu {
-            Button("Best Match") { applyContext { $0 = $0.withSort(.relevance) } }
-            Button("Newest First") { applyContext { $0 = $0.withSort(.chronological) } }
-        } label: {
-            Chip(text: store.context.sort == .relevance ? "Best Match" : "Newest First", tint: .accentColor)
-        }
+        applyContext { $0.fields = ordered }
     }
 
     private var accountMenu: some View {
         Menu {
-            Button("All Accounts") { applyContext { $0 = $0.withAccountId(nil) } }
+            Button("All Accounts") { applyContext { $0.accountId = nil } }
             ForEach(accounts) { account in
-                Button(account.name) { applyContext { $0 = $0.withAccountId(account.id) } }
+                Button(account.name) { applyContext { $0.accountId = account.id } }
             }
         } label: {
             Chip(
@@ -181,11 +167,6 @@ struct SearchScreen: View {
         return folderIds.isEmpty ? "No Folders" : "\(folderIds.count) Folders"
     }
 
-    private var datesChipLabel: String {
-        if store.context.receivedAfter == nil && store.context.receivedBefore == nil { return "Any Time" }
-        return "Dates"
-    }
-
     /// Every chip but the query field funnels through here — one place re-runs the search under
     /// the new context, so no chip can forget to.
     private func applyContext(_ mutate: (inout SearchContext) -> Void) {
@@ -194,13 +175,13 @@ struct SearchScreen: View {
         Task { await store.updateContext(next) }
     }
 
-    // MARK: - Folders and Dates sheets
+    // MARK: - Folders sheet, time window
 
     private var foldersSheet: some View {
         NavigationStack {
             List {
-                Button("Select All") { applyContext { $0 = $0.withFolderIds(nil) } }
-                Button("Deselect All") { applyContext { $0 = $0.withFolderIds([]) } }
+                Button("Select All") { applyContext { $0.folderIds = nil } }
+                Button("Deselect All") { applyContext { $0.folderIds = [] } }
                 ForEach(accountsForFolderSheet) { account in
                     Section(account.name) {
                         ForEach(foldersByAccount[account.id] ?? []) { folder in
@@ -255,7 +236,7 @@ struct SearchScreen: View {
         } else {
             current.append(folderId)
         }
-        applyContext { $0 = $0.withFolderIds(current) }
+        applyContext { $0.folderIds = current }
     }
 
     private func loadFoldersIfNeeded() async {
@@ -266,37 +247,44 @@ struct SearchScreen: View {
         }
     }
 
-    private var datesSheet: some View {
-        NavigationStack {
-            Form {
-                DatePicker(
-                    "From",
-                    selection: Binding(
-                        get: { store.context.receivedAfter ?? dateBounds?.oldest ?? Date() },
-                        set: { newValue in
-                            applyContext { $0 = $0.withDates(after: newValue, before: $0.receivedBefore) }
-                        }
-                    ),
-                    displayedComponents: .date
-                )
-                DatePicker(
-                    "To",
-                    selection: Binding(
-                        get: { store.context.receivedBefore ?? dateBounds?.newest ?? Date() },
-                        set: { newValue in applyContext { $0 = $0.withDates(after: $0.receivedAfter, before: newValue) }
-                        }
-                    ),
-                    displayedComponents: .date
-                )
-                Button("Any Time") { applyContext { $0 = $0.withDates(after: nil, before: nil) } }
-            }
-            .navigationTitle("Dates")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { isDatesSheetPresented = false }
-                }
+    /// Opening the slider with no slider window active selects the whole axis at once, so closing
+    /// it untouched means "the last 52 weeks".
+    private func openSlider() {
+        let now = Date()
+        let window = store.context.timeWindow
+        sliderInitial = window?.sliderSelection(now: now) ?? 0...MVTimeWindow.sliderStops
+        if window?.isSlider != true {
+            applyContext {
+                $0.timeWindow = .slider(
+                    startStop: 0, endStop: MVTimeWindow.sliderStops, now: now)
             }
         }
+        isSliderPresented = true
+    }
+
+    private var sliderOverlay: some View {
+        TimeSliderOverlay(
+            initial: sliderInitial,
+            onCommit: { range in
+                applyContext {
+                    $0.timeWindow = .slider(startStop: range.lowerBound, endStop: range.upperBound, now: Date())
+                }
+            },
+            onDismiss: { isSliderPresented = false }
+        )
+    }
+
+    private var customRangeSheet: some View {
+        let now = Date()
+        let bounds = store.context.timeWindow?.bounds(now: now)
+        return CustomRangeSheet(
+            initial: (MVCalendarDay(bounds?.since ?? now), MVCalendarDay(bounds?.until ?? now)),
+            onApply: { window in
+                applyContext { $0.timeWindow = window }
+                isCustomRangePresented = false
+            },
+            onCancel: { isCustomRangePresented = false }
+        )
     }
 
     // MARK: - Results
@@ -322,18 +310,27 @@ struct SearchScreen: View {
     private var resultsList: some View {
         List {
             Section {
-                ForEach(store.results) { result in
-                    Button {
-                        let identity = store.context
-                        environment.navigationPath.append(
-                            .reader(ReaderContext(source: .search(identity), messageId: result.id))
-                        )
-                    } label: {
-                        MailRowView(
-                            data: result.toMailRowData(showAccountChip: accounts.count > 1, accounts: accounts))
+                ForEach(SearchSupport.rows(for: store.results)) { row in
+                    switch row {
+                    case .hit(let hit):
+                        Button {
+                            let identity = store.context
+                            environment.navigationPath.append(
+                                .reader(ReaderContext(source: .search(identity), messageId: hit.id))
+                            )
+                        } label: {
+                            MailRowView(
+                                data: hit.result.toMailRowData(showAccountChip: accounts.count > 1, accounts: accounts))
+                        }
+                        .buttonStyle(.plain)
+                        .id(row.id)
+                    case .lessLikelyDivider:
+                        Text("Less likely")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(row.id)
                     }
-                    .buttonStyle(.plain)
-                    .id("result:\(result.id)")
                 }
                 if store.hasOlder {
                     ProgressView()
@@ -346,51 +343,6 @@ struct SearchScreen: View {
                 }
             }
         }
-    }
-}
-
-extension SearchContext {
-    func withMode(_ mode: SearchContext.Mode) -> SearchContext {
-        SearchContext(
-            mode: mode, query: query, accountId: accountId, folderIds: folderIds, fields: fields,
-            strictness: strictness, sort: sort, receivedAfter: receivedAfter, receivedBefore: receivedBefore
-        )
-    }
-    func withFields(_ fields: [MVSearchField]?) -> SearchContext {
-        SearchContext(
-            mode: mode, query: query, accountId: accountId, folderIds: folderIds, fields: fields,
-            strictness: strictness, sort: sort, receivedAfter: receivedAfter, receivedBefore: receivedBefore
-        )
-    }
-    func withStrictness(_ strictness: MVSemanticStrictness?) -> SearchContext {
-        SearchContext(
-            mode: mode, query: query, accountId: accountId, folderIds: folderIds, fields: fields,
-            strictness: strictness, sort: sort, receivedAfter: receivedAfter, receivedBefore: receivedBefore
-        )
-    }
-    func withSort(_ sort: SearchContext.Sort) -> SearchContext {
-        SearchContext(
-            mode: mode, query: query, accountId: accountId, folderIds: folderIds, fields: fields,
-            strictness: strictness, sort: sort, receivedAfter: receivedAfter, receivedBefore: receivedBefore
-        )
-    }
-    func withAccountId(_ accountId: UUID?) -> SearchContext {
-        SearchContext(
-            mode: mode, query: query, accountId: accountId, folderIds: folderIds, fields: fields,
-            strictness: strictness, sort: sort, receivedAfter: receivedAfter, receivedBefore: receivedBefore
-        )
-    }
-    func withFolderIds(_ folderIds: [UUID]?) -> SearchContext {
-        SearchContext(
-            mode: mode, query: query, accountId: accountId, folderIds: folderIds, fields: fields,
-            strictness: strictness, sort: sort, receivedAfter: receivedAfter, receivedBefore: receivedBefore
-        )
-    }
-    func withDates(after: Date?, before: Date?) -> SearchContext {
-        SearchContext(
-            mode: mode, query: query, accountId: accountId, folderIds: folderIds, fields: fields,
-            strictness: strictness, sort: sort, receivedAfter: after, receivedBefore: before
-        )
     }
 }
 

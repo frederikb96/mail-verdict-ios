@@ -36,34 +36,26 @@ public struct ReaderContext: Hashable, Codable, Sendable {
 /// exist.
 public struct SearchContext: Hashable, Codable, Sendable {
     public enum Mode: String, Hashable, Codable, Sendable { case text, semantic }
-    public enum Sort: String, Hashable, Codable, Sendable { case relevance, chronological }
 
-    public let mode: Mode
-    public let query: String
-    public let accountId: UUID?
+    public var mode: Mode
+    public var query: String
+    public var accountId: UUID?
     /// `nil` means every folder; `[]` means search nothing — the same distinction the Folders
     /// sheet makes.
-    public let folderIds: [UUID]?
-    public let fields: [MVSearchField]?
-    public let strictness: MVSemanticStrictness?
-    public let sort: Sort
-    public let receivedAfter: Date?
-    public let receivedBefore: Date?
+    public var folderIds: [UUID]?
+    public var fields: [MVSearchField]?
+    public var timeWindow: MVTimeWindow?
 
     public init(
         mode: Mode, query: String, accountId: UUID? = nil, folderIds: [UUID]? = nil,
-        fields: [MVSearchField]? = nil, strictness: MVSemanticStrictness? = nil,
-        sort: Sort = .relevance, receivedAfter: Date? = nil, receivedBefore: Date? = nil
+        fields: [MVSearchField]? = nil, timeWindow: MVTimeWindow? = nil
     ) {
         self.mode = mode
         self.query = query
         self.accountId = accountId
         self.folderIds = folderIds
         self.fields = fields
-        self.strictness = strictness
-        self.sort = sort
-        self.receivedAfter = receivedAfter
-        self.receivedBefore = receivedBefore
+        self.timeWindow = timeWindow
     }
 }
 
