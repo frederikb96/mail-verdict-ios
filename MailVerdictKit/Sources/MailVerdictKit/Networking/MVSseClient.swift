@@ -27,8 +27,8 @@ public final class MVSseClient {
 
     public struct Callbacks: Sendable {
         public var onRecord: @MainActor @Sendable (MVSseRecord) -> Void
-        /// Fired for every successfully-parsed record, including a comment-only keepalive that
-        /// carries no record at all — a caller's only way to tell "the connection is open and
+        /// Fired for every successfully-parsed record, including the idle heartbeat that is never
+        /// passed to `onRecord` — a caller's only way to tell "the connection is open and
         /// flowing" apart from "nothing is getting through at all".
         public var onActivity: @MainActor @Sendable () -> Void
         public var onConnected: @MainActor @Sendable () -> Void
@@ -261,9 +261,9 @@ public final class MVSseClient {
                     callbacks.onConnected()
                     startWatchdog(generation: attempt)
                 case .chunk(let data):
-                    // Any bytes prove the connection alive — the backend's idle `: keepalive`
-                    // comment carries no record, and counting only records would have the
-                    // watchdog tear down a healthy, quiet connection every minute.
+                    // Any bytes prove the connection alive — the backend's idle `ping` heartbeat is
+                    // filtered out before a caller sees it, and counting only caller-visible
+                    // records would have the watchdog tear down a healthy, quiet connection.
                     lastEventTime = Date()
                     noteTrafficArrived()
                     callbacks.onActivity()
@@ -325,9 +325,14 @@ public final class MVSseClient {
         backoffNanos = Self.initialBackoffNanos
     }
 
+    /// The server's idle heartbeat. It proves the connection alive and carries nothing for a
+    /// caller, so it never reaches `onRecord`.
+    nonisolated static let heartbeatEventName = "ping"
+
     private func handleRecord(_ record: MVSseRecord) {
         lastEventTime = Date()
         callbacks.onActivity()
+        if record.name == Self.heartbeatEventName { return }
         if let id = record.id { lastEventId = id }
         callbacks.onRecord(record)
     }

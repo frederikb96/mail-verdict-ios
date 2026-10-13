@@ -58,6 +58,9 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
     public internal(set) var attempts: Int
     public internal(set) var nextAttemptAt: Date?
     public internal(set) var lastError: String?
+    /// When the latest request of this intent left, for telling its echo over the event stream
+    /// from another client's change (`MVIntentLedger.isSettledEcho`).
+    public internal(set) var sentAt: Date?
     /// `MVIntentLedger.sequence` when this became `done` or `failed`.
     public internal(set) var settledSequence: Int?
     public internal(set) var settledAt: Date?
@@ -131,6 +134,7 @@ public struct MVMailIntent: Codable, Sendable, Equatable, Identifiable {
         attempts = try container.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
         nextAttemptAt = try container.decodeIfPresent(Date.self, forKey: .nextAttemptAt)
         lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
+        sentAt = try container.decodeIfPresent(Date.self, forKey: .sentAt)
         settledSequence = try container.decodeIfPresent(Int.self, forKey: .settledSequence)
         settledAt = try container.decodeIfPresent(Date.self, forKey: .settledAt)
         movedSources = (try? container.decodeIfPresent([BulkActionSource].self, forKey: .movedSources)) ?? []

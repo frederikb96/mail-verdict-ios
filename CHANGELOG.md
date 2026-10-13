@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- A mail action is read back once instead of twice in the list: the event announcing a change the
+  app just made is recognised and skipped, since the read after the server's answer already has it.
+- The Mailboxes screen no longer reloads everything on every mail event. Events during a sync
+  cost one reload running and at most one queued, and a mail event reads only the folder counts
+  of its account and the unified rows; alert events read the badge, outbox events the dead-outbox
+  banner. A flag, answered or label change reads nothing.
+- The folder and unified-view counts behind a list's title (and the confirmation of emptying a
+  folder) follow mail events instead of staying as they were when the list opened.
+- The server's `ping` heartbeat on the event stream is recognised as proof of life and never
+  handed to a screen.
+
 ## [0.10.0] - 2026-10-13
 
 ### Added

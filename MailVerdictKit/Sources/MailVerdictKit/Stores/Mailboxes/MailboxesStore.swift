@@ -92,6 +92,13 @@ public final class MailboxesStore {
     private let recentViews: MVRecentViewRecord
     private var syncPollingTask: Task<Void, Never>?
     private var liveSubscriptionToken: MVSubscriptionToken?
+    /// The one reload running, and what arrived meanwhile: merged into a single follow-up.
+    private var reloadTask: Task<Void, Never>?
+    private var queuedPlan: MailboxesReloadPlan?
+    /// Whether each account has a saved folder order, as the last full load read it. A folder
+    /// list is ordered differently with one (`MailboxesSupport.orderFolders`), and `/folder-order`
+    /// does not say.
+    private var hasCustomFolderOrder: [UUID: Bool] = [:]
 
     public init(
         apiClient: MVApiClient, ledger: MVIntentLedger, uiState: MailboxesUIState = MailboxesUIState(),
@@ -147,7 +154,51 @@ public final class MailboxesStore {
 
     // MARK: - Loading
 
+    /// Reads everything. Joins a reload that is already running instead of starting a second.
     public func load() async {
+        await reload(.all)
+    }
+
+    /// Runs `plan` after any reload in progress, merged with whatever else queued meanwhile — one
+    /// running and at most one waiting, however many events arrive during a sync.
+    private func reload(_ plan: MailboxesReloadPlan) async {
+        if let running = reloadTask {
+            var merged = queuedPlan ?? MailboxesReloadPlan()
+            merged.merge(plan)
+            queuedPlan = merged
+            await running.value
+            return
+        }
+        queuedPlan = plan
+        let task = Task { [weak self] in
+            while let self, let next = self.queuedPlan {
+                self.queuedPlan = nil
+                await self.perform(next)
+            }
+            self?.reloadTask = nil
+        }
+        reloadTask = task
+        await task.value
+    }
+
+    private func perform(_ plan: MailboxesReloadPlan) async {
+        if plan.everything {
+            await loadEverything()
+            return
+        }
+        async let countsApplied = plan.counts ? reloadCounts(plan) : true
+        async let badge: Void = plan.badge ? reloadBadge() : ()
+        async let deadOutbox: Void = plan.deadOutbox ? reloadDeadOutbox() : ()
+        let applied = await countsApplied
+        await badge
+        await deadOutbox
+        // Counts for a screen not fully loaded yet, or an account it does not show, need the rest.
+        if !applied { await loadEverything() }
+        saveSnapshotToDiskCache()
+        reportDebugState()
+    }
+
+    private func loadEverything() async {
         isLoading = unifiedRows.isEmpty && accountSections.isEmpty
         loadError = nil
         do {
@@ -180,6 +231,7 @@ public final class MailboxesStore {
                 )
             }
 
+            for account in accountList { noteFolderOrder(of: account) }
             accountSections = try await loadAccountSections(accounts: accountList)
             saveSnapshotToDiskCache()
         } catch {
@@ -187,6 +239,66 @@ public final class MailboxesStore {
         }
         isLoading = false
         reportDebugState()
+    }
+
+    private func noteFolderOrder(of account: AccountResponse) {
+        hasCustomFolderOrder[account.id] = !(account.folderOrder ?? []).isEmpty
+    }
+
+    /// Re-reads the unified rows and the folder rows of the accounts the plan names: the counts a
+    /// mail event can have changed. `false` when that cannot be done from what is already on
+    /// screen, and a full load is needed instead.
+    private func reloadCounts(_ plan: MailboxesReloadPlan) async -> Bool {
+        let shown = Set(accountSections.map(\.id))
+        let accountIds = plan.countsForAllAccounts ? shown : plan.countAccountIds
+        guard !shown.isEmpty, accountIds.isSubset(of: shown),
+            accountIds.allSatisfy({ hasCustomFolderOrder[$0] != nil })
+        else { return false }
+
+        async let unified = try? apiClient.listUnifiedFolders()
+        let rows = await Self.folderRows(
+            ofAccounts: accountIds.filter { id in
+                accountSections.first { $0.id == id }?.connectionState != .neverConnected
+            }, hasCustomOrder: hasCustomFolderOrder, apiClient: apiClient)
+
+        var sections = accountSections
+        for index in sections.indices {
+            guard let folders = rows[sections[index].id] else { continue }
+            let section = sections[index]
+            sections[index] = MailboxesAccountSection(
+                id: section.id, name: section.name, emoji: section.emoji,
+                connectionState: section.connectionState, stateError: section.stateError, folders: folders
+            )
+        }
+        if sections != accountSections { accountSections = sections }
+
+        guard let unifiedList = await unified else { return true }
+        // A view added or removed changes more than a count.
+        guard Set(unifiedList.map(\.id)) == Set(unifiedRows.map(\.id)) else { return false }
+        membership.update(from: unifiedList)
+        let previous = Dictionary(uniqueKeysWithValues: unifiedRows.map { ($0.id, $0) })
+        let updated = unifiedList.map { view in
+            MailboxesUnifiedRow(
+                id: view.id, name: view.unifiedName, emoji: view.emoji, unreadCount: view.unreadCount,
+                contributingAccountEmojis: previous[view.id]?.contributingAccountEmojis ?? []
+            )
+        }
+        if updated != unifiedRows { unifiedRows = updated }
+        return true
+    }
+
+    private func reloadBadge() async {
+        guard let badge = try? await apiClient.getAlertBadge(folderIds: nil) else { return }
+        if badge.count != bellBadgeCount { bellBadgeCount = badge.count }
+    }
+
+    private func reloadDeadOutbox() async {
+        guard let dead = try? await apiClient.listOutbox(status: "dead") else { return }
+        let names = MailboxesSupport.distinctAccountNames(forAccountIds: dead.map(\.accountId)) { id in
+            accountSections.first { $0.id == id }?.name
+        }
+        let text = MailboxesSupport.deadOutboxBannerText(messageCount: dead.count, accountNames: names)
+        if text != deadOutboxBannerText { deadOutboxBannerText = text }
     }
 
     private func loadAccountSections(accounts: [AccountResponse]) async throws -> [MailboxesAccountSection] {
@@ -217,26 +329,53 @@ public final class MailboxesStore {
 
         var folders: [MailboxesFolderRow] = []
         if connectionState != .neverConnected {
-            let order = try? await apiClient.getFolderOrder(accountId: account.id)
-            let ordered = MailboxesSupport.orderFolders(
-                order?.folders ?? [], hasCustomOrder: !(account.folderOrder ?? []).isEmpty)
-            folders = ordered.map { item in
-                MailboxesFolderRow(
-                    id: item.folderId, accountId: account.id,
-                    displayName: folderDisplayName(
-                        imapName: item.imapName, displayName: item.displayName, specialUse: item.specialUse
-                    ), specialUse: item.specialUse,
-                    badgeCount: MailboxesSupport.folderBadgeCount(
-                        specialUse: item.specialUse, unreadCount: item.unreadCount, totalCount: item.totalCount
-                    ), totalCount: item.totalCount, kind: item.kind
-                )
-            }
+            folders =
+                await folderRows(
+                    accountId: account.id, hasCustomOrder: !(account.folderOrder ?? []).isEmpty,
+                    apiClient: apiClient) ?? []
         }
 
         return MailboxesAccountSection(
             id: account.id, name: account.name, emoji: account.emoji, connectionState: connectionState,
             stateError: account.stateError, folders: folders
         )
+    }
+
+    /// An account's folder rows in display order; `nil` when `/folder-order` could not be read.
+    private static func folderRows(
+        accountId: UUID, hasCustomOrder: Bool, apiClient: MVApiClient
+    ) async -> [MailboxesFolderRow]? {
+        guard let order = try? await apiClient.getFolderOrder(accountId: accountId) else { return nil }
+        return MailboxesSupport.orderFolders(order.folders, hasCustomOrder: hasCustomOrder).map { item in
+            MailboxesFolderRow(
+                id: item.folderId, accountId: accountId,
+                displayName: folderDisplayName(
+                    imapName: item.imapName, displayName: item.displayName, specialUse: item.specialUse
+                ), specialUse: item.specialUse,
+                badgeCount: MailboxesSupport.folderBadgeCount(
+                    specialUse: item.specialUse, unreadCount: item.unreadCount, totalCount: item.totalCount
+                ), totalCount: item.totalCount, kind: item.kind
+            )
+        }
+    }
+
+    /// Several accounts' folder rows at once, keyed by account; an account whose read failed is
+    /// absent.
+    private static func folderRows(
+        ofAccounts accountIds: Set<UUID>, hasCustomOrder: [UUID: Bool],
+        apiClient: MVApiClient
+    ) async -> [UUID: [MailboxesFolderRow]] {
+        await withTaskGroup(of: (UUID, [MailboxesFolderRow]?).self) { group in
+            for accountId in accountIds {
+                let custom = hasCustomOrder[accountId] ?? false
+                group.addTask {
+                    (accountId, await folderRows(accountId: accountId, hasCustomOrder: custom, apiClient: apiClient))
+                }
+            }
+            var result: [UUID: [MailboxesFolderRow]] = [:]
+            for await (accountId, rows) in group { if let rows { result[accountId] = rows } }
+            return result
+        }
     }
 
     // MARK: - Folder and account actions
@@ -311,6 +450,7 @@ public final class MailboxesStore {
     /// every other account's folders and sync status for nothing.
     private func refreshAccountSection(accountId: UUID) async {
         guard let account = try? await apiClient.getAccount(id: accountId) else { return }
+        noteFolderOrder(of: account)
         let section = await Self.buildSection(for: account, apiClient: apiClient)
         if let index = accountSections.firstIndex(where: { $0.id == accountId }) {
             accountSections[index] = section
@@ -443,7 +583,10 @@ public final class MailboxesStore {
 
 extension MailboxesStore: LiveEventSubscriber {
     public func apply(_ invalidations: [MVLiveInvalidation]) {
-        guard MailboxesSupport.shouldReload(for: invalidations) else { return }
-        Task { await self.load() }
+        let plan = MailboxesSupport.reloadPlan(for: invalidations) { folderId in
+            self.accountSections.first { $0.folders.contains { $0.id == folderId } }?.id
+        }
+        guard !plan.isEmpty else { return }
+        Task { await self.reload(plan) }
     }
 }

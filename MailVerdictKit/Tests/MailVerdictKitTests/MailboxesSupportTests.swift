@@ -208,26 +208,70 @@ final class MailboxesSupportDeadOutboxBannerTests: XCTestCase {
     }
 }
 
-final class MailboxesSupportShouldReloadTests: XCTestCase {
+final class MailboxesSupportReloadPlanTests: XCTestCase {
 
-    func testReloadsOnFoldersChanged() {
-        XCTAssertTrue(MailboxesSupport.shouldReload(for: [.foldersChanged]))
+    private let account = UUID()
+    private let folder = UUID()
+
+    private func plan(
+        _ invalidations: [MVLiveInvalidation], accountOfFolder: @escaping (UUID) -> UUID? = { _ in nil }
+    ) -> MailboxesReloadPlan {
+        MailboxesSupport.reloadPlan(for: invalidations, accountOfFolder: accountOfFolder)
     }
 
-    func testReloadsOnAccountsChanged() {
-        XCTAssertTrue(MailboxesSupport.shouldReload(for: [.accountsChanged]))
+    func testStructuralChangesReloadEverything() {
+        XCTAssertTrue(plan([.foldersChanged]).everything)
+        XCTAssertTrue(plan([.accountsChanged]).everything)
+        XCTAssertTrue(plan([.resync]).everything)
     }
 
-    func testReloadsOnResync() {
-        XCTAssertTrue(MailboxesSupport.shouldReload(for: [.resync]))
+    func testAnUnrelatedInvalidationOrAnEmptyBatchReloadsNothing() {
+        XCTAssertTrue(plan([.settingsChanged(category: "mail")]).isEmpty)
+        XCTAssertTrue(plan([]).isEmpty)
     }
 
-    func testIgnoresAnUnrelatedInvalidation() {
-        XCTAssertFalse(MailboxesSupport.shouldReload(for: [.settingsChanged(category: "mail")]))
+    /// A mail event can change a count and nothing else on this screen: no account list, sync
+    /// status, dead outbox or badge request is needed for it.
+    func testAMailEventReloadsOnlyTheCountsOfItsAccount() {
+        let result = plan([.mailNew(accountId: account, folderId: folder, messageId: UUID())])
+        XCTAssertEqual(result, MailboxesReloadPlan(counts: true, countAccountIds: [account]))
     }
 
-    func testIgnoresAnEmptyBatch() {
-        XCTAssertFalse(MailboxesSupport.shouldReload(for: []))
+    func testAFolderOnlyEventIsAttributedToTheAccountShowingThatFolder() {
+        let result = plan([.folderSynced(accountId: nil, folderId: folder)]) { $0 == self.folder ? self.account : nil }
+        XCTAssertEqual(result, MailboxesReloadPlan(counts: true, countAccountIds: [account]))
+    }
+
+    func testAnEventNamingNoKnownAccountWidensToEveryAccount() {
+        let result = plan([.mailDeleted(accountId: nil, folderId: UUID(), messageId: nil)])
+        XCTAssertEqual(result, MailboxesReloadPlan(counts: true, countsForAllAccounts: true))
+    }
+
+    func testAFlagOnlyUpdateMovesNoCount() {
+        let flagged = MVLiveInvalidation.mailUpdated(
+            accountId: account, folderId: folder, messageId: UUID(), changed: ["is_flagged"])
+        XCTAssertTrue(plan([flagged]).isEmpty)
+    }
+
+    func testReadAndMoveUpdatesMoveCounts() {
+        for changed in [["is_seen"], ["folder_id", "imap_uid"], []] {
+            let update = MVLiveInvalidation.mailUpdated(
+                accountId: account, folderId: folder, messageId: UUID(), changed: changed)
+            XCTAssertTrue(plan([update]).counts, "\(changed)")
+        }
+    }
+
+    func testAlertAndOutboxEventsReloadOnlyTheirOwnPiece() {
+        XCTAssertEqual(plan([.alertsChanged]), MailboxesReloadPlan(badge: true))
+        XCTAssertEqual(plan([.outboxUpdated(MVOutboxEventPayload(id: nil))]), MailboxesReloadPlan(deadOutbox: true))
+    }
+
+    func testPlansMerge() {
+        let other = UUID()
+        var merged = plan([.mailNew(accountId: account, folderId: folder, messageId: nil)])
+        merged.merge(plan([.mailNew(accountId: other, folderId: nil, messageId: nil), .alertsChanged]))
+        XCTAssertEqual(
+            merged, MailboxesReloadPlan(counts: true, countAccountIds: [account, other], badge: true))
     }
 }
 

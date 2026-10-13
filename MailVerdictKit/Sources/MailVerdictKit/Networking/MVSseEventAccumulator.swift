@@ -36,7 +36,7 @@ struct MVSseEventAccumulator: Sendable, Equatable {
             guard let name = eventName, !dataLines.isEmpty else { return nil }
             return MVSseRecord(id: eventId, name: name, data: dataLines.joined(separator: "\n"))
         }
-        // A line starting with `:` is an SSE comment — this backend sends `: keepalive` on an
+        // A line starting with `:` is an SSE comment — an older backend sends `: keepalive` on an
         // idle connection specifically so an intermediary does not time the connection out, and
         // it carries no event data at all. Treating it as an unrecognised field would be
         // harmless (the `else` branch below already ignores unknown fields), but reads correctly

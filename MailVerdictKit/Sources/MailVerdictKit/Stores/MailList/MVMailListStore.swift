@@ -68,6 +68,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     @ObservationIgnored private var pageTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshAgain = false
+    @ObservationIgnored private var countsTask: Task<Void, Never>?
+    @ObservationIgnored private var countsAgain = false
     @ObservationIgnored private var filterDebounce: Task<Void, Never>?
     /// The query the filter was last asked for. A response for any other query is stale — typing
     /// back to a query already showing leaves a longer one's request still in flight.
@@ -503,6 +505,42 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         context = next
     }
 
+    /// Re-reads the folder and unified-view counts the title and the destructive confirmations
+    /// show. Never more than one running; requests arriving meanwhile queue exactly one more.
+    private func requestCountsRefresh() {
+        if countsTask != nil {
+            countsAgain = true
+            return
+        }
+        countsTask = Task { [weak self] in
+            guard let self else { return }
+            repeat {
+                self.countsAgain = false
+                await self.loadCounts()
+            } while self.countsAgain
+            self.countsTask = nil
+        }
+    }
+
+    private func loadCounts() async {
+        var unifiedView = context.unifiedView
+        if case .unified(let viewId, _) = scope, let views = await freshUnifiedViews() {
+            unifiedView = views.first { $0.id == viewId }
+        }
+        var scoped = MVListContext()
+        scoped.unifiedView = unifiedView
+        let folders = await freshFolders(accountIdsIn(scoped))
+        // The context is read again here, after the awaits: anything else that changed it
+        // meanwhile stays, and only the counts are taken.
+        var next = context
+        next.unifiedView = unifiedView
+        for (accountId, list) in folders {
+            next.folders = next.folders.filter { $0.value.accountId != accountId }
+            for folder in list { next.folders[folder.id] = folder }
+        }
+        if next != context { context = next }
+    }
+
     /// Every part of the context read at once — accounts, the view, each account's folders and
     /// photo index, the dead outbox — rather than one request after another. A part whose
     /// request fails keeps what the context already had.
@@ -624,28 +662,47 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     }
 
     public func apply(_ invalidations: [MVLiveInvalidation]) {
+        let now = Date()
+        apply(invalidations.map { MVLiveEvent($0, arrivedAt: now) })
+    }
+
+    public func apply(_ events: [MVLiveEvent]) {
         var needsRefresh = false
         var needsContext = false
-        for invalidation in invalidations {
-            switch invalidation {
+        var needsCounts = false
+        for event in events {
+            switch event.invalidation {
             case .resync:
                 needsRefresh = true
                 needsContext = true
             case .mailNew(_, let folderId, let messageId):
                 guard concerns(folderId) else { continue }
                 needsRefresh = true
+                needsCounts = true
                 if hasNewer, !isFilterActive, !(messageId.map(containsRow) ?? false) {
                     pendingArrivalCount += 1
                 }
-            case .mailUpdated(_, let folderId, let messageId, _):
-                if concerns(folderId) || (messageId.map(containsRow) ?? false) { needsRefresh = true }
-            case .mailDeleted(_, _, let messageId):
-                if let messageId, containsRow(messageId) {
+            case .mailUpdated(let accountId, let folderId, let messageId, let changed):
+                let concerned = concerns(folderId) || (messageId.map(containsRow) ?? false)
+                if concerned, !isSettledEcho(messageId, accountId: accountId, at: event.arrivedAt) {
+                    needsRefresh = true
+                }
+                // A move changes the count at both ends, and the event names only the destination.
+                let movesCount = MVLiveInvalidation.messageUpdateMovesCounts(changed: changed)
+                if movesCount, changed.contains("folder_id") || concerns(folderId) { needsCounts = true }
+            case .mailDeleted(let accountId, let folderId, let messageId):
+                if concerns(folderId) { needsCounts = true }
+                if let messageId, containsRow(messageId),
+                    !isSettledEcho(messageId, accountId: accountId, at: event.arrivedAt)
+                {
                     baseRows.removeAll { $0.id == messageId }
                     needsRefresh = true
                 }
             case .folderSynced(_, let folderId):
-                if concerns(folderId) { needsRefresh = true }
+                if concerns(folderId) {
+                    needsRefresh = true
+                    needsCounts = true
+                }
             case .verdictIssued(_, let messageId, _):
                 if messageId.map(containsRow) ?? false { needsRefresh = true }
             case .outboxUpdated(let payload):
@@ -658,7 +715,21 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
             }
         }
         if needsRefresh { requestRefresh() }
-        if needsContext { Task { [weak self] in await self?.loadContext() } }
+        if needsContext {
+            Task { [weak self] in await self?.loadContext() }
+        } else if needsCounts {
+            requestCountsRefresh()
+        }
+    }
+
+    /// Whether an event for `messageId` only announces what an action of this device already
+    /// changed, which that action's re-read on settling (`intentsDidSettle`) covers.
+    private func isSettledEcho(_ messageId: UUID?, accountId: UUID?, at arrivedAt: Date) -> Bool {
+        guard let messageId else { return false }
+        let accounts = accountId.map { [$0] } ?? accountIdsInScope
+        return accounts.contains {
+            ledger.isSettledEcho(of: messageId, accountId: $0, arrivedAt: arrivedAt)
+        }
     }
 
     private func concerns(_ folderId: UUID?) -> Bool {

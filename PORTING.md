@@ -530,3 +530,11 @@ and only a real run shows the keyboard and scrolling there. Confirm: after a pro
 instruction is shown with what was sent, can be edited, and Run Again shows "Working out a
 change…" and then the new answer; Run Again is disabled while Accept is writing and for an empty
 instruction.
+
+### Mailboxes and list counts follow a sync burst quietly — web anchor: ui/src/hooks/use-sse.ts
+Needs a device because: the logic is unit-tested at the package level, but how often the overview
+re-renders under a real sync, and that no stale count shows, only shows on a screen. Confirm: with
+the app on Mailboxes while a large folder syncs (or a folder is emptied from the web UI), unread
+counts and the unified rows update every second or so without the list jumping or a tap being lost,
+and the badge and dead-outbox banner still change when alerts or the outbox do; open a folder, read
+a message, go back: the count in the reader's title ("N Messages") matches the folder.

@@ -19,6 +19,10 @@ public protocol LiveEventSubscriber: AnyObject {
     /// window. One method for both, so a subscriber has exactly one place to react from.
     func apply(_ invalidations: [MVLiveInvalidation])
 
+    /// The same delivery with each invalidation's arrival time, for a subscriber that tells an
+    /// event from one it has already re-read for. The default forwards to `apply(_:)`.
+    func apply(_ events: [MVLiveEvent])
+
     /// Whether the live connection is currently up. A subscriber that does not act on connection
     /// state can ignore this — the default below is a no-op.
     func setConnected(_ connected: Bool)
@@ -26,6 +30,20 @@ public protocol LiveEventSubscriber: AnyObject {
 
 extension LiveEventSubscriber {
     public func setConnected(_ connected: Bool) {}
+    public func apply(_ events: [MVLiveEvent]) { apply(events.map(\.invalidation)) }
+}
+
+/// An invalidation and when its record arrived. A mail burst is held up to 500 ms before
+/// delivery, so delivery time alone cannot say whether a re-read began before or after the change
+/// it announces.
+public struct MVLiveEvent: Sendable, Equatable {
+    public let invalidation: MVLiveInvalidation
+    public let arrivedAt: Date
+
+    public init(_ invalidation: MVLiveInvalidation, arrivedAt: Date) {
+        self.invalidation = invalidation
+        self.arrivedAt = arrivedAt
+    }
 }
 
 public typealias MVSubscriptionToken = UUID
@@ -70,7 +88,8 @@ public final class LiveEventHub {
     @ObservationIgnored private var visibleStateTask: Task<Void, Never>?
 
     private let sseClient: MVSseClient
-    private var pending: [MVLiveInvalidation] = []
+    private var pending: [MVLiveEvent] = []
+    private let now: @Sendable () -> Date
     private var flushTask: Task<Void, Never>?
 
     /// Weak so a subscriber that forgets to `unsubscribe` before going away is dropped, not
@@ -97,8 +116,10 @@ public final class LiveEventHub {
     public init(
         accountId: String? = nil,
         requestFactory: MVRequestFactory,
-        urlSessionConfiguration: URLSessionConfiguration = .default
+        urlSessionConfiguration: URLSessionConfiguration = .default,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
+        self.now = now
         let box = HubBox()
         self.sseClient = MVSseClient(
             accountId: accountId,
@@ -197,12 +218,12 @@ public final class LiveEventHub {
     }
 
     private func handle(_ record: MVSseRecord) {
-        let invalidation = Self.mapRecord(record)
-        switch invalidation {
+        let event = MVLiveEvent(Self.mapRecord(record), arrivedAt: now())
+        switch event.invalidation {
         case .mailNew, .mailUpdated, .mailDeleted, .folderSynced:
-            pending.append(invalidation)
+            pending.append(event)
         default:
-            deliver([invalidation])
+            deliver([event])
         }
     }
 
@@ -224,7 +245,7 @@ public final class LiveEventHub {
         deliver(batch)
     }
 
-    private func deliver(_ batch: [MVLiveInvalidation]) {
+    private func deliver(_ batch: [MVLiveEvent]) {
         pruneDeadSubscribers()
         for box in subscribers.values {
             box.subscriber?.apply(batch)
