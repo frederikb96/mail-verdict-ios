@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-13
+
 ### Changed
 
 - A mail action is read back once instead of twice in the list: the event announcing a change the
