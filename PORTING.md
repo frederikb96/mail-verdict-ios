@@ -523,3 +523,10 @@ provider is unreachable, the full-text rows stay at normal strength under "Seman
 unavailable right now"; moving the time window with the same text updates the list without the
 muted interlude; scroll position and the open reader still behave after the swap.
 
+### Run Again in Add Rule — web anchor: ui/src/components/mail/add-rule-dialog.tsx
+Needs a device because: the editable instruction sits in the proposal list and the notice form,
+and only a real run shows the keyboard and scrolling there. Confirm: after a proposal, after
+"nothing to change", after an error and after "Rules changed meanwhile — ask again.", the
+instruction is shown with what was sent, can be edited, and Run Again shows "Working out a
+change…" and then the new answer; Run Again is disabled while Accept is writing and for an empty
+instruction.

@@ -125,6 +125,39 @@ final class RuleAssistantStoreTests: XCTestCase {
         XCTAssertEqual(store.promptText, "")
     }
 
+    func testRunningAgainAfterAnAnswerSendsTheEditedPromptAsANewRequest() async throws {
+        let store = makeStore()
+        await propose(store, json: responseJSON(withChange: false))
+        XCTAssertEqual(store.promptText, "  these too  ")
+        XCTAssertTrue(store.canSend)
+
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(responseJSON().utf8))
+        store.promptText = "only the ones from a@b.c"
+        store.send()
+        XCTAssertEqual(store.phase, .running)
+        await store.inFlight?.value
+
+        guard case .result = store.phase else { return XCTFail("\(store.phase)") }
+        let body = try XCTUnwrap(MVStubURLProtocol.capturedRequest?.httpBody)
+        let sent = try JSONDecoder().decode(RuleAssistantRequest.self, from: body)
+        XCTAssertEqual(sent.prompt, "only the ones from a@b.c")
+        XCTAssertEqual(sent.messageId, store.messageId)
+    }
+
+    func testRunningAgainAfterAFailedAcceptAsksAfresh() async {
+        let store = makeStore()
+        await propose(store, json: responseJSON())
+        MVStubURLProtocol.stub = .init(statusCode: 409, headers: [:], body: Data(#"{"detail":"stale"}"#.utf8))
+        store.accept()
+        await store.inFlight?.value
+        XCTAssertEqual(store.phase, .failed(RuleAssistantStore.rulesChangedMessage))
+
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(responseJSON().utf8))
+        store.send()
+        await store.inFlight?.value
+        guard case .result = store.phase else { return XCTFail("\(store.phase)") }
+    }
+
     func testASecondSendWhileRunningIsIgnored() {
         let store = makeStore()
         MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(responseJSON().utf8))
