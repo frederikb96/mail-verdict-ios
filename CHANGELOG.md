@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-13
+
+### Added
+
+- Add Rule keeps the instruction after an answer, editable, with Run Again: a new, independent
+  request with whatever the instruction says now, after a proposal, an answer without one, an
+  error, or a rule change that came in meanwhile.
+
+## [0.9.0] - 2026-10-12
+
 ### Changed
 
 - Searching by meaning shows the full-text matches straight away, muted, under a "Searching by
