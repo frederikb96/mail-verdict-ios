@@ -200,6 +200,28 @@ final class LiveEventHubBufferingTests: XCTestCase {
         XCTAssertEqual(subscriber.batches.first?.count, 3)
     }
 
+    /// A mail burst is delivered up to 500 ms after it arrived; each event still says when its own
+    /// record arrived, which is what tells a subscriber whether a re-read began before the change.
+    func testEachEventCarriesTheMomentItsRecordArrived() async throws {
+        let raw =
+            "event: mail.new\r\ndata: {\"id\":\"\(UUID())\"}\r\n\r\n"
+            + "event: mail.deleted\r\ndata: {\"id\":\"\(UUID())\"}\r\n\r\n"
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(raw.utf8))
+        let ticks = CallCounter()
+        let factory = try MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none })
+        let hub = LiveEventHub(
+            requestFactory: factory, urlSessionConfiguration: MVStubURLProtocol.makeConfiguration(),
+            now: { Date(timeIntervalSince1970: Double(ticks.next())) })
+
+        let signal = MVStreamConnectionSignal()
+        let subscriber = TimedSubscriber { Task { await signal.fire() } }
+        hub.subscribe(subscriber)
+        hub.connect()
+        await signal.wait()
+
+        XCTAssertEqual(subscriber.events.map(\.arrivedAt.timeIntervalSince1970), [1, 2])
+    }
+
     /// A non-mail event (here, `account.changed`) is never held for the next flush tick.
     func testNonMailEventsAreDeliveredImmediately() async throws {
         let raw = "event: account.changed\r\ndata: {}\r\n\r\n"
@@ -274,6 +296,24 @@ final class LiveEventHubBufferingTests: XCTestCase {
         await signal.wait()
 
         XCTAssertEqual(lateSubscriberStates, [true])
+    }
+}
+
+/// A subscriber that wants each invalidation's arrival time.
+@MainActor
+private final class TimedSubscriber: LiveEventSubscriber {
+    private(set) var events: [MVLiveEvent] = []
+    private let onApply: () -> Void
+
+    init(onApply: @escaping () -> Void) {
+        self.onApply = onApply
+    }
+
+    func apply(_ invalidations: [MVLiveInvalidation]) {}
+
+    func apply(_ events: [MVLiveEvent]) {
+        self.events += events
+        onApply()
     }
 }
 

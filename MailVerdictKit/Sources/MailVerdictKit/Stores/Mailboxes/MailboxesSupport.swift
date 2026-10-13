@@ -15,6 +15,46 @@ public protocol MVFolderLeadSortable {
 extension FolderOrderItem: MVFolderLeadSortable {}
 extension FolderResponse: MVFolderLeadSortable {}
 
+/// What one batch of live invalidations asks the Mailboxes screen to re-read. Plans from
+/// successive batches merge, so a reload that is already running costs at most one more.
+public struct MailboxesReloadPlan: Equatable, Sendable {
+    /// Accounts, unified views, the dead outbox, the badge and every account's sync status and
+    /// folders.
+    public var everything = false
+    /// Folder rows of `countAccountIds` (every account when `countsForAllAccounts`) and the
+    /// unified rows.
+    public var counts = false
+    public var countAccountIds: Set<UUID> = []
+    public var countsForAllAccounts = false
+    public var badge = false
+    public var deadOutbox = false
+
+    public init(
+        everything: Bool = false, counts: Bool = false, countAccountIds: Set<UUID> = [],
+        countsForAllAccounts: Bool = false, badge: Bool = false, deadOutbox: Bool = false
+    ) {
+        self.everything = everything
+        self.counts = counts
+        self.countAccountIds = countAccountIds
+        self.countsForAllAccounts = countsForAllAccounts
+        self.badge = badge
+        self.deadOutbox = deadOutbox
+    }
+
+    public static let all = MailboxesReloadPlan(everything: true)
+
+    public var isEmpty: Bool { self == MailboxesReloadPlan() }
+
+    public mutating func merge(_ other: MailboxesReloadPlan) {
+        everything = everything || other.everything
+        counts = counts || other.counts
+        countAccountIds.formUnion(other.countAccountIds)
+        countsForAllAccounts = countsForAllAccounts || other.countsForAllAccounts
+        badge = badge || other.badge
+        deadOutbox = deadOutbox || other.deadOutbox
+    }
+}
+
 public enum MailboxesSupport {
 
     /// The row a Mailboxes tap opened, read off the navigation change it caused: a row's
@@ -99,14 +139,19 @@ public enum MailboxesSupport {
     public static func distinctAccountNames(
         forAccountIds accountIds: [UUID], accounts: [AccountResponse]
     ) -> [String] {
+        distinctAccountNames(forAccountIds: accountIds) { id in accounts.first { $0.id == id }?.name }
+    }
+
+    /// The same for a caller that holds names rather than whole accounts.
+    public static func distinctAccountNames(
+        forAccountIds accountIds: [UUID], name: (UUID) -> String?
+    ) -> [String] {
         var seen = Set<UUID>()
         var names: [String] = []
         for id in accountIds {
             guard !seen.contains(id) else { continue }
             seen.insert(id)
-            if let account = accounts.first(where: { $0.id == id }) {
-                names.append(account.name)
-            }
+            if let found = name(id) { names.append(found) }
         }
         return names
     }
@@ -121,19 +166,42 @@ public enum MailboxesSupport {
         return "\(messageCount) message\(plural) could not be sent — check SMTP settings on \(target)."
     }
 
-    /// Whether a batch of live invalidations means this screen's data is stale: `folder.changed`,
-    /// `account.changed` and a resync, plus every `mail.*` event (folded into
-    /// `folderSynced`/`mailNew` etc), all of which leave folder and unread counts stale the same
-    /// way `foldersChanged` does.
-    public static func shouldReload(for invalidations: [MVLiveInvalidation]) -> Bool {
-        invalidations.contains {
-            switch $0 {
-            case .resync, .foldersChanged, .accountsChanged, .folderSynced, .mailNew, .mailUpdated, .mailDeleted:
-                return true
-            default:
-                return false
+    /// What a batch of live invalidations makes stale on this screen, and nothing more. A mail
+    /// event moves counts only: the folder rows of its account and the unified rows. `accountOfFolder`
+    /// names the account a folder-only event (`folder.synced`) belongs to; a folder it does not know
+    /// widens the reload to every account.
+    public static func reloadPlan(
+        for invalidations: [MVLiveInvalidation], accountOfFolder: (UUID) -> UUID?
+    ) -> MailboxesReloadPlan {
+        var plan = MailboxesReloadPlan()
+        func countsChanged(accountId: UUID?, folderId: UUID?) {
+            plan.counts = true
+            if let account = accountId ?? folderId.flatMap(accountOfFolder) {
+                plan.countAccountIds.insert(account)
+            } else {
+                plan.countsForAllAccounts = true
             }
         }
+        for invalidation in invalidations {
+            switch invalidation {
+            case .resync, .accountsChanged, .foldersChanged:
+                plan.everything = true
+            case .mailNew(let accountId, let folderId, _), .mailDeleted(let accountId, let folderId, _),
+                .folderSynced(let accountId, let folderId):
+                countsChanged(accountId: accountId, folderId: folderId)
+            case .mailUpdated(let accountId, let folderId, _, let changed):
+                if MVLiveInvalidation.messageUpdateMovesCounts(changed: changed) {
+                    countsChanged(accountId: accountId, folderId: folderId)
+                }
+            case .alertsChanged:
+                plan.badge = true
+            case .outboxUpdated:
+                plan.deadOutbox = true
+            default:
+                continue
+            }
+        }
+        return plan
     }
 
     /// Among every unified view containing this folder, the one opened most recently — falling

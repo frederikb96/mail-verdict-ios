@@ -66,6 +66,35 @@ final class MVSseClientConnectionTests: XCTestCase {
         XCTAssertEqual(received, MVSseRecord(id: "a1b2-9", name: "verdict_issued", data: #"{"mail_id":"7"}"#))
     }
 
+    /// The idle heartbeat proves the connection alive and is nothing a caller can act on: it
+    /// counts as activity but never reaches `onRecord`.
+    func testTheHeartbeatCountsAsActivityAndIsNotHandedToTheCaller() async {
+        let raw = "event: ping\ndata: {}\n\nid: a1-2\nevent: mail.new\ndata: {}\n\n"
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(raw.utf8))
+        let factory = try! MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none })
+        let signal = MVStreamConnectionSignal()
+        var names: [String] = []
+        var activity = 0
+
+        let client = MVSseClient(
+            requestFactory: factory,
+            callbacks: .init(
+                onRecord: { record in
+                    names.append(record.name)
+                    if record.name == "mail.new" { Task { await signal.fire() } }
+                },
+                onActivity: { activity += 1 }, onConnected: {}, onDisconnected: {}
+            ),
+            urlSessionConfiguration: MVStubURLProtocol.makeConfiguration()
+        )
+        client.connect()
+        await signal.wait()
+        client.disconnect()
+
+        XCTAssertEqual(names, ["mail.new"])
+        XCTAssertGreaterThanOrEqual(activity, 3, "the heartbeat counted as activity too")
+    }
+
     /// `account_id` must reach the query string exactly when one was configured — a client with
     /// no account scope must not silently send an empty `account_id=` that a server could
     /// misread as "filter to the account named the empty string" rather than "no filter".

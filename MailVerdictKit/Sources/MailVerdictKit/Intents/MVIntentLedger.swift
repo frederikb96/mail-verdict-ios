@@ -54,6 +54,9 @@ public final class MVIntentLedger {
         /// that read is the server agreeing — but stays this long to be undone, and so that a read
         /// begun before it settled has landed or failed before its effect is folded in for good.
         public var doneRetention: TimeInterval = 90
+        /// How long after an intent was answered an event for one of its messages still counts as
+        /// its echo: the event and the response race each other.
+        public var echoGrace: TimeInterval = 1.5
         /// How long a failed intent keeps marking its rows and offering Retry.
         public var failedRetention: TimeInterval = 86_400
         /// Past this many messages, an intent that may have landed is sent again without reading
@@ -151,6 +154,22 @@ public final class MVIntentLedger {
     }
 
     // MARK: - Reading
+
+    /// Whether an event announcing a change to `messageId`, which arrived at `arrivedAt`, is the
+    /// echo of an intent that has since been answered: it arrived after that intent's request left
+    /// and no later than `Timing.echoGrace` after the answer. Such a change is in whatever the
+    /// answer's own re-read reads, so a screen that re-reads on settling need not read again.
+    /// Another client's change to the same message does not match unless it falls in that window.
+    public func isSettledEcho(of messageId: UUID, accountId: UUID, arrivedAt: Date) -> Bool {
+        intents.contains { intent in
+            guard intent.state == .done, intent.accountId == accountId,
+                let sentAt = intent.sentAt, let settledAt = intent.settledAt,
+                arrivedAt >= sentAt, arrivedAt <= settledAt.addingTimeInterval(timing.echoGrace)
+            else { return false }
+            return intent.touchedMessageIds.contains(messageId)
+                || intent.movedSources.contains { $0.id == messageId }
+        }
+    }
 
     public func project(message: MessageDetail, baseSequence: Int) -> MessageDetail {
         MVIntentProjection.message(message, applying: intents, baseSequence: baseSequence)
@@ -434,6 +453,7 @@ public final class MVIntentLedger {
         guard let index = intents.firstIndex(where: { $0.id == id }) else { return }
         intents[index].state = .sending
         intents[index].attempts += 1
+        intents[index].sentAt = clock.now
         let intent = intents[index]
         changed()
 

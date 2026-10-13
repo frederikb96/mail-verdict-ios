@@ -221,7 +221,21 @@ final class FakeMailListBackend: MVMailListBackend, MVIntentTransport, @unchecke
 
     func sendVerdictFeedback(messageId: UUID, accountId: UUID, isSpam: Bool) async throws {}
     func requestSync(accountId: UUID) async throws {}
-    func fetchFolders(accountId: UUID) async throws -> [FolderResponse] { [] }
+    /// What `fetchFolders(accountId:)` answers, and how often it was asked.
+    var folderList: [FolderResponse] {
+        get { locked { _folderList } }
+        set { locked { _folderList = newValue } }
+    }
+    var folderFetches: Int { locked { _folderFetches } }
+    private var _folderList: [FolderResponse] = []
+    private var _folderFetches = 0
+
+    func fetchFolders(accountId: UUID) async throws -> [FolderResponse] {
+        locked {
+            _folderFetches += 1
+            return _folderList
+        }
+    }
     func fetchFolderOrder(accountId: UUID) async throws -> FolderOrderResponse { FolderOrderResponse(folders: []) }
     func fetchAccounts() async throws -> [AccountResponse] { [] }
     func fetchSyncStatus(accountId: UUID) async throws -> SyncStatusResponse {

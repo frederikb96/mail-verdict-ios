@@ -36,6 +36,20 @@ public enum MVLiveInvalidation: Sendable, Equatable {
     case unknown(String)
 }
 
+extension MVLiveInvalidation {
+    /// Columns of a message whose change moves no folder count: flags other than read, labels, and
+    /// the server's own bookkeeping.
+    private static let messageColumnsWithoutCountEffect: Set<String> = [
+        "is_flagged", "is_answered", "keywords", "imap_uid",
+    ]
+
+    /// Whether a `mail.updated` carrying these changed columns can have moved a folder's unread or
+    /// total count. An empty list names nothing and is assumed to.
+    public static func messageUpdateMovesCounts(changed: [String]) -> Bool {
+        changed.isEmpty || !changed.allSatisfy(messageColumnsWithoutCountEffect.contains)
+    }
+}
+
 /// `outbox.updated`'s own payload — mirrored by hand against `server.py::_outbox_event_payload`,
 /// since SSE payload shapes are untyped dicts server-side.
 public struct MVOutboxEventPayload: Sendable, Equatable {
