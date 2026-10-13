@@ -2,10 +2,11 @@ import Foundation
 import Observation
 
 /// One sentence about the open mail becomes one proposed change to the rules -- any number of rules
-/// added, changed, moved or removed -- which is accepted or declined as a whole, with no history and
-/// no second prompt. Dismissing the sheet calls `cancel()`, which
-/// drops a request still running; the server stops before its next model call once the
-/// connection closes.
+/// added, changed, moved or removed -- which is accepted or declined as a whole. `promptText` survives
+/// an answer, so `send()` from a shown answer asks afresh with the edited sentence: a new,
+/// independent request that carries nothing over from the previous one. Dismissing the sheet calls
+/// `cancel()`, which drops a request still running; the server stops before its next model call
+/// once the connection closes.
 @Observable
 @MainActor
 public final class RuleAssistantStore {

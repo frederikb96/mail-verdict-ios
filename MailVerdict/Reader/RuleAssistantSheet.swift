@@ -47,36 +47,35 @@ struct RuleAssistantSheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .result(let response, let change):
             RuleAssistantProposal(
-                response: response, change: change, isAccepting: store.isAccepting,
-                onAccept: { store.accept() },
+                store: store, response: response, change: change,
                 onDecline: {
                     store.cancel()
                     dismiss()
                 })
         case .empty(let message):
-            RuleAssistantNotice(message: message, isError: false) { dismiss() }
+            RuleAssistantNotice(store: store, message: message, isError: false) { dismiss() }
         case .failed(let message):
-            RuleAssistantNotice(message: message, isError: true) { dismiss() }
+            RuleAssistantNotice(store: store, message: message, isError: true) { dismiss() }
         case .accepted:
             EmptyView()
         }
     }
 }
 
+private func promptBinding(_ store: RuleAssistantStore) -> Binding<String> {
+    Binding(
+        get: { store.promptText },
+        set: { store.promptText = String($0.prefix(RuleAssistantRequest.maxPromptLength)) })
+}
+
 private struct RuleAssistantPromptForm: View {
     let store: RuleAssistantStore
     @FocusState private var isFocused: Bool
 
-    private var promptBinding: Binding<String> {
-        Binding(
-            get: { store.promptText },
-            set: { store.promptText = String($0.prefix(RuleAssistantRequest.maxPromptLength)) })
-    }
-
     var body: some View {
         Form {
             Section {
-                TextField("These should go to Newsletter too", text: promptBinding, axis: .vertical)
+                TextField("These should go to Newsletter too", text: promptBinding(store), axis: .vertical)
                     .lineLimit(3...8)
                     .focused($isFocused)
                     .accessibilityLabel("What should the rule do?")
@@ -94,15 +93,33 @@ private struct RuleAssistantPromptForm: View {
     }
 }
 
+/// The sentence the shown answer came from, editable, with Run Again asking afresh with whatever it
+/// says now.
+private struct RuleAssistantRerunSection: View {
+    let store: RuleAssistantStore
+
+    var body: some View {
+        Section {
+            TextField("These should go to Newsletter too", text: promptBinding(store), axis: .vertical)
+                .lineLimit(2...6)
+                .accessibilityLabel("What should the rule do?")
+            Button("Run Again") { store.send() }
+                .disabled(!store.canSend)
+        }
+    }
+}
+
 private struct RuleAssistantProposal: View {
+    let store: RuleAssistantStore
     let response: RuleAssistantResponse
     let change: RuleAssistantChange
-    let isAccepting: Bool
-    let onAccept: () -> Void
     let onDecline: () -> Void
+
+    private var isAccepting: Bool { store.isAccepting }
 
     var body: some View {
         List {
+            RuleAssistantRerunSection(store: store)
             Section { Text(response.message) }
             Section { Text(change.title).font(.headline) }
             ForEach(change.rules, id: \.stageId) { rule in
@@ -144,7 +161,7 @@ private struct RuleAssistantProposal: View {
             Button("Decline", action: onDecline)
                 .buttonStyle(.bordered)
                 .disabled(isAccepting)
-            Button(action: onAccept) {
+            Button(action: { store.accept() }) {
                 if isAccepting {
                     ProgressView()
                 } else {
@@ -252,17 +269,21 @@ private struct RuleAssistantPreviewSection: View {
 }
 
 private struct RuleAssistantNotice: View {
+    let store: RuleAssistantStore
     let message: String
     let isError: Bool
     let onClose: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(message)
-                .foregroundStyle(isError ? Color.red : Color.primary)
-            Button("Close", action: onClose).buttonStyle(.bordered)
+        Form {
+            RuleAssistantRerunSection(store: store)
+            Section {
+                Text(message)
+                    .foregroundStyle(isError ? Color.red : Color.primary)
+            }
+            Section {
+                Button("Close", action: onClose)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding()
     }
 }
