@@ -76,7 +76,9 @@ func (tk *TicketKeys) Seal(deviceToken []byte, issuedAt time.Time) (string, erro
 // ttl. Every configured key is tried by its id byte — a rotation that adds a new signing key
 // while this is still running continues to accept tickets sealed under an older one.
 func (tk *TicketKeys) Open(ticket string, ttl time.Duration, now time.Time) ([]byte, time.Time, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(ticket)
+	// Strict: lenient decoding ignores the last character's unused bits, so one ticket would
+	// open under several strings, each with its own TicketID and rate-limit bucket.
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(ticket)
 	if err != nil {
 		return nil, time.Time{}, ErrInvalidTicket
 	}
