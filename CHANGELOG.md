@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The push relay rejects a ticket whose last base64 character has unused bits set. Before, one
+  ticket opened under several strings, each with its own ticket id and rate-limit bucket.
+
 ## [0.11.0] - 2026-10-13
 
 ### Changed
