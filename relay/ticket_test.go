@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"strings"
@@ -68,6 +69,29 @@ func TestTicketOpenRejectsTamperedCiphertext(t *testing.T) {
 
 	if _, _, err := tk.Open(string(tampered), 90*24*time.Hour, time.Now()); !errors.Is(err, ErrInvalidTicket) {
 		t.Errorf("Open(tampered) error = %v, want ErrInvalidTicket", err)
+	}
+}
+
+func TestTicketOpenRejectsNonCanonicalEncoding(t *testing.T) {
+	tk := testKeys(t, "1:"+randomKeyHex(t))
+	ticket, err := tk.Seal([]byte{0x01, 0x02}, time.Now())
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if base64.RawURLEncoding.DecodedLen(len(ticket))%3 == 0 {
+		t.Fatalf("sealed length leaves no unused bits in the last character; pick another token length")
+	}
+
+	// The lowest bit of the last character carries no data here, so this string decodes to
+	// the same bytes under lenient decoding. It must still be rejected: TicketID hashes the
+	// string, and one ticket must not have several ids.
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	variant := []byte(ticket)
+	last := len(variant) - 1
+	variant[last] = alphabet[strings.IndexByte(alphabet, variant[last])^1]
+
+	if _, _, err := tk.Open(string(variant), 90*24*time.Hour, time.Now()); !errors.Is(err, ErrInvalidTicket) {
+		t.Errorf("Open(non-canonical) error = %v, want ErrInvalidTicket", err)
 	}
 }
 
