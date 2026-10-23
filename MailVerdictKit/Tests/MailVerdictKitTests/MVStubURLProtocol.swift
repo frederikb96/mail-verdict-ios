@@ -30,6 +30,7 @@ final class MVStubURLProtocol: URLProtocol {
     nonisolated(unsafe) private static var _stub: Stub?
     nonisolated(unsafe) private static var _stubsByPath: [String: Stub] = [:]
     nonisolated(unsafe) private static var _queue: [Stub] = []
+    nonisolated(unsafe) private static var _finishedCount = 0
     nonisolated(unsafe) private static var _capturedRequest: URLRequest?
     nonisolated(unsafe) private static var _capturedRequests: [URLRequest] = []
     nonisolated(unsafe) private static var _requestTimes: [Date] = []
@@ -37,6 +38,15 @@ final class MVStubURLProtocol: URLProtocol {
     static var stub: Stub? {
         get { lock.lock(); defer { lock.unlock() }; return _stub }
         set { lock.lock(); defer { lock.unlock() }; _stub = newValue }
+    }
+
+    /// How many requests have been answered in full. A test waits for this before starting work
+    /// that cancels earlier requests: cancelling one still being answered aborts or hangs
+    /// swift-corelibs-foundation.
+    static var finishedCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _finishedCount
     }
 
     /// Answers taken one per request, in order, before `stubsByPath` and `stub` — for a test of
@@ -80,6 +90,7 @@ final class MVStubURLProtocol: URLProtocol {
         lock.lock()
         _stubsByPath = [:]
         _queue = []
+        _finishedCount = 0
         _capturedRequests = []
         _requestTimes = []
         lock.unlock()
@@ -151,6 +162,9 @@ final class MVStubURLProtocol: URLProtocol {
             client?.urlProtocol(self, didLoad: stub.body)
         }
         client?.urlProtocolDidFinishLoading(self)
+        Self.lock.lock()
+        Self._finishedCount += 1
+        Self.lock.unlock()
     }
 
     override func stopLoading() {

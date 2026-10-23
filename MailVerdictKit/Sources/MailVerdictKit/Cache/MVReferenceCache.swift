@@ -12,13 +12,19 @@ public final class MVReferenceCache: LiveEventSubscriber {
     public static let reuseAge: TimeInterval = 300
 
     private let backend: any MVMailListBackend
+    /// Where each account's folder roles are kept for reading offline, when there is one.
+    private let offlineCache: MVOfflineCache?
     private let accountsLoader: MVKeyedLoader<Int, [AccountResponse]>
     private let viewsLoader: MVKeyedLoader<Int, [UnifiedFolderResponse]>
     private let foldersLoader: MVKeyedLoader<UUID, [FolderResponse]>
     private let photoIndexLoader: MVKeyedLoader<UUID, ContactPhotoIndexResponse>
 
-    public init(backend: any MVMailListBackend, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(
+        backend: any MVMailListBackend, offlineCache: MVOfflineCache? = nil,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.backend = backend
+        self.offlineCache = offlineCache
         accountsLoader = MVKeyedLoader(now: now)
         viewsLoader = MVKeyedLoader(now: now)
         foldersLoader = MVKeyedLoader(now: now)
@@ -43,7 +49,7 @@ public final class MVReferenceCache: LiveEventSubscriber {
     }
 
     public func fetchFolders(accountId: UUID) async -> [FolderResponse]? {
-        await foldersLoader.fetch(accountId) { [backend] in try await backend.fetchFolders(accountId: accountId) }
+        await foldersLoader.fetch(accountId, folderRequest(accountId))
     }
 
     public func fetchPhotoIndex(accountId: UUID) async -> ContactPhotoIndexResponse? {
@@ -55,8 +61,15 @@ public final class MVReferenceCache: LiveEventSubscriber {
     // MARK: Reused when recent
 
     public func folders(accountId: UUID) async -> [FolderResponse]? {
-        await foldersLoader.value(accountId, maxAge: Self.reuseAge) { [backend] in
-            try await backend.fetchFolders(accountId: accountId)
+        await foldersLoader.value(accountId, maxAge: Self.reuseAge, folderRequest(accountId))
+    }
+
+    /// Every folder list read from the server also refreshes the roles kept for offline use.
+    private func folderRequest(_ accountId: UUID) -> @Sendable () async throws -> [FolderResponse] {
+        { [backend, offlineCache] in
+            let folders = try await backend.fetchFolders(accountId: accountId)
+            if let offlineCache { Task { await offlineCache.saveFolderRoles(from: folders) } }
+            return folders
         }
     }
 

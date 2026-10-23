@@ -295,7 +295,9 @@ final class MVSseClientLifecycleTests: XCTestCase {
         var owner: NSObject? = NSObject()
         client.setOwner(owner!)
         client.connect()
-        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        // The first retry's jittered backoff can reach the whole of a fixed wait, and the stub
+        // counts a start a moment after the client began it — so wait for the retry itself.
+        await waitUntil({ MVHoldOpenStubProtocol.starts > 1 }, timeout: 6)
         XCTAssertGreaterThan(
             MVHoldOpenStubProtocol.starts, 1, "the client was not retrying yet, so the test proves nothing")
 

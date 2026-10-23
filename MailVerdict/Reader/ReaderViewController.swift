@@ -84,7 +84,7 @@ final class ReaderViewController: UIViewController, UIScrollViewDelegate, Messag
         view.addSubview(pager)
 
         pageViews = (0..<3).map { _ in
-            let page = MessagePageView(configuration: ReaderWebKit.makeConfiguration(api: session.api))
+            let page = MessagePageView(configuration: ReaderWebKit.makeConfiguration(resources: session.resources))
             page.delegate = self
             pager.addSubview(page)
             return page

@@ -83,6 +83,9 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         (rows: [MessageSummary], sequence: Int, hasOlder: Bool, hasNewer: Bool, identity: MVListIdentity)?
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var wasConnected: Bool?
+    /// Folder roles kept for reading offline, read when the list fell back to its saved page and
+    /// the folders themselves could not be read.
+    @ObservationIgnored private var savedFolderRoles: [UUID: String] = [:]
     /// Why the last refresh read nothing, until the next one starts.
     @ObservationIgnored private var lastRefreshFailure: Error?
 
@@ -343,9 +346,10 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         generation expected: Int
     ) async -> Bool {
         let key = MVOfflineListKey(scope: scope, threaded: threaded, unreadOnly: unreadOnly)
-        guard let offlineCache, let page = await offlineCache.list(for: key), generation == expected else {
-            return false
-        }
+        guard let offlineCache, let page = await offlineCache.list(for: key) else { return false }
+        let roles = await offlineCache.folderRoles()
+        guard generation == expected else { return false }
+        savedFolderRoles = roles
         noteRead(page.rows, asOf: nil)
         // Read at an unknown sequence: every intent not yet retired applies over it.
         setBase(page.rows, readAt: 0)
@@ -1023,6 +1027,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     public func specialUse(of row: MessageSummary) -> String? {
         context.folders[row.folderId]?.specialUse
             ?? context.unifiedView?.folders.first { $0.folderId == row.folderId }?.specialUse
+            ?? savedFolderRoles[row.folderId]
     }
 
     public func isInTrash(_ row: MessageSummary) -> Bool { specialUse(of: row) == "trash" }

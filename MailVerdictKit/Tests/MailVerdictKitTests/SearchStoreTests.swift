@@ -123,6 +123,8 @@ final class SearchStoreTests: XCTestCase {
         let store = makeStore(defaults: makeDefaults())
         await store.updateContext(
             SearchContext(mode: .semantic, query: "invoice", timeWindow: .preset(.last7Days)))
+        // The full-text query is not awaited by `updateContext`.
+        await waitUntil { MVStubURLProtocol.finishedCount == 2 }
 
         for path in ["/api/embeddings/search", "/api/search"] {
             let request = try XCTUnwrap(MVStubURLProtocol.capturedRequests.first { $0.url?.path == path })
@@ -309,6 +311,7 @@ final class SearchStoreTests: XCTestCase {
         ]
         let store = makeStore(defaults: makeDefaults())
         await store.updateContext(SearchContext(mode: .semantic, query: "invoice"))
+        await waitUntil { MVStubURLProtocol.finishedCount == 2 }
         XCTAssertEqual(MVStubURLProtocol.capturedPaths.sorted(), ["/api/embeddings/search", "/api/search"])
 
         let before = MVStubURLProtocol.capturedPaths.count
@@ -326,6 +329,7 @@ final class SearchStoreTests: XCTestCase {
         ]
         let store = makeStore(defaults: makeDefaults())
         await store.updateContext(SearchContext(mode: .semantic, query: "invoice"))
+        await waitUntil { MVStubURLProtocol.finishedCount == 2 }
 
         MVStubURLProtocol.stubsByPath = [
             "/api/search": fullTextStub([lexical]), "/api/embeddings/search": unavailableStub(),

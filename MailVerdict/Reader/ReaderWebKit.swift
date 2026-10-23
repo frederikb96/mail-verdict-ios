@@ -18,9 +18,9 @@ enum ReaderWebKit {
 
     /// Compiles the rule lists and starts a web content process ahead of the first message
     /// opened, which otherwise pays for both before its first paint. Idempotent.
-    static func prewarm(api: MVApiClient) {
+    static func prewarm(resources: MVReaderResourceLoader) {
         guard warmWebView == nil else { return }
-        let configuration = makeConfiguration(api: api)
+        let configuration = makeConfiguration(resources: resources)
         let webView = WKWebView(frame: .zero, configuration: configuration)
         warmWebView = webView
         applyContentRules(to: configuration.userContentController, imagesAllowed: false) {
@@ -28,12 +28,12 @@ enum ReaderWebKit {
         }
     }
 
-    static func makeConfiguration(api: MVApiClient) -> WKWebViewConfiguration {
+    static func makeConfiguration(resources: MVReaderResourceLoader) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
         // Message markup never runs script; the reader's own script runs in the client world.
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
-        let handler = ReaderSchemeHandler(api: api)
+        let handler = ReaderSchemeHandler(resources: resources)
         configuration.setURLSchemeHandler(handler, forURLScheme: MessageBodyRenderer.attachmentScheme)
         configuration.setURLSchemeHandler(handler, forURLScheme: ReaderPhotoURL.scheme)
         let controller = WKUserContentController()
@@ -108,15 +108,15 @@ enum ReaderWebKit {
     }
 }
 
-/// Serves `mv-attachment://` and `mv-photo://` through the authenticated API client — a web view
+/// Serves `mv-attachment://` and `mv-photo://` through `MVReaderResourceLoader` — a web view
 /// cannot attach the app's credential to a subresource request itself.
 @MainActor
 final class ReaderSchemeHandler: NSObject, WKURLSchemeHandler {
-    private let api: MVApiClient
+    private let resources: MVReaderResourceLoader
     private var running: Set<ObjectIdentifier> = []
 
-    init(api: MVApiClient) {
-        self.api = api
+    init(resources: MVReaderResourceLoader) {
+        self.resources = resources
     }
 
     func webView(_ webView: WKWebView, start urlSchemeTask: any WKURLSchemeTask) {
@@ -127,14 +127,16 @@ final class ReaderSchemeHandler: NSObject, WKURLSchemeHandler {
         let key = ObjectIdentifier(urlSchemeTask)
         running.insert(key)
         Task {
-            let result = await load(url)
+            let result = await resources.load(url)
             // WebKit raises if a stopped task is answered.
             guard running.remove(key) != nil else { return }
             switch result {
-            case .success(let (data, mimeType)):
+            case .success(let resource):
                 urlSchemeTask.didReceive(
-                    URLResponse(url: url, mimeType: mimeType, expectedContentLength: data.count, textEncodingName: nil))
-                urlSchemeTask.didReceive(data)
+                    URLResponse(
+                        url: url, mimeType: resource.mimeType, expectedContentLength: resource.data.count,
+                        textEncodingName: nil))
+                urlSchemeTask.didReceive(resource.data)
                 urlSchemeTask.didFinish()
             case .failure(let error):
                 urlSchemeTask.didFailWithError(error)
@@ -146,29 +148,6 @@ final class ReaderSchemeHandler: NSObject, WKURLSchemeHandler {
         running.remove(ObjectIdentifier(urlSchemeTask))
     }
 
-    private func load(_ url: URL) async -> Result<(Data, String), Error> {
-        do {
-            if url.scheme?.lowercased() == MessageBodyRenderer.attachmentScheme,
-                let messageId = url.host.flatMap(UUID.init(uuidString:)),
-                let attachmentId = UUID(uuidString: url.lastPathComponent)
-            {
-                let result = try await api.getAttachment(messageId: messageId, attachmentId: attachmentId)
-                return .success((result.data, Self.mimeType(result.contentType)))
-            }
-            if let contactId = ReaderPhotoURL.contactId(from: url) {
-                let result = try await api.getContactPhoto(contactId: contactId)
-                return .success((result.data, Self.mimeType(result.contentType)))
-            }
-            return .failure(URLError(.unsupportedURL))
-        } catch {
-            return .failure(error)
-        }
-    }
-
-    private static func mimeType(_ contentType: String?) -> String {
-        contentType?.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces) }
-            ?? "application/octet-stream"
-    }
 }
 
 /// Reader diagnostics in the debug bridge's log ring; a no-op in release builds.

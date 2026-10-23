@@ -32,6 +32,12 @@ public struct MVOfflineListPage: Codable, Sendable, Equatable {
     public let savedAt: Date
 }
 
+/// An image a saved conversation shows — an inline part or a sender photo — as last served.
+public struct MVOfflineResource: Codable, Sendable, Equatable {
+    public let data: Data
+    public let mimeType: String
+}
+
 /// A conversation as the reader last read it.
 public struct MVOfflineConversation: Codable, Sendable, Equatable {
     public let thread: ThreadResponse
@@ -39,8 +45,9 @@ public struct MVOfflineConversation: Codable, Sendable, Equatable {
 }
 
 /// Mail kept on the device so it can still be read when the server cannot be reached: the
-/// conversations the reader opened most recently, and the newest page of the lists visited most
-/// recently. Nothing reads it while the server answers; it is the fallback a failed read turns to.
+/// conversations the reader opened most recently with the images they showed, the newest page of
+/// the lists visited most recently, and each folder's role (Inbox, Trash, …) so actions read right.
+/// Nothing reads it while the server answers; it is the fallback a failed read turns to.
 ///
 /// One JSON file per conversation and per list, under a directory of the caller's choosing (one
 /// per server). Each kind is bounded by `Budget` and evicted least recently used first, by the
@@ -54,6 +61,8 @@ public actor MVOfflineCache {
         public var lists = 30
         /// Rows kept per list: two pages, so a list opened offline still scrolls a little.
         public var rowsPerList = 100
+        public var resources = 300
+        public var resourceBytes = 50 * 1024 * 1024
 
         public init() {}
     }
@@ -67,6 +76,8 @@ public actor MVOfflineCache {
 
     private let conversationsURL: URL
     private let listsURL: URL
+    private let resourcesURL: URL
+    private let folderRolesURL: URL
     private let root: URL
     private let budget: Budget
     private let now: @Sendable () -> Date
@@ -76,6 +87,8 @@ public actor MVOfflineCache {
         root = directory
         conversationsURL = directory.appendingPathComponent("conversations", isDirectory: true)
         listsURL = directory.appendingPathComponent("lists", isDirectory: true)
+        resourcesURL = directory.appendingPathComponent("resources", isDirectory: true)
+        folderRolesURL = directory.appendingPathComponent("folder-roles.json")
         self.budget = budget
         self.now = now
     }
@@ -111,6 +124,40 @@ public actor MVOfflineCache {
 
     public func list(for key: MVOfflineListKey) -> MVOfflineListPage? {
         read(MVOfflineListPage.self, from: listsURL.appendingPathComponent(key.fileName))
+    }
+
+    // MARK: Images
+
+    /// `key` names the resource for the caller (`MVReaderResourceLoader`); file-name safe.
+    public func saveResource(_ data: Data, mimeType: String, key: String) {
+        write(MVOfflineResource(data: data, mimeType: mimeType), to: resourcesURL.appendingPathComponent("\(key).json"))
+        prune(resourcesURL, maxCount: budget.resources, maxBytes: budget.resourceBytes)
+    }
+
+    public func resource(key: String) -> MVOfflineResource? {
+        read(MVOfflineResource.self, from: resourcesURL.appendingPathComponent("\(key).json"))
+    }
+
+    // MARK: Folder roles
+
+    /// Records the role of every folder in one account's full list — and that the others in it
+    /// have none, so a folder that lost its role does not keep it here.
+    public func saveFolderRoles(from folders: [FolderResponse]) {
+        var roles = folderRoles()
+        for folder in folders { roles[folder.id] = folder.specialUse }
+        write(
+            Dictionary(uniqueKeysWithValues: roles.map { ($0.key.uuidString.lowercased(), $0.value) }),
+            to: folderRolesURL)
+    }
+
+    /// Each known folder's `special_use`, for actions on saved mail when the folders cannot be read.
+    public func folderRoles() -> [UUID: String] {
+        let stored = read([String: String].self, from: folderRolesURL) ?? [:]
+        var roles: [UUID: String] = [:]
+        for (key, role) in stored {
+            if let id = UUID(uuidString: key) { roles[id] = role }
+        }
+        return roles
     }
 
     // MARK: Discarding

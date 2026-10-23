@@ -115,7 +115,10 @@ final class RuleAssistantStoreTests: XCTestCase {
 
     func testCancellingWhileRunningDiscardsTheLateAnswer() async throws {
         let store = makeStore()
-        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: Data(responseJSON().utf8))
+        // The answer arrives after the cancel, as the name says. Answered at once, it races the
+        // cancellation inside swift-corelibs-foundation, which aborts the process on Linux.
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:], body: Data(responseJSON().utf8), delay: 0.3)
         store.promptText = "x"
         store.send()
         let running = store.inFlight

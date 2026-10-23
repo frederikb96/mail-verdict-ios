@@ -21,8 +21,9 @@ everything else in `UserDefaults`.
 Mail you have opened and the lists you have visited stay readable without the server: on a plane,
 on a train, or while the server or the VPN in front of it is down.
 
-- **What is kept:** the conversations opened most recently in the reader and the newest rows of
-  the lists visited most recently, per server, in the app's Caches directory, bounded in count and
+- **What is kept:** the conversations opened most recently in the reader with their inline images
+  and sender photos, the newest rows of the lists visited most recently, and each folder's role
+  (Inbox, Trash, …) so actions on saved mail are offered as online, per server, in the app's Caches directory, bounded in count and
   size by `MVOfflineCache.Budget`. iOS may reclaim it under storage pressure; signing out deletes
   it.
 - **When it is used:** only when a read fails because the server cannot be reached (no network, a

@@ -59,6 +59,22 @@ final class MailListOfflineTests: XCTestCase {
         XCTAssertNil(store.offlineNotice(reachability: .online))
     }
 
+    /// After a cold launch offline the folders cannot be read; the roles kept on disk still make a
+    /// row in Trash offer Delete Forever rather than a second move to Trash.
+    func testASavedPageKnowsItsFolderRoles() async {
+        let (cache, _) = makeOfflineCache()
+        await cache.saveList(testRows(1...2), hasOlder: false, for: key)
+        await cache.saveFolderRoles(from: [roleFolder(testFolder, "trash")])
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in throw URLError(.notConnectedToInternet) }
+        let store = makeStore(backend, cache: cache)
+
+        await store.start()
+
+        XCTAssertNotNil(store.savedCopyAt, "the saved page was not shown, so this proves nothing")
+        XCTAssertEqual(store.row(id: testUUID(1)).map(store.isInTrash), true)
+    }
+
     /// A server that answered — with an error — is not offline: its answer is shown, never an old
     /// copy that could hold mail it has since refused or removed.
     func testAServerErrorIsNotAnsweredWithTheSavedPage() async {

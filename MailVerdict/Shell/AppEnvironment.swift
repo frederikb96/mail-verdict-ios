@@ -247,7 +247,8 @@ final class AppEnvironment {
         liveEventHub.connect()
 
         let membership = MailboxesUnifiedMembership()
-        let referenceCache = MVReferenceCache(backend: client)
+        let offlineCache = Self.offlineCache(serverURL: backendURL)
+        let referenceCache = MVReferenceCache(backend: client, offlineCache: offlineCache)
         let threadCache = MVThreadCache(fetch: { try await client.getThread(messageId: $0) })
         // Held weakly by the hub; the connection owns both for as long as it exists.
         liveEventHub.subscribe(referenceCache)
@@ -270,7 +271,7 @@ final class AppEnvironment {
             placeResolver: MVMessagePlaceResolver(apiClient: client, membershipLookup: membership),
             referenceCache: referenceCache, threadCache: threadCache, intentLedger: intentLedger,
             networkStatus: MVNetworkStatus(connectivity: connectivity),
-            offlineCache: Self.offlineCache(serverURL: backendURL))
+            offlineCache: offlineCache)
         lastAuthFailure = nil
         router.gate = .ready
         return true
