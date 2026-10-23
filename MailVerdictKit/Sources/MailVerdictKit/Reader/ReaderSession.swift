@@ -82,13 +82,18 @@ public final class ReaderSession {
     @ObservationIgnored private let threadCache: MVThreadCache?
     /// Where every conversation this reader reads is kept for reading offline, when there is one.
     @ObservationIgnored private let offlineCache: MVOfflineCache?
+    /// Whether the live stream is up, as the hub last said; `nil` before it has said anything.
+    @ObservationIgnored private var isConnected: Bool?
+    /// Reads saved pages again while the live stream is up, which no reconnect would.
+    @ObservationIgnored private let savedCopyRetry: MVSavedCopyRetry
 
     public init(
         context: ReaderContext, api: MVApiClient, ledger: MVIntentLedger, placeResolver: MVMessagePlaceResolver,
         theme: MVCanvas, registry: ReaderSourceRegistry = .shared,
         tracker: MVExplicitUnreadTracker = .shared, canvasStore: MVCanvasPreferenceStore = MVCanvasPreferenceStore(),
         cacheDirectory: URL = FileManager.default.temporaryDirectory, threadCache: MVThreadCache? = nil,
-        referenceCache: MVReferenceCache? = nil, offlineCache: MVOfflineCache? = nil
+        referenceCache: MVReferenceCache? = nil, offlineCache: MVOfflineCache? = nil,
+        savedCopyRetryDelays: [TimeInterval] = MVSavedCopyRetry.defaultDelays
     ) {
         self.context = context
         self.api = api
@@ -101,6 +106,7 @@ public final class ReaderSession {
         self.canvasChoices = canvasStore.load()
         self.threadCache = threadCache
         self.offlineCache = offlineCache
+        self.savedCopyRetry = MVSavedCopyRetry(delays: savedCopyRetryDelays)
         self.resources = MVReaderResourceLoader(api: api, offlineCache: offlineCache)
         self.lookups = ReaderLookups(api: api, cache: referenceCache)
         self.cacheDirectory = cacheDirectory.appendingPathComponent("attachments", isDirectory: true)
@@ -326,6 +332,7 @@ public final class ReaderSession {
         savedCopies[rowId] = saved.savedAt
         awaitingRevalidation.insert(rowId)
         show(saved.thread, for: rowId, readAt: 0)
+        retrySavedCopiesWhileConnected()
         return true
     }
 
@@ -339,6 +346,21 @@ public final class ReaderSession {
     private func revalidateSavedCopies() {
         for rowId in savedCopies.keys { refresh(rowId) }
         for (rowId, state) in pages where state == .failed(Self.notSavedOfflineMessage) { retry(rowId) }
+    }
+
+    /// A saved page shown while the live stream is up has no reconnect coming to replace it; every
+    /// one is read again on `MVSavedCopyRetry`'s schedule until the server answers for it.
+    private func retrySavedCopiesWhileConnected() {
+        savedCopyRetry.start(
+            while: { [weak self] in self.map { !$0.savedCopies.isEmpty && $0.isConnected == true } ?? false },
+            attempt: { [weak self] in
+                guard let self else { return }
+                for rowId in self.savedCopies.keys {
+                    await withCheckedContinuation { continuation in
+                        self.refresh(rowId) { continuation.resume() }
+                    }
+                }
+            })
     }
 
     /// The server answered for a page drawn from the offline cache — whichever refresh asked —
@@ -833,7 +855,19 @@ public final class ReaderSession {
             guard let self else { return }
             defer { completion?() }
             let readAt = self.ledger.sequence
-            guard let thread = try? await self.api.getThread(messageId: rowId) else { return }
+            let thread: ThreadResponse
+            do {
+                thread = try await self.api.getThread(messageId: rowId)
+            } catch {
+                // A live page keeps what it shows until the next change says otherwise; a saved
+                // copy of a message the server says no longer exists leaves the screen.
+                if error.mvIsNotFound, self.savedCopies[rowId] != nil {
+                    self.savedCopies[rowId] = nil
+                    self.awaitingRevalidation.remove(rowId)
+                    self.loadFailed(rowId, error: error)
+                }
+                return
+            }
             self.threadCache?.store(thread, for: rowId)
             self.saveOfflineCopy(thread, for: rowId)
             guard let current = self.storedConversation(for: rowId),
@@ -930,6 +964,18 @@ extension ReaderSession: LiveEventSubscriber {
     }
 
     public func setConnected(_ connected: Bool) {
-        if connected { revalidateSavedCopies() }
+        isConnected = connected
+        guard connected else {
+            savedCopyRetry.stop()
+            return
+        }
+        revalidateSavedCopies()
+        retrySavedCopiesWhileConnected()
+    }
+
+    /// A loss too short to drop the live stream reaches the reader only as the path returning; a
+    /// read during it may have fallen back to a saved copy.
+    public func networkPathRestored() {
+        revalidateSavedCopies()
     }
 }

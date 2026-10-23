@@ -24,8 +24,6 @@ public enum MVReachability: Sendable, Equatable {
         case .disconnected: self = .offline
         }
     }
-
-    public var isOnline: Bool { self == .online }
 }
 
 /// The device's network path as something a view can observe: `MVConnectivity` reports changes

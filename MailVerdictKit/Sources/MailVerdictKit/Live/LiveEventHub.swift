@@ -26,10 +26,15 @@ public protocol LiveEventSubscriber: AnyObject {
     /// Whether the live connection is currently up. A subscriber that does not act on connection
     /// state can ignore this — the default below is a no-op.
     func setConnected(_ connected: Bool)
+
+    /// The device's network path came back. A subscriber showing something saved for offline use
+    /// asks the server again; the default is a no-op.
+    func networkPathRestored()
 }
 
 extension LiveEventSubscriber {
     public func setConnected(_ connected: Bool) {}
+    public func networkPathRestored() {}
     public func apply(_ events: [MVLiveEvent]) { apply(events.map(\.invalidation)) }
 }
 
@@ -168,8 +173,14 @@ public final class LiveEventHub {
     }
 
     /// The device's network path came back: a stream waiting to reconnect tries now rather than
-    /// after its backoff, so screens leave "Offline" as soon as the server can answer.
+    /// after its backoff, so screens leave "Offline" as soon as the server can answer, and every
+    /// subscriber hears of it — a loss too short to drop the stream never reaches them as a
+    /// reconnect, yet a read during it may have fallen back to a saved copy.
     public func networkPathRestored() {
+        pruneDeadSubscribers()
+        for box in subscribers.values {
+            box.subscriber?.networkPathRestored()
+        }
         guard connectionState == .reconnecting else { return }
         sseClient.retryNow()
     }

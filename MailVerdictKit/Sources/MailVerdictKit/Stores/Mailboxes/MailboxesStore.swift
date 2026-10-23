@@ -85,7 +85,8 @@ public final class MailboxesStore {
     private let apiClient: MVApiClient
     private let ledger: MVIntentLedger
     private let uiState: MailboxesUIState
-    private let diskCache: MailboxesDiskCache
+    /// The overview last shown, painted before the network answers; `nil` keeps none.
+    private let diskCache: MailboxesDiskCache?
     /// The same `UserDefaults`-backed record `MVMessagePlaceResolver` reads `lastViewWasUnified`
     /// from — sharing it rather than each holding its own copy is what makes `recordViewed(_:)`
     /// actually feed the resolver's own next lookup.
@@ -102,7 +103,7 @@ public final class MailboxesStore {
 
     public init(
         apiClient: MVApiClient, ledger: MVIntentLedger, uiState: MailboxesUIState = MailboxesUIState(),
-        diskCache: MailboxesDiskCache = MailboxesDiskCache(), recentViews: MVRecentViewRecord = MVRecentViewRecord(),
+        diskCache: MailboxesDiskCache? = nil, recentViews: MVRecentViewRecord = MVRecentViewRecord(),
         membership: MailboxesUnifiedMembership = MailboxesUnifiedMembership()
     ) {
         self.apiClient = apiClient
@@ -511,7 +512,7 @@ public final class MailboxesStore {
     // MARK: - Disk cache
 
     private func applyCachedSnapshotIfAvailable(ignoringAge: Bool = false) {
-        guard let snapshot = diskCache.load(ignoringAge: ignoringAge) else { return }
+        guard let snapshot = diskCache?.load(ignoringAge: ignoringAge) else { return }
         unifiedRows = snapshot.unified.map {
             MailboxesUnifiedRow(
                 id: $0.id, name: $0.name, emoji: $0.emoji, unreadCount: $0.unreadCount,
@@ -534,6 +535,7 @@ public final class MailboxesStore {
     }
 
     private func saveSnapshotToDiskCache() {
+        guard let diskCache else { return }
         let snapshot = MVMailboxesCacheSnapshot(
             unified: unifiedRows.map {
                 MVMailboxesCachedUnified(

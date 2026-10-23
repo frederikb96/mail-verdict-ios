@@ -180,6 +180,26 @@ final class LiveEventHubBufferingTests: XCTestCase {
         return LiveEventHub(requestFactory: factory, urlSessionConfiguration: MVStubURLProtocol.makeConfiguration())
     }
 
+    /// The path returning reaches every subscriber, whatever the stream is doing: a loss too short
+    /// to drop the stream never arrives as a reconnect, and a screen that fell back to a saved
+    /// copy during it would otherwise keep showing it.
+    func testTheNetworkReturningReachesEverySubscriber() async throws {
+        final class PathSubscriber: LiveEventSubscriber {
+            var restored = 0
+            func apply(_ invalidations: [MVLiveInvalidation]) {}
+            func networkPathRestored() { restored += 1 }
+        }
+        let first = PathSubscriber()
+        let second = PathSubscriber()
+        let hub = try makeHub()
+        hub.subscribe(first)
+        hub.subscribe(second)
+
+        hub.networkPathRestored()
+
+        XCTAssertEqual([first.restored, second.restored], [1, 1])
+    }
+
     /// Several `mail.new` records arriving faster than the 500 ms flush interval reach the
     /// subscriber as one batch, not one delivery per record.
     func testBurstsOfMailEventsAreCoalescedIntoOneBatch() async throws {

@@ -550,3 +550,15 @@ network"), Show in Folder and an attachment say the connection is missing; switc
 off: the capsule leaves, the list refreshes in place without jumping, the opened message is marked
 read, the queued archive goes out. Also with Wi-Fi on but the server unreachable (VPN off): the
 capsule reads "Server unreachable".
+
+### Saved copies give way to the server's answer — web anchor: n/a (native offline cache)
+Needs a device because: the replacement, the retry schedule and the path-restored trigger are
+unit-tested in the package, but a real network loss, `NWPathMonitor` timing and the list keeping
+its place while its rows are replaced only show on a device. Confirm: open a busy folder, go
+offline for long enough that many messages arrive, relaunch offline, then turn the network back
+on: the saved rows are replaced by the current ones, the capsule leaves, and no old row stays
+below the new ones. With the VPN off long enough for a message to time out, then on again while
+the app stays open, the saved copy is replaced within about a minute without touching anything.
+Delete a message on the web while it shows offline from a saved copy on the phone, then reconnect:
+the reader says it no longer exists. After signing out and into another server offline, Mailboxes
+shows none of the first server's accounts.

@@ -86,23 +86,23 @@ public struct MVMailboxesCacheSnapshot: Codable, Sendable, Equatable {
 /// localStorage persister, adapted"): the same 24-hour max age, and list windows (the actual mail)
 /// deliberately excluded, since only the overview's own shape needs to paint before the network
 /// answers.
+///
+/// It lives in one server's offline cache directory (`MVOfflineCache.mailboxesSnapshot`), so
+/// another server never reads it and signing out removes it with the rest of that server's mail.
 public struct MailboxesDiskCache: Sendable {
     private static let maxAge: TimeInterval = 24 * 3600
+    private static let fileName = "mailboxes-cache.json"
     private let fileURL: URL
 
-    /// `directory` is injectable so a test never touches the real Caches directory. Caches rather
-    /// than the temporary directory, which the system may empty whenever the app is not running —
-    /// exactly when a launch without a network would need it.
-    public init(
-        directory: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-    ) {
-        self.fileURL = directory.appendingPathComponent("mailboxes-cache.json")
+    init(directory: URL) {
+        self.fileURL = directory.appendingPathComponent(Self.fileName)
     }
 
+    /// Writes only into a directory that exists: a save landing after sign-out removed the
+    /// server's directory must not bring it back.
     public func save(_ snapshot: MVMailboxesCacheSnapshot) {
         guard let data = try? JSONEncoder.mvDefault.encode(snapshot) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        try? data.write(to: fileURL, options: MVOfflineCache.writingOptions)
     }
 
     /// `nil` when there is nothing cached, the file is unreadable, or the cache is older than 24
@@ -117,5 +117,11 @@ public struct MailboxesDiskCache: Sendable {
         }
         guard ignoringAge || now.timeIntervalSince(snapshot.savedAt) < Self.maxAge else { return nil }
         return snapshot
+    }
+
+    /// Deletes a snapshot kept directly in `directory`, outside any server's offline cache, where
+    /// any server would read it and signing out would leave it behind.
+    public static func removeSnapshot(in directory: URL) {
+        try? FileManager.default.removeItem(at: directory.appendingPathComponent(fileName))
     }
 }
