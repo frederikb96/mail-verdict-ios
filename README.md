@@ -16,6 +16,30 @@ credential: a bearer token, or a username and password for basic auth. A LAN, Ta
 install with no proxy needs neither. Both are held on the device: the credential in the Keychain,
 everything else in `UserDefaults`.
 
+## Reading offline
+
+Mail you have opened and the lists you have visited stay readable without the server: on a plane,
+on a train, or while the server or the VPN in front of it is down.
+
+- **What is kept:** the conversations opened most recently in the reader and the newest rows of
+  the lists visited most recently, per server, in the app's Caches directory, bounded in count and
+  size by `MVOfflineCache.Budget`. iOS may reclaim it under storage pressure; signing out deletes
+  it.
+- **When it is used:** only when a read fails because the server cannot be reached (no network, a
+  host that does not answer, a timeout, or a 502/503/504 from the proxy). Any other answer from the
+  server is shown as it is. Mailboxes falls back to its last overview the same way, however old.
+- **What you see:** a capsule at the top of the list and the reader — "Offline", or "Server
+  unreachable", with when the copy on screen was saved — and the list subtitle reads "Offline". A
+  message that was never opened says it is not saved on this device.
+- **Actions:** read, star, archive, delete, move and junk are queued on the device and sent when
+  the connection is back, as they always are; the list says how many are waiting. Everything else
+  that needs the server (sending, search, verdict feedback, loading images, attachments, Show in
+  Folder, Select All, Mark All as Read, Empty Folder, pull to refresh) fails with a message saying
+  why, such as "No internet connection."
+- **Coming back online:** as soon as the live connection returns, saved lists and messages are read
+  again, and those that had nothing saved load; a message is marked read only once the server has
+  answered for it.
+
 ## How it is arranged
 
 Almost everything lives in `MailVerdictKit`, a local Swift package. **The package builds and

@@ -47,6 +47,19 @@ final class MessagePlaceResolverScopeTests: XCTestCase {
 
 final class MessagePlaceResolverEndToEndTests: XCTestCase {
 
+    /// Offline, "Show in Folder" must not claim the message is gone.
+    func testAnUnreachableServerIsNotReportedAsAMissingMessage() async throws {
+        MVStubURLProtocol.stub = .init(statusCode: 502, headers: [:], body: Data())
+        let client = MVApiClient(
+            requestFactory: try MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none }),
+            urlSession: MVStubURLProtocol.makeSession())
+
+        let resolution = await MVMessagePlaceResolver(apiClient: client).resolve(messageId: UUID())
+
+        guard case .notFound(let text) = resolution else { return XCTFail("expected a toast, got \(resolution)") }
+        XCTAssertFalse(text.contains("no longer exists"), text)
+    }
+
     override func tearDown() {
         MVStubURLProtocol.reset()
         super.tearDown()

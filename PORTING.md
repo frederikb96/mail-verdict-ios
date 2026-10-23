@@ -538,3 +538,15 @@ the app on Mailboxes while a large folder syncs (or a folder is emptied from the
 counts and the unified rows update every second or so without the list jumping or a tap being lost,
 and the badge and dead-outbox banner still change when alerts or the outbox do; open a folder, read
 a message, go back: the count in the reader's title ("N Messages") matches the folder.
+
+### Reading offline: saved lists and conversations, the offline capsule — web anchor: n/a (native offline cache)
+Needs a device because: the cache, the fallback and the reconnect logic are unit-tested in the
+package, but the capsule, the subtitle and real airplane mode (`NWPathMonitor`, iOS's own error
+codes) only show on a device. Confirm: open a folder and a few messages, switch on airplane mode,
+relaunch: the list shows its rows under "Offline · Saved …" and the subtitle reads "Offline"; a
+message opened before draws with the capsule over its header and is not marked read; a message
+never opened says it is not saved on this device; Archive queues ("1 action waiting for the
+network"), Show in Folder and an attachment say the connection is missing; switch airplane mode
+off: the capsule leaves, the list refreshes in place without jumping, the opened message is marked
+read, the queued archive goes out. Also with Wi-Fi on but the server unreachable (VPN off): the
+capsule reads "Server unreachable".

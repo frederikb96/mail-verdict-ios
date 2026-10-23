@@ -31,6 +31,7 @@ public enum MVSymbols {
     public static let addRule = "wand.and.stars"
     public static let showInFolder = "folder.badge.gearshape"
     public static let compose = "square.and.pencil"
+    public static let offline = "wifi.slash"
     public static let filterUnread = "line.3.horizontal.decrease.circle"
     public static let filterUnreadFilled = "line.3.horizontal.decrease.circle.fill"
     public static let groupByConversation = "rectangle.stack"

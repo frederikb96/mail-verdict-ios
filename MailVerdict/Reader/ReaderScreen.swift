@@ -79,6 +79,12 @@ private struct ReaderContent: View {
     private var base: some View {
         ReaderPager(model: model)
             .ignoresSafeArea()
+            .overlay(alignment: .top) {
+                if let notice = model.offlineNotice {
+                    OfflineCapsule(notice: notice)
+                        .accessibilityIdentifier("reader-offline")
+                }
+            }
             .navigationTitle(model.session.title ?? "")
             .navigationSubtitle(model.session.currentActionStatusText ?? "")
             .navigationBarTitleDisplayMode(.inline)

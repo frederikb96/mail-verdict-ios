@@ -236,6 +236,9 @@ public final class MailboxesStore {
             saveSnapshotToDiskCache()
         } catch {
             loadError = error.mvUserMessage
+            if error.mvIsServerUnreachable, unifiedRows.isEmpty, accountSections.isEmpty {
+                applyCachedSnapshotIfAvailable(ignoringAge: true)
+            }
         }
         isLoading = false
         reportDebugState()
@@ -507,8 +510,8 @@ public final class MailboxesStore {
 
     // MARK: - Disk cache
 
-    private func applyCachedSnapshotIfAvailable() {
-        guard let snapshot = diskCache.load() else { return }
+    private func applyCachedSnapshotIfAvailable(ignoringAge: Bool = false) {
+        guard let snapshot = diskCache.load(ignoringAge: ignoringAge) else { return }
         unifiedRows = snapshot.unified.map {
             MailboxesUnifiedRow(
                 id: $0.id, name: $0.name, emoji: $0.emoji, unreadCount: $0.unreadCount,

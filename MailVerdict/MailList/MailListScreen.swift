@@ -35,7 +35,8 @@ struct MailListScreen: View {
         _store = State(
             initialValue: MVMailListStore(
                 scope: scope, aroundMessageId: aroundMessageId, backend: connection.apiClient,
-                ledger: connection.intentLedger, toasts: environment.toasts, referenceCache: connection.referenceCache
+                ledger: connection.intentLedger, toasts: environment.toasts, referenceCache: connection.referenceCache,
+                offlineCache: connection.offlineCache
             )
         )
     }
@@ -50,7 +51,12 @@ struct MailListScreen: View {
         MailListTable(store: store, proxy: proxy, actions: tableActions)
             .ignoresSafeArea()
             .overlay { stateOverlay }
-            .overlay(alignment: .top) { newMessagesCapsule }
+            .overlay(alignment: .top) {
+                VStack(spacing: 0) {
+                    offlineCapsule
+                    newMessagesCapsule
+                }
+            }
             .overlay(alignment: .bottom) { actionAttentionCapsule }
             .animation(.default, value: store.newMessagesCapsuleCount)
     }
@@ -182,7 +188,15 @@ struct MailListScreen: View {
 
     private var navigationSubtitle: String {
         if store.isSelecting { return store.selectionScopeNote ?? "" }
-        return store.subtitle(now: now, connection: liveConnectionState)
+        return store.subtitle(now: now, reachability: connection.reachability)
+    }
+
+    @ViewBuilder
+    private var offlineCapsule: some View {
+        if let notice = store.offlineNotice(reachability: connection.reachability, now: now) {
+            OfflineCapsule(notice: notice)
+                .accessibilityIdentifier("maillist-offline")
+        }
     }
 
     private func optionsSheetContent(for row: MessageSummary) -> some View {
@@ -704,14 +718,6 @@ struct MailListScreen: View {
         else { return }
         connection.liveEventHub.unsubscribe(liveToken)
         self.liveToken = nil
-    }
-
-    private var liveConnectionState: MVConnectionState {
-        #if DEBUG
-            // Fixture mode has no event stream; its failing one would read as "Connecting…".
-            if MVFixtureLaunch.isEnabled() { return .connected }
-        #endif
-        return connection.liveEventHub.visibleConnectionState
     }
 
     // MARK: - Helpers

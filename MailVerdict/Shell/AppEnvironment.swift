@@ -95,6 +95,23 @@ final class AppEnvironment {
         /// Every mail action on its way to the server — what the lists and the reader show on top
         /// of what they read.
         let intentLedger: MVIntentLedger
+
+        /// The device's network path, from the same monitor the ledger waits on.
+        let networkStatus: MVNetworkStatus
+
+        /// Recently read conversations and list pages of this server, kept for reading offline.
+        /// `nil` in a fixture run, so one screenshot's reads never show in the next.
+        let offlineCache: MVOfflineCache?
+
+        /// Whether the server can be reached, as every screen shows it.
+        @MainActor var reachability: MVReachability {
+            #if DEBUG
+                // Fixture mode has no event stream; its failing one would read as unreachable.
+                if MVFixtureLaunch.isEnabled() { return .online }
+            #endif
+            return MVReachability(
+                pathAvailable: networkStatus.pathAvailable, stream: liveEventHub.visibleConnectionState)
+        }
     }
 
     /// Internal, not private — `FixtureBootstrap` seeds this default too, so a fixture-mode
@@ -148,6 +165,9 @@ final class AppEnvironment {
     func signOut() {
         connection?.liveEventHub.disconnect()
         connection?.intentLedger.stop()
+        // Signed out, no mail stays on the device; the instance ignores any save still on its way.
+        if let offlineCache = connection?.offlineCache { Task { await offlineCache.discard() } }
+        MVOfflineCache.removeAll(under: Self.offlineCacheBase)
         credentials.write(nil)
         connection = nil
         lastAuthFailure = nil
@@ -237,14 +257,17 @@ final class AppEnvironment {
         // nothing reads.
         connection?.liveEventHub.disconnect()
         connection?.intentLedger.stop()
+        let connectivity = MVNetworkPathConnectivity()
         let intentLedger = MVIntentLedger(
             transport: client, persistence: Self.intentPersistence(serverURL: backendURL),
-            connectivity: MVNetworkPathConnectivity(), toasts: toasts)
+            connectivity: connectivity, toasts: toasts)
         connection = Connection(
             requestFactory: factory, apiClient: client, liveEventHub: liveEventHub,
             imageLoader: MVAuthenticatedImageLoader(apiClient: client), membership: membership,
             placeResolver: MVMessagePlaceResolver(apiClient: client, membershipLookup: membership),
-            referenceCache: referenceCache, threadCache: threadCache, intentLedger: intentLedger)
+            referenceCache: referenceCache, threadCache: threadCache, intentLedger: intentLedger,
+            networkStatus: MVNetworkStatus(connectivity: connectivity),
+            offlineCache: Self.offlineCache(serverURL: backendURL))
         lastAuthFailure = nil
         router.gate = .ready
         return true
@@ -260,6 +283,21 @@ final class AppEnvironment {
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return MVFileIntentPersistence(directory: directory, serverURL: serverURL)
+    }
+
+    /// Caches, so the system may reclaim it under storage pressure; one directory per server.
+    private static var offlineCacheBase: URL {
+        let caches =
+            FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return caches.appendingPathComponent("offline", isDirectory: true)
+    }
+
+    private static func offlineCache(serverURL: String) -> MVOfflineCache? {
+        #if DEBUG
+            if MVFixtureLaunch.isEnabled() { return nil }
+        #endif
+        return MVOfflineCache(directory: MVOfflineCache.directory(base: offlineCacheBase, serverURL: serverURL))
     }
 
     private static func colorScheme(from stored: String?) -> ColorScheme? {

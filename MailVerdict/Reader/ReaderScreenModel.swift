@@ -82,6 +82,7 @@ final class ReaderScreenModel {
     var optionsPreview = false
 
     @ObservationIgnored private let environment: AppEnvironment
+    @ObservationIgnored private let connection: AppEnvironment.Connection
     @ObservationIgnored private let close: @MainActor () -> Void
 
     init(
@@ -89,13 +90,14 @@ final class ReaderScreenModel {
         close: @escaping @MainActor () -> Void
     ) {
         self.environment = environment
+        self.connection = connection
         self.close = close
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         session = ReaderSession(
             context: context, api: connection.apiClient, ledger: connection.intentLedger,
             placeResolver: connection.placeResolver, theme: theme,
             cacheDirectory: caches ?? FileManager.default.temporaryDirectory, threadCache: connection.threadCache,
-            referenceCache: connection.referenceCache)
+            referenceCache: connection.referenceCache, offlineCache: connection.offlineCache)
         // Held weakly by the hub, so the subscription ends with the reader.
         _ = connection.liveEventHub.subscribe(session)
         session.onToast = { [weak environment] toast in
@@ -110,6 +112,10 @@ final class ReaderScreenModel {
     }
 
     var primary: MessageDetail? { session.currentPrimary }
+
+    var offlineNotice: MVOfflineNotice? {
+        session.offlineNotice(reachability: connection.reachability)
+    }
 
     var senderEmail: String { extractEmail(primary?.fromAddr) }
 

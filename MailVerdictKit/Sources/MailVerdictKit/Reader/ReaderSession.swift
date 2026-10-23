@@ -42,6 +42,9 @@ public final class ReaderSession {
     /// Changes whenever something the Options menu or the bars read changes — read and star
     /// state, a folder's role, a canvas.
     public private(set) var revision = 0
+    /// Pages showing the offline cache's copy because the server could not be reached, with when
+    /// each copy was saved. A page leaves once the server answers for it.
+    private var savedCopies: [UUID: Date] = [:]
 
     @ObservationIgnored public var onPageUpdate: (@MainActor (_ rowId: UUID, ReaderPageUpdate) -> Void)?
     @ObservationIgnored public var onToast: (@MainActor (MVToast) -> Void)?
@@ -75,13 +78,15 @@ public final class ReaderSession {
     /// Conversations fetched ahead of the reader (`MVThreadCache`): a page with a recent copy is
     /// drawn from it at once and revalidated behind it.
     @ObservationIgnored private let threadCache: MVThreadCache?
+    /// Where every conversation this reader reads is kept for reading offline, when there is one.
+    @ObservationIgnored private let offlineCache: MVOfflineCache?
 
     public init(
         context: ReaderContext, api: MVApiClient, ledger: MVIntentLedger, placeResolver: MVMessagePlaceResolver,
         theme: MVCanvas, registry: ReaderSourceRegistry = .shared,
         tracker: MVExplicitUnreadTracker = .shared, canvasStore: MVCanvasPreferenceStore = MVCanvasPreferenceStore(),
         cacheDirectory: URL = FileManager.default.temporaryDirectory, threadCache: MVThreadCache? = nil,
-        referenceCache: MVReferenceCache? = nil
+        referenceCache: MVReferenceCache? = nil, offlineCache: MVOfflineCache? = nil
     ) {
         self.context = context
         self.api = api
@@ -93,6 +98,7 @@ public final class ReaderSession {
         self.canvasStore = canvasStore
         self.canvasChoices = canvasStore.load()
         self.threadCache = threadCache
+        self.offlineCache = offlineCache
         self.lookups = ReaderLookups(api: api, cache: referenceCache)
         self.cacheDirectory = cacheDirectory.appendingPathComponent("attachments", isDirectory: true)
         let source = registry.source(for: context.source)
@@ -131,6 +137,11 @@ public final class ReaderSession {
     /// Whether a change to the current message is waiting on the network, or was refused.
     public var currentActionState: MVIntentRowState {
         currentPrimary.map { ledger.rowState(for: $0.id) } ?? .none
+    }
+
+    /// The capsule saying the current page is not live, or `nil` while it is.
+    public func offlineNotice(reachability: MVReachability, now: Date = Date()) -> MVOfflineNotice? {
+        MVOfflineNotice.make(reachability: reachability, savedAt: savedCopies[currentRowId], now: now)
     }
 
     public var currentActionStatusText: String? {
@@ -272,6 +283,7 @@ public final class ReaderSession {
                 await self.apply(thread, to: rowId, readAt: readAt)
             } catch {
                 guard !Task.isCancelled else { return }
+                if error.mvIsServerUnreachable, await self.showOfflineCopy(rowId) { return }
                 self.loadFailed(rowId, error: error)
             }
         }
@@ -292,6 +304,42 @@ public final class ReaderSession {
         await prepareReferenceData(for: thread.messages, rowId: rowId)
         guard pages[rowId] != nil else { return }
         show(thread, for: rowId, readAt: readAt)
+        saveOfflineCopy(thread, for: rowId)
+    }
+
+    /// The copy the offline cache holds for `rowId`, drawn in place of a read the server could not
+    /// answer. Its read rules wait for the server, like any cached copy's: the copy can say unread
+    /// when the message has been read since. `false` when there is no copy, or the page was let go
+    /// meanwhile.
+    private func showOfflineCopy(_ rowId: UUID) async -> Bool {
+        guard let offlineCache, let saved = await offlineCache.conversation(for: rowId), !Task.isCancelled,
+            pages[rowId] != nil
+        else { return false }
+        // Folder roles and photos only when already in memory: the server has just failed to answer.
+        _ = applyReferenceDataIfCached(for: saved.thread.messages, rowId: rowId)
+        savedCopies[rowId] = saved.savedAt
+        awaitingRevalidation.insert(rowId)
+        show(saved.thread, for: rowId, readAt: 0)
+        return true
+    }
+
+    private func saveOfflineCopy(_ thread: ThreadResponse, for rowId: UUID) {
+        guard let offlineCache else { return }
+        Task { await offlineCache.saveConversation(thread, for: rowId) }
+    }
+
+    /// Back online: every page drawn from the offline cache is read again, and every page that
+    /// had nothing saved loads.
+    private func revalidateSavedCopies() {
+        for rowId in savedCopies.keys { refresh(rowId) }
+        for (rowId, state) in pages where state == .failed(Self.notSavedOfflineMessage) { retry(rowId) }
+    }
+
+    /// The server answered for a page drawn from the offline cache — whichever refresh asked —
+    /// so the page is live again and its read rules may run.
+    private func savedCopyRevalidated(_ rowId: UUID) {
+        guard savedCopies.removeValue(forKey: rowId) != nil else { return }
+        if awaitingRevalidation.remove(rowId) != nil, rowId == settledRowId { applyReadRules(rowId) }
     }
 
     /// `readAt` is the ledger's sequence when `thread` was read; a cached copy's is unknown, so 0.
@@ -318,6 +366,8 @@ public final class ReaderSession {
             } else {
                 _ = paging.remove(rowId)
             }
+        } else if offlineCache != nil, error.mvIsServerUnreachable {
+            pages[rowId] = .failed(Self.notSavedOfflineMessage)
         } else {
             pages[rowId] = .failed(error.mvUserMessage)
         }
@@ -422,6 +472,7 @@ public final class ReaderSession {
             avatarSources[rowId] = nil
             readRulesApplied.remove(rowId)
             awaitingRevalidation.remove(rowId)
+            savedCopies[rowId] = nil
         }
     }
 
@@ -778,6 +829,7 @@ public final class ReaderSession {
             let readAt = self.ledger.sequence
             guard let thread = try? await self.api.getThread(messageId: rowId) else { return }
             self.threadCache?.store(thread, for: rowId)
+            self.saveOfflineCopy(thread, for: rowId)
             guard let current = self.storedConversation(for: rowId),
                 current == previous || current.messageIds == previous.messageIds
             else { return }
@@ -795,12 +847,14 @@ public final class ReaderSession {
                 self.revision += 1
                 self.emit(rowId, .rebuild)
                 self.loadInvitations(for: next, rowId: rowId)
+                self.savedCopyRevalidated(rowId)
                 return
             }
             for message in next.messages {
                 self.replaceMessage(message, in: rowId)
             }
             self.pageSequences[rowId] = readAt
+            self.savedCopyRevalidated(rowId)
         }
     }
 
@@ -841,6 +895,9 @@ public final class ReaderSession {
         default: return false
         }
     }
+
+    static let notSavedOfflineMessage =
+        "This message is not saved on this device. Messages you opened recently can be read without a connection."
 }
 
 extension ReaderSession: MVIntentObserver {
@@ -871,5 +928,9 @@ extension ReaderSession: MVIntentObserver {
 extension ReaderSession: LiveEventSubscriber {
     public func apply(_ invalidations: [MVLiveInvalidation]) {
         handle(invalidations)
+    }
+
+    public func setConnected(_ connected: Bool) {
+        if connected { revalidateSavedCopies() }
     }
 }

@@ -69,4 +69,26 @@ extension Error {
         if self is CancellationError { return true }
         return (self as? URLError)?.code == .cancelled
     }
+
+    /// The request never reached a working server: no network, a host that does not resolve or
+    /// answer, a timeout, or a gateway in front of the server saying the server is down (502,
+    /// 503, 504). What a saved offline copy stands in for — never a refusal, a missing message
+    /// or a broken response, which a saved copy would only hide.
+    public var mvIsServerUnreachable: Bool {
+        if let urlError = self as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff,
+                .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed, .timedOut:
+                return true
+            default:
+                return false
+            }
+        }
+        switch self as? MVError {
+        case .detail(_, let statusCode)?, .http(let statusCode, _)?:
+            return [502, 503, 504].contains(statusCode)
+        default:
+            return false
+        }
+    }
 }
