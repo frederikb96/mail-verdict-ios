@@ -22,11 +22,14 @@ final class MVStubURLProtocol: URLProtocol {
         /// Seconds before the response is delivered, so a test can make one request land after
         /// another.
         var delay: TimeInterval = 0
+        /// Fails the request with this transport error instead of answering it.
+        var failure: URLError.Code? = nil
     }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var _stub: Stub?
     nonisolated(unsafe) private static var _stubsByPath: [String: Stub] = [:]
+    nonisolated(unsafe) private static var _queue: [Stub] = []
     nonisolated(unsafe) private static var _capturedRequest: URLRequest?
     nonisolated(unsafe) private static var _capturedRequests: [URLRequest] = []
     nonisolated(unsafe) private static var _requestTimes: [Date] = []
@@ -34,6 +37,13 @@ final class MVStubURLProtocol: URLProtocol {
     static var stub: Stub? {
         get { lock.lock(); defer { lock.unlock() }; return _stub }
         set { lock.lock(); defer { lock.unlock() }; _stub = newValue }
+    }
+
+    /// Answers taken one per request, in order, before `stubsByPath` and `stub` — for a test of
+    /// what a client does with a failure followed by a success.
+    static var queue: [Stub] {
+        get { lock.lock(); defer { lock.unlock() }; return _queue }
+        set { lock.lock(); defer { lock.unlock() }; _queue = newValue }
     }
 
     /// Per-path answers, consulted before `stub`, for a test whose code asks several routes.
@@ -69,6 +79,7 @@ final class MVStubURLProtocol: URLProtocol {
         capturedRequest = nil
         lock.lock()
         _stubsByPath = [:]
+        _queue = []
         _capturedRequests = []
         _requestTimes = []
         lock.unlock()
@@ -97,7 +108,10 @@ final class MVStubURLProtocol: URLProtocol {
         Self._capturedRequests.append(request)
         Self.lock.unlock()
 
-        guard let stub = Self.stubsByPath[request.url?.path ?? ""] ?? Self.stub, let url = request.url else {
+        Self.lock.lock()
+        let queued = Self._queue.isEmpty ? nil : Self._queue.removeFirst()
+        Self.lock.unlock()
+        guard let stub = queued ?? Self.stubsByPath[request.url?.path ?? ""] ?? Self.stub, let url = request.url else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return
         }
@@ -120,6 +134,10 @@ final class MVStubURLProtocol: URLProtocol {
         stopLock.lock()
         defer { stopLock.unlock() }
         guard !isStopped else { return }
+        if let failure = stub.failure {
+            client?.urlProtocol(self, didFailWithError: URLError(failure))
+            return
+        }
         let response = HTTPURLResponse(
             url: url,
             statusCode: stub.statusCode,

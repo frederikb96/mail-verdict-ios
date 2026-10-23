@@ -167,6 +167,13 @@ public final class LiveEventHub {
         updateVisibleState()
     }
 
+    /// The device's network path came back: a stream waiting to reconnect tries now rather than
+    /// after its backoff, so screens leave "Offline" as soon as the server can answer.
+    public func networkPathRestored() {
+        guard connectionState == .reconnecting else { return }
+        sseClient.retryNow()
+    }
+
     private func updateVisibleState() {
         visibleStateTask?.cancel()
         visibleStateTask = nil

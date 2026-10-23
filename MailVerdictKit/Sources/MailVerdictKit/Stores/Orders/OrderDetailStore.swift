@@ -29,7 +29,7 @@ public final class OrderDetailStore {
         errorMessage = nil
         do {
             order = try await apiClient.getOrder(id: orderId)
-        } catch let error as MVError where Self.isNotFound(error) {
+        } catch let error as MVError where error.mvIsNotFound {
             wasDeleted = true
         } catch {
             errorMessage = error.mvUserMessage
@@ -76,13 +76,6 @@ public final class OrderDetailStore {
             order = detail
         } else {
             wasDeleted = true
-        }
-    }
-
-    private static func isNotFound(_ error: MVError) -> Bool {
-        switch error {
-        case .detail(_, let statusCode), .http(let statusCode, _): return statusCode == 404
-        case .transport, .decoding, .proxyRequiresBrowserLogin: return false
         }
     }
 }

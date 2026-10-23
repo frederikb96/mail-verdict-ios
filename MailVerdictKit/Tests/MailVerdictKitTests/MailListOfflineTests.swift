@@ -79,6 +79,27 @@ final class MailListOfflineTests: XCTestCase {
         XCTAssertNil(store.savedCopyAt)
     }
 
+    /// A reload of the list already on screen that cannot reach the server keeps the rows the
+    /// reader is looking at; the saved page may be older than they are.
+    func testAFailedReloadKeepsTheRowsOnScreenRatherThanTheSavedPage() async {
+        let (cache, _) = makeOfflineCache()
+        let backend = FakeMailListBackend()
+        backend.pageHandler = { _, _ in testPage(testRows(1...3)) }
+        let store = makeStore(backend, cache: cache, toasts: MVToastStore())
+        await store.start()
+        let saved = await savedPage(cache)
+        XCTAssertNotNil(saved, "nothing was saved, so this proves nothing")
+        backend.pageHandler = { _, _ in testPage([testRow(0)] + testRows(1...3)) }
+        await store.refresh()
+        XCTAssertEqual(store.rowIds.first, testUUID(0), "the newer row never arrived, so this proves nothing")
+
+        backend.pageHandler = { _, _ in throw URLError(.notConnectedToInternet) }
+        await store.jumpToLatest()
+
+        XCTAssertEqual(store.rowIds.first, testUUID(0))
+        XCTAssertNil(store.savedCopyAt)
+    }
+
     /// Opened offline with nothing saved, the list fails — and loads by itself once the connection
     /// is back, rather than waiting for a tap on Retry.
     func testAListThatNeverLoadedLoadsOnReconnect() async {

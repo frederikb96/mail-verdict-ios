@@ -282,7 +282,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                         limit: MVMailListWindow.pageSize
                     )
                     landedAround = true
-                } catch  where Self.isNotFound(error) {
+                } catch  where error.mvIsNotFound {
                     // Not a member of this list (any more): the newest edge is where the reader
                     // would otherwise land.
                     page = try await backend.fetchListPage(
@@ -315,7 +315,13 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
             }
         } catch {
             guard generation == expected else { return }
-            if error.mvIsServerUnreachable,
+            // The saved page stands in only for a list not already on screen — a jump to the
+            // newest mail or an action's reload that fails keeps the rows the reader is looking
+            // at, which are at least as new as anything saved.
+            let showsThisList =
+                !rows.isEmpty && !isFilterActive && identity.threaded == threaded
+                && identity.unreadOnly == unreadOnly
+            if !showsThisList, error.mvIsServerUnreachable,
                 await showOfflineCopy(
                     threaded: threaded, unreadOnly: unreadOnly, aroundId: aroundId, restoring: restoring,
                     generation: expected)
@@ -1373,14 +1379,6 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
 
     private func showError(_ message: String) {
         toasts?.show(MVToast(variant: .error, message: message, duration: 0))
-    }
-
-    static func isNotFound(_ error: Error) -> Bool {
-        switch error as? MVError {
-        case .detail(_, let statusCode)?: return statusCode == 404
-        case .http(let statusCode, _)?: return statusCode == 404
-        default: return false
-        }
     }
 }
 

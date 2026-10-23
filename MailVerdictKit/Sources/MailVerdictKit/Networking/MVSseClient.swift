@@ -169,6 +169,15 @@ public final class MVSseClient {
         scheduleAttempt(delayNanos: 0)
     }
 
+    /// The network came back: a reconnect waiting out its backoff — up to `maxBackoffNanos` after a
+    /// long outage — goes now, with the backoff reset. Still subject to the attempt floor; an open
+    /// or connecting stream, a paused or a stopped client is left alone.
+    public func retryNow() {
+        guard !stopped, !paused, !attemptLive, reconnectTask != nil else { return }
+        backoffNanos = Self.initialBackoffNanos
+        scheduleAttempt(delayNanos: 0)
+    }
+
     /// The single door every connection attempt goes through. It supersedes whatever is in
     /// flight, applies the attempt floor, and starts exactly one successor.
     private func scheduleAttempt(delayNanos: UInt64) {

@@ -36,6 +36,13 @@ on a train, or while the server or the VPN in front of it is down.
   that needs the server (sending, search, verdict feedback, loading images, attachments, Show in
   Folder, Select All, Mark All as Read, Empty Folder, pull to refresh) fails with a message saying
   why, such as "No internet connection."
+- **Short hiccups:** a read that fails because the connection dropped or the proxy answered 502/504
+  is asked again shortly before anything shows an error, and a read that hears nothing gives up
+  well before the system's one-minute timeout (both in `MVReadRetryPolicy`). A network loss
+  shorter than `MVNetworkStatus.defaultOfflineGrace` does not show as offline, and the live
+  connection reconnects as soon as the network returns. Writes are never repeated by the
+  transport; mail actions are retried by the app's action queue, which knows whether an attempt
+  may already have landed.
 - **Coming back online:** as soon as the live connection returns, saved lists and messages are read
   again, and those that had nothing saved load; a message is marked read only once the server has
   answered for it.

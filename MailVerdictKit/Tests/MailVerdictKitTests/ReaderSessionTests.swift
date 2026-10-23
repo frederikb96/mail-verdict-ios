@@ -154,7 +154,7 @@ final class ReaderSessionTests: XCTestCase {
         let wasSaved = try await saveOffline(a, in: cache)
         XCTAssertTrue(wasSaved, "the conversation was never saved, so the rest proves nothing")
         let (session, _) = try makeSession(rows: [a], opening: a, offlineCache: cache)
-        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 502, body: Data())
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 503, body: Data())
         ReaderRouteStub.route(
             "POST", "/api/messages/\(a)/action",
             json: MessageActionResponse(success: true, action: "mark_read", messageId: a, message: nil))
@@ -183,7 +183,7 @@ final class ReaderSessionTests: XCTestCase {
     func testAPageWithNothingSavedSaysSoAndLoadsOnReconnect() async throws {
         let (cache, _) = makeOfflineCache()
         let (session, _) = try makeSession(rows: [a], opening: a, offlineCache: cache)
-        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 502, body: Data())
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 503, body: Data())
 
         _ = session.document(for: a)
 

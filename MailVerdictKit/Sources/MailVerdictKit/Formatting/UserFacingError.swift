@@ -84,11 +84,11 @@ extension Error {
                 return false
             }
         }
-        switch self as? MVError {
-        case .detail(_, let statusCode)?, .http(let statusCode, _)?:
-            return [502, 503, 504].contains(statusCode)
-        default:
-            return false
-        }
+        return [502, 503, 504].contains((self as? MVError)?.statusCode)
+    }
+
+    /// The server answered 404: what was asked for does not exist (any more).
+    public var mvIsNotFound: Bool {
+        (self as? MVError)?.statusCode == 404
     }
 }

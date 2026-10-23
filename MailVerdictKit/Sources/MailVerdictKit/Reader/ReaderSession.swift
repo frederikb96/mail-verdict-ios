@@ -358,7 +358,7 @@ public final class ReaderSession {
     }
 
     private func loadFailed(_ rowId: UUID, error: Error) {
-        if Self.isNotFound(error) {
+        if error.mvIsNotFound {
             pages[rowId] = .failed("That message no longer exists")
             if rowId == currentRowId {
                 onToast?(MVToast(variant: .info, message: "That message no longer exists"))
@@ -887,13 +887,6 @@ public final class ReaderSession {
     private func row(containing messageId: UUID) -> UUID? {
         if conversation(for: currentRowId)?.messageIds.contains(messageId) == true { return currentRowId }
         return pages.keys.first { conversation(for: $0)?.messageIds.contains(messageId) ?? false }
-    }
-
-    static func isNotFound(_ error: Error) -> Bool {
-        switch error as? MVError {
-        case .detail(_, let status)?, .http(let status, _)?: return status == 404
-        default: return false
-        }
     }
 
     static let notSavedOfflineMessage =
