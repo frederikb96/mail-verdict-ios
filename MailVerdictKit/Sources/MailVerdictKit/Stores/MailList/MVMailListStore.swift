@@ -88,6 +88,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     @ObservationIgnored private var savedFolderRoles: [UUID: String] = [:]
     /// Why the last refresh read nothing, until the next one starts.
     @ObservationIgnored private var lastRefreshFailure: Error?
+    /// Reads a saved page again while the live stream is up, which no reconnect would.
+    @ObservationIgnored private let savedCopyRetry: MVSavedCopyRetry
 
     public static let filterMinimumLength = 2
     static let filterDebounceNanos: UInt64 = 150_000_000
@@ -95,7 +97,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     public init(
         scope: ListScope, aroundMessageId: UUID? = nil, backend: any MVMailListBackend, ledger: MVIntentLedger,
         toasts: MVToastStore?, defaults: UserDefaults = .standard, session: MVListSession? = nil,
-        referenceCache: MVReferenceCache? = nil, offlineCache: MVOfflineCache? = nil
+        referenceCache: MVReferenceCache? = nil, offlineCache: MVOfflineCache? = nil,
+        savedCopyRetryDelays: [TimeInterval] = MVSavedCopyRetry.defaultDelays
     ) {
         let session = session ?? .shared
         let threaded = MVListPreferences.threaded(defaults: defaults)
@@ -115,6 +118,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         self.session = session
         self.positions = MVListPositionStore(defaults: defaults)
         self.initialAroundId = aroundMessageId
+        self.savedCopyRetry = MVSavedCopyRetry(delays: savedCopyRetryDelays)
         ledger.addObserver(self)
     }
 
@@ -359,6 +363,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
             scope: scope, threaded: threaded, unreadOnly: unreadOnly, filterQuery: "", generation: expected)
         phase = .loaded
         savedCopyAt = page.savedAt
+        retrySavedCopyWhileConnected()
         if aroundId == nil, let anchor = restoring?.anchor, rows.contains(where: { $0.id == anchor.rowId }) {
             pendingLanding = .restore(anchor)
         } else if let aroundId, rows.contains(where: { $0.id == aroundId }) {
@@ -535,10 +540,17 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                     limit: limit
                 )
                 guard identity == started else { return }
-                let merged = MVMailListWindow.mergeRefreshed(
-                    current: current, fresh: response.messages, freshHasMore: response.hasMore,
-                    currentHasMore: hasOlder, preserveIds: preserve
-                )
+                // A window drawn from a saved copy is replaced by the first read the server
+                // answers; only a window the server itself gave is spliced.
+                let merged =
+                    savedCopyAt != nil
+                    ? MVMailListWindow.replacingSavedCopy(
+                        current: current, fresh: response.messages, freshHasMore: response.hasMore,
+                        preserveIds: preserve)
+                    : MVMailListWindow.mergeRefreshed(
+                        current: current, fresh: response.messages, freshHasMore: response.hasMore,
+                        currentHasMore: hasOlder, preserveIds: preserve
+                    )
                 noteRead(response.messages, asOf: response.asOf)
                 setBase(merged.rows, readAt: readAt)
                 hasOlder = merged.hasMore
@@ -731,14 +743,42 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     public func setConnected(_ connected: Bool) {
         let wasDisconnected = wasConnected == false
         wasConnected = connected
+        guard connected else {
+            savedCopyRetry.stop()
+            return
+        }
+        retrySavedCopyWhileConnected()
         // A reconnect may have missed events; the window is re-read rather than trusted. A list
         // that never loaded — opened offline with nothing saved — loads now.
-        guard connected && wasDisconnected else { return }
-        if case .failed = phase {
+        if wasDisconnected { readAgainAfterReconnect() }
+    }
+
+    /// The device's network path came back. The live stream may still be waiting out its backoff,
+    /// or may never have dropped for a short loss, so a list showing a saved page or an error asks
+    /// the server now rather than waiting for the stream.
+    public func networkPathRestored() {
+        if savedCopyAt != nil || isFailed { readAgainAfterReconnect() }
+    }
+
+    private var isFailed: Bool {
+        if case .failed = phase { return true }
+        return false
+    }
+
+    private func readAgainAfterReconnect() {
+        if isFailed {
             Task { [weak self] in await self?.retry() }
         } else {
             requestRefresh()
         }
+    }
+
+    /// A saved page shown while the live stream is up has no reconnect coming to replace it; it is
+    /// read again on `MVSavedCopyRetry`'s schedule until the server answers for it.
+    private func retrySavedCopyWhileConnected() {
+        savedCopyRetry.start(
+            while: { [weak self] in self?.savedCopyAt != nil && self?.wasConnected == true },
+            attempt: { [weak self] in await self?.refresh() })
     }
 
     public func apply(_ invalidations: [MVLiveInvalidation]) {

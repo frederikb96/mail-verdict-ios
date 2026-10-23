@@ -98,7 +98,7 @@ final class ReaderSessionTests: XCTestCase {
     private func makeSession(
         rows: [UUID], opening: UUID, seen: Bool = false, tracker: MVExplicitUnreadTracker = MVExplicitUnreadTracker(),
         threadCache: MVThreadCache? = nil, referenceCache: MVReferenceCache? = nil, toasts: MVToastStore? = nil,
-        offlineCache: MVOfflineCache? = nil
+        offlineCache: MVOfflineCache? = nil, savedCopyRetryDelays: [TimeInterval] = [60]
     ) throws -> (ReaderSession, ReaderTestSource) {
         for id in rows {
             ReaderRouteStub.route(
@@ -120,7 +120,8 @@ final class ReaderSessionTests: XCTestCase {
             registry: registry, tracker: tracker,
             canvasStore: MVCanvasPreferenceStore(defaults: defaults),
             cacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
-            threadCache: threadCache, referenceCache: referenceCache, offlineCache: offlineCache)
+            threadCache: threadCache, referenceCache: referenceCache, offlineCache: offlineCache,
+            savedCopyRetryDelays: savedCopyRetryDelays)
         return (session, source)
     }
 
@@ -176,6 +177,72 @@ final class ReaderSessionTests: XCTestCase {
         let marked = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.a)) }
         XCTAssertTrue(marked, "back online, the message was never marked read")
         XCTAssertNil(session.offlineNotice(reachability: .online))
+    }
+
+    /// A saved copy of a message deleted on the server since must not stay on screen once the
+    /// server can say so: its revalidation answering 404 is the same "no longer exists" as a load.
+    func testASavedCopyWhoseMessageWasDeletedLeavesOnReconnect() async throws {
+        let (cache, _) = makeOfflineCache()
+        let wasSaved = try await saveOffline(a, in: cache)
+        XCTAssertTrue(wasSaved, "the conversation was never saved, so the rest proves nothing")
+        let (session, _) = try makeSession(rows: [a], opening: a, offlineCache: cache)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 503, body: Data())
+        session.didSettle(on: a)
+        let drawn = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(drawn, "the saved copy was never drawn, so the rest proves nothing")
+
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 404, body: Data())
+        session.setConnected(true)
+
+        let gone = await waitUntil { session.pages[self.a] == .failed("That message no longer exists") }
+        XCTAssertTrue(gone, "the copy stayed: \(String(describing: session.pages[a]))")
+        XCTAssertNil(session.offlineNotice(reachability: .online))
+    }
+
+    /// A read that failed while the live stream stayed up falls back to the saved copy, and no
+    /// reconnect follows to replace it. It is read again on a short schedule instead, and once the
+    /// server answers the page is live and its held read rules run.
+    func testASavedCopyDrawnWhileConnectedIsReadAgainOnItsOwn() async throws {
+        let (cache, _) = makeOfflineCache()
+        let wasSaved = try await saveOffline(a, in: cache)
+        XCTAssertTrue(wasSaved, "the conversation was never saved, so the rest proves nothing")
+        let (session, _) = try makeSession(
+            rows: [a], opening: a, offlineCache: cache, savedCopyRetryDelays: [0.1, 0.1, 0.1])
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 503, body: Data())
+        ReaderRouteStub.route(
+            "POST", "/api/messages/\(a)/action",
+            json: MessageActionResponse(success: true, action: "mark_read", messageId: a, message: nil))
+        session.setConnected(true)
+        session.didSettle(on: a)
+        let drawn = await waitUntil { session.offlineNotice(reachability: .online) != nil }
+        XCTAssertTrue(drawn, "the saved copy was never drawn, so the rest proves nothing")
+
+        ReaderRouteStub.route(
+            "GET", "/api/messages/\(a)/thread", json: ThreadResponse(messages: [message(a, seen: false)]))
+
+        let marked = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.a)) }
+        XCTAssertTrue(marked, "the page was never read again, or its read rules never ran")
+        XCTAssertNil(session.offlineNotice(reachability: .online))
+    }
+
+    /// A network loss too short to drop the live stream never arrives as a reconnect; the path
+    /// coming back reads a saved copy again by itself.
+    func testTheNetworkReturningReadsASavedCopyAgain() async throws {
+        let (cache, _) = makeOfflineCache()
+        let wasSaved = try await saveOffline(a, in: cache)
+        XCTAssertTrue(wasSaved, "the conversation was never saved, so the rest proves nothing")
+        let (session, _) = try makeSession(rows: [a], opening: a, offlineCache: cache)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 503, body: Data())
+        session.didSettle(on: a)
+        let drawn = await waitUntil { session.offlineNotice(reachability: .online) != nil }
+        XCTAssertTrue(drawn, "the saved copy was never drawn, so the rest proves nothing")
+
+        ReaderRouteStub.route(
+            "GET", "/api/messages/\(a)/thread", json: ThreadResponse(messages: [message(a, seen: true)]))
+        session.networkPathRestored()
+
+        let live = await waitUntil { session.offlineNotice(reachability: .online) == nil }
+        XCTAssertTrue(live, "the saved copy was never read again")
     }
 
     /// Opened offline with nothing saved, the page says so — and loads by itself once the live

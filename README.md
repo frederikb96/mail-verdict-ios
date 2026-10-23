@@ -22,16 +22,18 @@ Mail you have opened and the lists you have visited stay readable without the se
 on a train, or while the server or the VPN in front of it is down.
 
 - **What is kept:** the conversations opened most recently in the reader with their inline images
-  and sender photos, the newest rows of the lists visited most recently, and each folder's role
-  (Inbox, Trash, …) so actions on saved mail are offered as online, per server, in the app's Caches directory, bounded in count and
-  size by `MVOfflineCache.Budget`. iOS may reclaim it under storage pressure; signing out deletes
-  it.
+  and sender photos, the newest rows of the lists visited most recently, each folder's role
+  (Inbox, Trash, …) so actions on saved mail are offered as online, and the Mailboxes overview.
+  It is kept per server, in the app's Caches directory, bounded in count and size by
+  `MVOfflineCache.Budget`, and readable only while the phone is unlocked. iOS may reclaim it under
+  storage pressure; signing out deletes it.
 - **When it is used:** only when a read fails because the server cannot be reached (no network, a
   host that does not answer, a timeout, or a 502/503/504 from the proxy). Any other answer from the
   server is shown as it is. Mailboxes falls back to its last overview the same way, however old.
 - **What you see:** a capsule at the top of the list and the reader — "Offline", or "Server
-  unreachable", with when the copy on screen was saved — and the list subtitle reads "Offline". A
-  message that was never opened says it is not saved on this device.
+  unreachable", with when the copy on screen was saved — and the list subtitle reads "Offline"
+  without a network, or "Connecting…" while the server does not answer. A message that was never
+  opened says it is not saved on this device.
 - **Actions:** read, star, archive, delete, move and junk are queued on the device and sent when
   the connection is back, as they always are; the list says how many are waiting. Everything else
   that needs the server (sending, search, verdict feedback, loading images, attachments, Show in
@@ -44,9 +46,12 @@ on a train, or while the server or the VPN in front of it is down.
   connection reconnects as soon as the network returns. Writes are never repeated by the
   transport; mail actions are retried by the app's action queue, which knows whether an attempt
   may already have landed.
-- **Coming back online:** as soon as the live connection returns, saved lists and messages are read
-  again, and those that had nothing saved load; a message is marked read only once the server has
-  answered for it.
+- **Coming back online:** as soon as the network or the live connection returns, saved lists and
+  messages are read again, and those that had nothing saved load. A copy shown while the live
+  connection stayed up (a timeout or a 503) is read again on a short, bounded schedule
+  (`MVSavedCopyRetry`). A saved list is replaced by the server's answer, never merged with it; a
+  saved message the server no longer has leaves the screen; a message is marked read only once
+  the server has answered for it.
 
 ## How it is arranged
 

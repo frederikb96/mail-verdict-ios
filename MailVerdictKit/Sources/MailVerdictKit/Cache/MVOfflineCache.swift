@@ -78,19 +78,29 @@ public actor MVOfflineCache {
     private let listsURL: URL
     private let resourcesURL: URL
     private let folderRolesURL: URL
-    private let root: URL
+    /// This server's directory: everything kept for it lives under it, the Mailboxes overview
+    /// included, so discarding it leaves nothing of the server behind.
+    public nonisolated let directory: URL
     private let budget: Budget
     private let now: @Sendable () -> Date
     private var isDiscarded = false
 
     public init(directory: URL, budget: Budget = Budget(), now: @escaping @Sendable () -> Date = { Date() }) {
-        root = directory
+        self.directory = directory
         conversationsURL = directory.appendingPathComponent("conversations", isDirectory: true)
         listsURL = directory.appendingPathComponent("lists", isDirectory: true)
         resourcesURL = directory.appendingPathComponent("resources", isDirectory: true)
         folderRolesURL = directory.appendingPathComponent("folder-roles.json")
         self.budget = budget
         self.now = now
+        // Created up front so the Mailboxes overview, which only ever writes into a directory that
+        // exists, has one before anything else is saved.
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    /// The Mailboxes overview this server last showed, kept beside its mail.
+    public nonisolated var mailboxesSnapshot: MailboxesDiskCache {
+        MailboxesDiskCache(directory: directory)
     }
 
     /// `base/<server key>`: one server's mail never shows for another.
@@ -166,7 +176,7 @@ public actor MVOfflineCache {
     /// and a save already on its way must not write it back.
     public func discard() {
         isDiscarded = true
-        try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: directory)
     }
 
     /// Removes every server's cache under `base`, for when no cache instance is at hand.
@@ -175,6 +185,10 @@ public actor MVOfflineCache {
     }
 
     // MARK: Files
+
+    /// Readable only while the device is unlocked, or by a file already open: this is mail. A save
+    /// while the device is locked fails, which a cache tolerates.
+    static let writingOptions: Data.WritingOptions = [.atomic, .completeFileProtectionUnlessOpen]
 
     private static func fileName(_ rowId: UUID) -> String {
         "\(rowId.uuidString.lowercased()).json"
@@ -186,7 +200,7 @@ public actor MVOfflineCache {
         do {
             try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             let data = try JSONEncoder.mvDefault.encode(Envelope(version: Self.formatVersion, value: value))
-            try data.write(to: url, options: .atomic)
+            try data.write(to: url, options: Self.writingOptions)
             touch(url)
         } catch {
             // A copy that could not be written is simply not there offline.

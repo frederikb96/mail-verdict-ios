@@ -171,6 +171,44 @@ final class MVOfflineCacheTests: XCTestCase {
     }
 }
 
+final class MailboxesSnapshotPlacementTests: XCTestCase {
+
+    private let snapshot = MVMailboxesCacheSnapshot(
+        unified: [
+            MVMailboxesCachedUnified(
+                id: UUID(), name: "Everything", emoji: nil, unreadCount: 2, contributingAccountEmojis: [])
+        ],
+        accounts: [], savedAt: Date())
+
+    /// The overview names one server's accounts and folders; another server must never paint it,
+    /// and tapping one of its folders would ask that server for ids it does not have.
+    func testTheMailboxesOverviewBelongsToOneServer() {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("offline-\(UUID().uuidString)")
+        let first = MVOfflineCache(directory: MVOfflineCache.directory(base: base, serverURL: "https://one.example"))
+        let second = MVOfflineCache(directory: MVOfflineCache.directory(base: base, serverURL: "https://two.example"))
+
+        first.mailboxesSnapshot.save(snapshot)
+
+        XCTAssertNotNil(first.mailboxesSnapshot.load(), "nothing was saved, so this proves nothing")
+        XCTAssertNil(second.mailboxesSnapshot.load())
+    }
+
+    /// Signing out removes the overview with the rest of the server's mail, and a save that lands
+    /// afterwards does not bring it back.
+    func testSigningOutRemovesTheMailboxesOverview() async {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("offline-\(UUID().uuidString)")
+        let cache = MVOfflineCache(directory: MVOfflineCache.directory(base: base, serverURL: "https://one.example"))
+        cache.mailboxesSnapshot.save(snapshot)
+        XCTAssertNotNil(cache.mailboxesSnapshot.load(), "nothing was saved, so this proves nothing")
+
+        await cache.discard()
+        MVOfflineCache.removeAll(under: base)
+        cache.mailboxesSnapshot.save(snapshot)
+
+        XCTAssertNil(cache.mailboxesSnapshot.load())
+    }
+}
+
 final class ServerUnreachableErrorTests: XCTestCase {
 
     /// What a saved copy may stand in for. A refusal or a missing message must never be answered

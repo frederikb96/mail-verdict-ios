@@ -247,6 +247,7 @@ final class AppEnvironment {
         liveEventHub.connect()
 
         let membership = MailboxesUnifiedMembership()
+        MailboxesDiskCache.removeSnapshot(in: Self.cachesDirectory)
         let offlineCache = Self.offlineCache(serverURL: backendURL)
         let referenceCache = MVReferenceCache(backend: client, offlineCache: offlineCache)
         let threadCache = MVThreadCache(fetch: { try await client.getThread(messageId: $0) })
@@ -289,12 +290,14 @@ final class AppEnvironment {
         return MVFileIntentPersistence(directory: directory, serverURL: serverURL)
     }
 
+    private static var cachesDirectory: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+    }
+
     /// Caches, so the system may reclaim it under storage pressure; one directory per server.
     private static var offlineCacheBase: URL {
-        let caches =
-            FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return caches.appendingPathComponent("offline", isDirectory: true)
+        cachesDirectory.appendingPathComponent("offline", isDirectory: true)
     }
 
     private static func offlineCache(serverURL: String) -> MVOfflineCache? {

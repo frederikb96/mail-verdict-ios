@@ -65,6 +65,20 @@ public enum MVMailListWindow {
         return (effectiveFresh + kept, currentHasMore)
     }
 
+    /// Replaces a window whose rows came from a saved copy with the first fresh read of its
+    /// newest edge. Unlike `mergeRefreshed`, nothing below where the read stopped is kept: saved
+    /// rows are of unknown age, so keeping them would show rows deleted or moved since as live,
+    /// under a gap hiding every message that arrived between the two.
+    ///
+    /// `preserveIds` as in `mergeRefreshed`, kept only where the fresh read reaches them.
+    public static func replacingSavedCopy(
+        current: [MessageSummary], fresh: [MessageSummary], freshHasMore: Bool, preserveIds: Set<UUID> = []
+    ) -> (rows: [MessageSummary], hasMore: Bool) {
+        let effectiveFresh = withPreserved(fresh, from: current, preserveIds: preserveIds)
+        guard freshHasMore, let freshLast = fresh.last else { return (effectiveFresh, freshHasMore) }
+        return (effectiveFresh.filter { $0.id == freshLast.id || sitsAbove($0, freshLast) }, true)
+    }
+
     /// The same splice for a window that does not start at the newest message (opened around a
     /// message, or restored after relaunch). It is re-read upward from its own last row
     /// (`after: last`), and whatever the read finds above the window's first row is dropped

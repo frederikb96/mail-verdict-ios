@@ -19,7 +19,8 @@ struct MailboxesScreen: View {
         self.connection = connection
         self._store = State(
             initialValue: MailboxesStore(
-                apiClient: connection.apiClient, ledger: connection.intentLedger, membership: connection.membership))
+                apiClient: connection.apiClient, ledger: connection.intentLedger,
+                diskCache: connection.offlineCache?.mailboxesSnapshot, membership: connection.membership))
     }
 
     var body: some View {
