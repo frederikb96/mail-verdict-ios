@@ -198,6 +198,25 @@ final class ReaderSessionTests: XCTestCase {
         XCTAssertTrue(loaded, "back online, the page never loaded")
     }
 
+    /// After a cold launch offline the folders cannot be read; the roles kept on disk still make a
+    /// message in Trash offer Delete Forever.
+    func testASavedCopyKnowsItsFolderRole() async throws {
+        let (cache, _) = makeOfflineCache()
+        let wasSaved = try await saveOffline(a, in: cache)
+        XCTAssertTrue(wasSaved, "the conversation was never saved, so this proves nothing")
+        await cache.saveFolderRoles(from: [
+            roleFolder(ReaderFixtures.inboxId, "trash", account: ReaderFixtures.accountId)
+        ])
+        let (session, _) = try makeSession(rows: [a], opening: a, offlineCache: cache)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 503, body: Data())
+
+        session.didSettle(on: a)
+
+        let drawn = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(drawn, "the saved copy was never drawn")
+        XCTAssertTrue(session.isCurrentInTrash)
+    }
+
     /// A server that answered with an error is not offline: the page says so, rather than showing
     /// a copy of mail it may have removed since.
     func testAServerErrorIsNotAnsweredWithTheSavedCopy() async throws {

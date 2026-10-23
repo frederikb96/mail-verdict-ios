@@ -190,3 +190,107 @@ final class ServerUnreachableErrorTests: XCTestCase {
         XCTAssertFalse(URLError(.serverCertificateUntrusted).mvIsServerUnreachable)
     }
 }
+
+func roleFolder(_ id: UUID, _ role: String?, account: UUID = testAccount) -> FolderResponse {
+    FolderResponse(
+        id: id, accountId: account, imapName: role ?? "Projects", displayName: nil, specialUse: role,
+        mailboxId: nil, backfillTotal: nil, idleStatus: nil, lastSyncedAt: nil, syncError: nil, createdAt: nil)
+}
+
+final class OfflineFolderRoleTests: XCTestCase {
+
+    /// A folder whose role was removed on the server must not keep it here, or an action on saved
+    /// mail would be labelled for a folder it is no longer.
+    func testAFolderThatLostItsRoleLosesItHere() async {
+        let (cache, _) = makeOfflineCache()
+        await cache.saveFolderRoles(from: [roleFolder(testUUID(1), "trash"), roleFolder(testUUID(2), "archive")])
+
+        await cache.saveFolderRoles(from: [roleFolder(testUUID(1), nil)])
+
+        let roles = await cache.folderRoles()
+        XCTAssertEqual(roles, [testUUID(2): "archive"])
+    }
+
+    /// Every folder list the app reads keeps the roles for offline use, without anyone asking.
+    @MainActor
+    func testReadingFoldersKeepsTheirRoles() async {
+        let (cache, _) = makeOfflineCache()
+        let backend = FakeMailListBackend()
+        backend.folderList = [roleFolder(testUUID(7), "trash")]
+        let referenceCache = MVReferenceCache(backend: backend, offlineCache: cache)
+
+        _ = await referenceCache.fetchFolders(accountId: testAccount)
+
+        var roles: [UUID: String] = [:]
+        for _ in 0..<200 {
+            roles = await cache.folderRoles()
+            if !roles.isEmpty { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(roles, [testUUID(7): "trash"])
+    }
+}
+
+final class ReaderResourceLoaderTests: XCTestCase {
+
+    override func setUp() {
+        MVStubURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        MVStubURLProtocol.reset()
+        super.tearDown()
+    }
+
+    private func makeLoader(_ cache: MVOfflineCache) throws -> MVReaderResourceLoader {
+        let client = MVApiClient(
+            requestFactory: try MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none }),
+            urlSession: MVStubURLProtocol.makeSession(), readRetry: MVReadRetryPolicy(delays: []))
+        return MVReaderResourceLoader(api: client, offlineCache: cache)
+    }
+
+    private let image = URL(
+        string: MessageBodyRenderer.attachmentURL(messageId: testUUID(1), attachmentId: testUUID(2)))!
+
+    private func loadOnce(_ loader: MVReaderResourceLoader, _ cache: MVOfflineCache) async -> Bool {
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: ["Content-Type": "image/png; charset=binary"], body: Data([1, 2, 3]))
+        guard case .success = await loader.load(image) else { return false }
+        for _ in 0..<200 {
+            if await cache.resource(
+                key: "attachment-\(testUUID(1).uuidString.lowercased())-\(testUUID(2).uuidString.lowercased())") != nil
+            {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return false
+    }
+
+    /// An inline image shown once shows again with the server unreachable.
+    func testAnImageShownOnceIsServedWhenTheServerIsUnreachable() async throws {
+        let (cache, _) = makeOfflineCache()
+        let loader = try makeLoader(cache)
+        let saved = await loadOnce(loader, cache)
+        XCTAssertTrue(saved, "the image was never saved, so the rest proves nothing")
+
+        MVStubURLProtocol.stub = .init(statusCode: 503, headers: [:], body: Data())
+        let result = await loader.load(image)
+
+        guard case .success(let resource) = result else { return XCTFail("expected the saved image, got \(result)") }
+        XCTAssertEqual(resource, MVOfflineResource(data: Data([1, 2, 3]), mimeType: "image/png"))
+    }
+
+    /// A server that answers "gone" is not offline: no saved copy stands in for it.
+    func testAMissingImageIsNotAnsweredFromTheCache() async throws {
+        let (cache, _) = makeOfflineCache()
+        let loader = try makeLoader(cache)
+        let saved = await loadOnce(loader, cache)
+        XCTAssertTrue(saved, "the image was never saved, so this proves nothing")
+
+        MVStubURLProtocol.stub = .init(statusCode: 404, headers: [:], body: Data())
+        let result = await loader.load(image)
+
+        guard case .failure = result else { return XCTFail("a 404 was answered from the cache") }
+    }
+}

@@ -52,6 +52,8 @@ public final class ReaderSession {
     @ObservationIgnored public var onCurrentRemoved: (@MainActor (ReaderRemoval) -> Void)?
 
     @ObservationIgnored public let api: MVApiClient
+    /// Serves a page's inline images and sender photos, from the offline cache when need be.
+    @ObservationIgnored public let resources: MVReaderResourceLoader
     @ObservationIgnored private let ledger: MVIntentLedger
     /// The ledger's sequence when each page's conversation was read.
     @ObservationIgnored private var pageSequences: [UUID: Int] = [:]
@@ -99,6 +101,7 @@ public final class ReaderSession {
         self.canvasChoices = canvasStore.load()
         self.threadCache = threadCache
         self.offlineCache = offlineCache
+        self.resources = MVReaderResourceLoader(api: api, offlineCache: offlineCache)
         self.lookups = ReaderLookups(api: api, cache: referenceCache)
         self.cacheDirectory = cacheDirectory.appendingPathComponent("attachments", isDirectory: true)
         let source = registry.source(for: context.source)
@@ -312,11 +315,14 @@ public final class ReaderSession {
     /// when the message has been read since. `false` when there is no copy, or the page was let go
     /// meanwhile.
     private func showOfflineCopy(_ rowId: UUID) async -> Bool {
-        guard let offlineCache, let saved = await offlineCache.conversation(for: rowId), !Task.isCancelled,
-            pages[rowId] != nil
-        else { return false }
-        // Folder roles and photos only when already in memory: the server has just failed to answer.
-        _ = applyReferenceDataIfCached(for: saved.thread.messages, rowId: rowId)
+        guard let offlineCache, let saved = await offlineCache.conversation(for: rowId) else { return false }
+        let savedRoles = await offlineCache.folderRoles()
+        guard !Task.isCancelled, pages[rowId] != nil else { return false }
+        // Folder roles and photos from memory when there; otherwise the roles kept on disk, so
+        // Delete still reads Delete Forever in Trash.
+        if !applyReferenceDataIfCached(for: saved.thread.messages, rowId: rowId) {
+            for (folderId, role) in savedRoles where folderRoles[folderId] == nil { folderRoles[folderId] = role }
+        }
         savedCopies[rowId] = saved.savedAt
         awaitingRevalidation.insert(rowId)
         show(saved.thread, for: rowId, readAt: 0)

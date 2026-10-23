@@ -63,7 +63,8 @@ private struct ConnectedShell: View {
             ComposerScreen(intent: intent, environment: environment, connection: connection)
         }
         .task {
-            ReaderWebKit.prewarm(api: connection.apiClient)
+            ReaderWebKit.prewarm(
+                resources: MVReaderResourceLoader(api: connection.apiClient, offlineCache: connection.offlineCache))
         }
         #if DEBUG
             .task {
