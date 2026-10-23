@@ -258,6 +258,9 @@ final class AppEnvironment {
         connection?.liveEventHub.disconnect()
         connection?.intentLedger.stop()
         let connectivity = MVNetworkPathConnectivity()
+        connectivity.observe { [weak liveEventHub] online in
+            if online { liveEventHub?.networkPathRestored() }
+        }
         let intentLedger = MVIntentLedger(
             transport: client, persistence: Self.intentPersistence(serverURL: backendURL),
             connectivity: connectivity, toasts: toasts)

@@ -73,9 +73,9 @@ final class MailboxesStoreTests: XCTestCase {
         // Every read fails, the accounts read last. The load awaits that one first, so by the time
         // it throws no other request is still in flight to be cancelled — answering a cancelled
         // request is what swift-corelibs-foundation hangs or crashes on.
-        MVStubURLProtocol.stub = .init(statusCode: 502, headers: [:], body: Data())
+        MVStubURLProtocol.stub = .init(statusCode: 503, headers: [:], body: Data())
         MVStubURLProtocol.stubsByPath = [
-            "/api/accounts": .init(statusCode: 502, headers: [:], body: Data(), delay: 0.3)
+            "/api/accounts": .init(statusCode: 503, headers: [:], body: Data(), delay: 0.3)
         ]
         let accountId = UUID()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -20,6 +20,14 @@ public enum MVError: Error, Equatable {
     /// its own sign-in screen rather than answering with a status an API client can act on.
     case proxyRequiresBrowserLogin
 
+    /// The HTTP status the server answered with, when it answered at all.
+    public var statusCode: Int? {
+        switch self {
+        case .detail(_, let statusCode), .http(let statusCode, _): return statusCode
+        case .transport, .decoding, .proxyRequiresBrowserLogin: return nil
+        }
+    }
+
     /// The server refused the credential rather than the request.
     ///
     /// Worth asking of the error rather than of a status code at each call site: every caller

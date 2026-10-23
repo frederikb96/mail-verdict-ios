@@ -49,7 +49,7 @@ final class MessagePlaceResolverEndToEndTests: XCTestCase {
 
     /// Offline, "Show in Folder" must not claim the message is gone.
     func testAnUnreachableServerIsNotReportedAsAMissingMessage() async throws {
-        MVStubURLProtocol.stub = .init(statusCode: 502, headers: [:], body: Data())
+        MVStubURLProtocol.stub = .init(statusCode: 503, headers: [:], body: Data())
         let client = MVApiClient(
             requestFactory: try MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none }),
             urlSession: MVStubURLProtocol.makeSession())

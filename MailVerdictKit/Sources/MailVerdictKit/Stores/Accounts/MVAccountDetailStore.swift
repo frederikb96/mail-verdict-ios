@@ -79,7 +79,7 @@ public final class MVAccountDetailStore {
             syncStatus = try? await apiClient.getSyncStatus(accountId: accountId)
             state = .loaded(fetched)
         } catch {
-            if Self.isNotFound(error) {
+            if error.mvIsNotFound {
                 wasDeletedElsewhere = true
             }
         }
@@ -123,13 +123,6 @@ public final class MVAccountDetailStore {
 
     public func delete() async throws {
         try await apiClient.deleteAccount(id: accountId)
-    }
-
-    private static func isNotFound(_ error: Error) -> Bool {
-        switch error as? MVError {
-        case .detail(_, let status)?, .http(let status, _)?: return status == 404
-        default: return false
-        }
     }
 
     /// Human explanation for the IMAP extension PostIMAP is using to detect changes on this

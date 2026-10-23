@@ -15,6 +15,7 @@ public struct MVApiClient: Sendable {
     private let requestFactory: MVRequestFactory
     private let urlSession: URLSession
     private let onAuthenticationFailure: (@Sendable (MVError) -> Void)?
+    private let readRetry: MVReadRetryPolicy
 
     /// `onAuthenticationFailure` is called whenever the server refuses the credential, before the
     /// error is thrown to the caller.
@@ -26,11 +27,13 @@ public struct MVApiClient: Sendable {
     public init(
         requestFactory: MVRequestFactory,
         urlSession: URLSession = .mvDefault,
-        onAuthenticationFailure: (@Sendable (MVError) -> Void)? = nil
+        onAuthenticationFailure: (@Sendable (MVError) -> Void)? = nil,
+        readRetry: MVReadRetryPolicy = MVReadRetryPolicy()
     ) {
         self.requestFactory = requestFactory
         self.urlSession = urlSession
         self.onAuthenticationFailure = onAuthenticationFailure
+        self.readRetry = readRetry
     }
 
     // MARK: Core request helper
@@ -163,8 +166,27 @@ public struct MVApiClient: Sendable {
         var request = try requestFactory.makeRequest(
             path: path, method: method, query: query, body: body, contentType: contentType
         )
-        if let timeout { request.timeoutInterval = timeout }
-        return try await urlSession.data(for: request)
+        let isRead = method == "GET"
+        if let timeout {
+            request.timeoutInterval = timeout
+        } else if isRead {
+            request.timeoutInterval = readRetry.readTimeout
+        }
+        guard isRead else { return try await urlSession.data(for: request) }
+        var delays = readRetry.delays[...]
+        while true {
+            do {
+                let (data, response) = try await urlSession.data(for: request)
+                guard let delay = delays.first, let http = response as? HTTPURLResponse,
+                    MVReadRetryPolicy.isTransient(statusCode: http.statusCode)
+                else { return (data, response) }
+                delays.removeFirst()
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            } catch  where !delays.isEmpty && MVReadRetryPolicy.isTransient(error) {
+                let delay = delays.removeFirst()
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+        }
     }
 
     static func encodeBody<T: Encodable>(_ value: T) throws -> Data {

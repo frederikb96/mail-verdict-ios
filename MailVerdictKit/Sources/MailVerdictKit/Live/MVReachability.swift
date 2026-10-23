@@ -30,15 +30,37 @@ public enum MVReachability: Sendable, Equatable {
 
 /// The device's network path as something a view can observe: `MVConnectivity` reports changes
 /// through a callback, which SwiftUI cannot see.
+///
+/// A path lost for less than `offlineGrace` does not count — a handover between Wi-Fi and cellular
+/// reports a brief loss, and showing "Offline" for it would flash the capsule for nothing. A path
+/// coming back counts at once. The intent ledger reads the raw connectivity instead: pausing
+/// delivery for the blip is right there.
 @Observable
 @MainActor
 public final class MVNetworkStatus {
-    public private(set) var pathAvailable: Bool
+    public static let defaultOfflineGrace: TimeInterval = 2
 
-    public init(connectivity: any MVConnectivity) {
+    public private(set) var pathAvailable: Bool
+    @ObservationIgnored private var pendingLoss: Task<Void, Never>?
+
+    public init(connectivity: any MVConnectivity, offlineGrace: TimeInterval = defaultOfflineGrace) {
         pathAvailable = connectivity.isOnline
         connectivity.observe { [weak self] online in
-            self?.pathAvailable = online
+            self?.pathChanged(online: online, grace: offlineGrace)
+        }
+    }
+
+    private func pathChanged(online: Bool, grace: TimeInterval) {
+        pendingLoss?.cancel()
+        pendingLoss = nil
+        if online {
+            if !pathAvailable { pathAvailable = true }
+            return
+        }
+        pendingLoss = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(grace * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            self.pathAvailable = false
         }
     }
 }
