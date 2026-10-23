@@ -95,15 +95,7 @@ public struct MVFileIntentPersistence: MVIntentPersistence {
     }
 
     static func fileKey(_ serverURL: String) -> String {
-        var normalized = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        while normalized.hasSuffix("/") { normalized.removeLast() }
-        // FNV-1a, 64 bit: stable across launches and platforms, unlike `Hasher`.
-        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-        for byte in normalized.utf8 {
-            hash ^= UInt64(byte)
-            hash = hash &* 0x0000_0100_0000_01b3
-        }
-        return String(hash, radix: 16)
+        MVServerKey.fileKey(serverURL)
     }
 
     private struct File: Codable {

@@ -90,8 +90,13 @@ public struct MailboxesDiskCache: Sendable {
     private static let maxAge: TimeInterval = 24 * 3600
     private let fileURL: URL
 
-    /// `directory` is injectable so a test never touches the real Caches directory.
-    public init(directory: URL = FileManager.default.temporaryDirectory) {
+    /// `directory` is injectable so a test never touches the real Caches directory. Caches rather
+    /// than the temporary directory, which the system may empty whenever the app is not running —
+    /// exactly when a launch without a network would need it.
+    public init(
+        directory: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+    ) {
         self.fileURL = directory.appendingPathComponent("mailboxes-cache.json")
     }
 
@@ -101,14 +106,16 @@ public struct MailboxesDiskCache: Sendable {
     }
 
     /// `nil` when there is nothing cached, the file is unreadable, or the cache is older than 24
-    /// hours — stale enough that showing it would read as wrong rather than merely out of date.
-    public func load(now: Date = Date()) -> MVMailboxesCacheSnapshot? {
+    /// hours — stale enough that showing it would read as wrong rather than merely out of date —
+    /// unless `ignoringAge`: with the server unreachable, an old overview still leads to the lists
+    /// saved for reading offline.
+    public func load(now: Date = Date(), ignoringAge: Bool = false) -> MVMailboxesCacheSnapshot? {
         guard let data = try? Data(contentsOf: fileURL),
             let snapshot = try? JSONDecoder.mvDefault.decode(MVMailboxesCacheSnapshot.self, from: data)
         else {
             return nil
         }
-        guard now.timeIntervalSince(snapshot.savedAt) < Self.maxAge else { return nil }
+        guard ignoringAge || now.timeIntervalSince(snapshot.savedAt) < Self.maxAge else { return nil }
         return snapshot
     }
 }

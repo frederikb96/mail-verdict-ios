@@ -45,6 +45,9 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     public private(set) var isFilterLoading = false
     public private(set) var isSelecting = false
     public private(set) var selection: MVSelection = .empty
+    /// When the rows on screen were saved, while they come from the offline cache because the
+    /// server could not be reached; `nil` once the server has answered.
+    public private(set) var savedCopyAt: Date?
 
     @ObservationIgnored private let backend: any MVMailListBackend
     @ObservationIgnored private let ledger: MVIntentLedger
@@ -56,6 +59,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     /// a list opened again shows badges, avatars and counts at once, and fresh reads go through
     /// it so every screen shares them.
     @ObservationIgnored private let referenceCache: MVReferenceCache?
+    /// Where the newest page of this list is kept for reading offline, when there is one.
+    @ObservationIgnored private let offlineCache: MVOfflineCache?
     @ObservationIgnored private let toasts: MVToastStore?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let session: MVListSession
@@ -78,6 +83,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         (rows: [MessageSummary], sequence: Int, hasOlder: Bool, hasNewer: Bool, identity: MVListIdentity)?
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var wasConnected: Bool?
+    /// Why the last refresh read nothing, until the next one starts.
+    @ObservationIgnored private var lastRefreshFailure: Error?
 
     public static let filterMinimumLength = 2
     static let filterDebounceNanos: UInt64 = 150_000_000
@@ -85,7 +92,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     public init(
         scope: ListScope, aroundMessageId: UUID? = nil, backend: any MVMailListBackend, ledger: MVIntentLedger,
         toasts: MVToastStore?, defaults: UserDefaults = .standard, session: MVListSession? = nil,
-        referenceCache: MVReferenceCache? = nil
+        referenceCache: MVReferenceCache? = nil, offlineCache: MVOfflineCache? = nil
     ) {
         let session = session ?? .shared
         let threaded = MVListPreferences.threaded(defaults: defaults)
@@ -99,6 +106,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         self.backend = backend
         self.ledger = ledger
         self.referenceCache = referenceCache
+        self.offlineCache = offlineCache
         self.toasts = toasts
         self.defaults = defaults
         self.session = session
@@ -297,6 +305,8 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                 scope: scope, threaded: threaded, unreadOnly: unreadOnly, filterQuery: "", generation: expected
             )
             phase = .loaded
+            savedCopyAt = nil
+            saveOfflineCopy()
             guard landedAround, let target else { return }
             if aroundId == nil, let anchor = restoring?.anchor, rows.contains(where: { $0.id == anchor.rowId }) {
                 pendingLanding = .restore(anchor)
@@ -305,12 +315,56 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
             }
         } catch {
             guard generation == expected else { return }
+            if error.mvIsServerUnreachable,
+                await showOfflineCopy(
+                    threaded: threaded, unreadOnly: unreadOnly, aroundId: aroundId, restoring: restoring,
+                    generation: expected)
+            {
+                return
+            }
             if rows.isEmpty {
                 phase = .failed(message: error.mvUserMessage, detail: error.mvTechnicalDetail)
             } else {
                 showError("Could not load messages: \(error.mvUserMessage)")
             }
         }
+    }
+
+    /// The page last saved for this list, shown in place of a read the server could not answer.
+    /// `false`, changing nothing, when there is none or the list changed meanwhile.
+    private func showOfflineCopy(
+        threaded: Bool, unreadOnly: Bool, aroundId: UUID?, restoring: MVListPositionStore.Position?,
+        generation expected: Int
+    ) async -> Bool {
+        let key = MVOfflineListKey(scope: scope, threaded: threaded, unreadOnly: unreadOnly)
+        guard let offlineCache, let page = await offlineCache.list(for: key), generation == expected else {
+            return false
+        }
+        noteRead(page.rows, asOf: nil)
+        // Read at an unknown sequence: every intent not yet retired applies over it.
+        setBase(page.rows, readAt: 0)
+        hasOlder = page.hasOlder
+        hasNewer = false
+        identity = MVListIdentity(
+            scope: scope, threaded: threaded, unreadOnly: unreadOnly, filterQuery: "", generation: expected)
+        phase = .loaded
+        savedCopyAt = page.savedAt
+        if aroundId == nil, let anchor = restoring?.anchor, rows.contains(where: { $0.id == anchor.rowId }) {
+            pendingLanding = .restore(anchor)
+        } else if let aroundId, rows.contains(where: { $0.id == aroundId }) {
+            pendingLanding = .revealInUpperThird(aroundId)
+        }
+        return true
+    }
+
+    /// Keeps the rows just read for reading offline — only a window that starts at the newest
+    /// message, which is what a list opened offline shows.
+    private func saveOfflineCopy() {
+        guard let offlineCache, !hasNewer, !isFilterActive, !baseRows.isEmpty else { return }
+        let rows = baseRows
+        let hasOlder = hasOlder
+        let key = MVOfflineListKey(scope: scope, threaded: identity.threaded, unreadOnly: identity.unreadOnly)
+        Task { await offlineCache.saveList(rows, hasOlder: hasOlder, for: key) }
     }
 
     /// Grouped by conversation, the server centres an around page on the row representing the
@@ -439,6 +493,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     }
 
     private func refreshOnce() async {
+        lastRefreshFailure = nil
         guard phase == .loaded, !isFilterActive, !baseRows.isEmpty else { return }
         let started = identity
         let readAt = ledger.sequence
@@ -463,6 +518,7 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                 noteRead(response.messages, asOf: response.asOf)
                 setBase(merged.rows, readAt: readAt)
                 hasNewer = merged.hasNewer
+                savedCopyAt = nil
             } else {
                 let response = try await backend.fetchListPage(
                     scope: scope, threaded: started.threaded, unreadOnly: started.unreadOnly, cursor: .newest,
@@ -476,9 +532,12 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
                 noteRead(response.messages, asOf: response.asOf)
                 setBase(merged.rows, readAt: readAt)
                 hasOlder = merged.hasMore
+                savedCopyAt = nil
             }
+            saveOfflineCopy()
         } catch {
             // The next change, foreground return or reconnect refreshes again.
+            lastRefreshFailure = error
         }
     }
 
@@ -488,6 +547,11 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         }
         await refresh()
         await loadContext()
+        // Pull to refresh is asked for, so a refresh that could not reach the server says so
+        // rather than ending as though it had.
+        if let failure = lastRefreshFailure, failure.mvIsServerUnreachable {
+            toasts?.show(MVToast(variant: .info, message: "Could not refresh: \(failure.mvUserMessage)", duration: 3))
+        }
     }
 
     /// The last copy of everything the context needs, before any request: a list opened again
@@ -657,8 +721,14 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
     public func setConnected(_ connected: Bool) {
         let wasDisconnected = wasConnected == false
         wasConnected = connected
-        // A reconnect may have missed events; the window is re-read rather than trusted.
-        if connected && wasDisconnected { requestRefresh() }
+        // A reconnect may have missed events; the window is re-read rather than trusted. A list
+        // that never loaded — opened offline with nothing saved — loads now.
+        guard connected && wasDisconnected else { return }
+        if case .failed = phase {
+            Task { [weak self] in await self?.retry() }
+        } else {
+            requestRefresh()
+        }
     }
 
     public func apply(_ invalidations: [MVLiveInvalidation]) {
@@ -907,18 +977,22 @@ public final class MVMailListStore: ReaderListSource, LiveEventSubscriber, MVInt
         }
     }
 
-    /// `connection` is the live stream's own state (`LiveEventHub.connectionState`).
-    public func subtitle(now: Date = Date(), connection: MVConnectionState = .connected) -> String {
-        switch connection {
-        case .reconnecting: return "Connecting…"
-        case .disconnected: return "Offline"
-        case .connected: break
+    public func subtitle(now: Date = Date(), reachability: MVReachability = .online) -> String {
+        switch reachability {
+        case .serverUnreachable: return "Connecting…"
+        case .offline: return "Offline"
+        case .online: break
         }
         if let waiting = ledger.waitingSummary { return waiting }
         if unreadOnly { return "Filtered by: Unread" }
         let synced = scopeFolderIds.compactMap { context.folders[$0]?.lastSyncedAt }.max()
         guard let synced else { return "" }
         return "Updated \(MVDateFormat.relativeAgo(synced, now: now))"
+    }
+
+    /// The capsule saying the list is not live, or `nil` while it is.
+    public func offlineNotice(reachability: MVReachability, now: Date = Date()) -> MVOfflineNotice? {
+        MVOfflineNotice.make(reachability: reachability, savedAt: savedCopyAt, now: now)
     }
 
     public var emptyStateMessage: String {

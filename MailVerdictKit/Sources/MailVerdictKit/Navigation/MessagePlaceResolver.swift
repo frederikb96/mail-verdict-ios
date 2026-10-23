@@ -91,7 +91,12 @@ public struct MVMessagePlaceResolver: Sendable {
     }
 
     public func resolve(messageId: UUID) async -> MVMessagePlaceResolution {
-        guard let location = try? await apiClient.locateMessage(id: messageId) else {
+        let location: MessageLocation
+        do {
+            location = try await apiClient.locateMessage(id: messageId)
+        } catch  where error.mvIsServerUnreachable {
+            return .notFound(toastMessage: "Could not find the message's folder: \(error.mvUserMessage)")
+        } catch {
             return .notFound(toastMessage: "That message no longer exists")
         }
         let scope = Self.resolveScope(

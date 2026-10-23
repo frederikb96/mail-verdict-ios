@@ -65,6 +65,47 @@ final class MailboxesStoreTests: XCTestCase {
 
         XCTAssertTrue(relaunched.isCollapsed(key), "a relaunch lost collapse state persisted by an earlier instance")
     }
+
+    /// Too old to paint before the network answers, the last overview is still what leads to the
+    /// lists saved for reading offline once the server turns out to be unreachable.
+    func testAStaleOverviewIsShownWhenTheServerIsUnreachable() async {
+        defer { MVStubURLProtocol.reset() }
+        // Every read fails, the accounts read last. The load awaits that one first, so by the time
+        // it throws no other request is still in flight to be cancelled — answering a cancelled
+        // request is what swift-corelibs-foundation hangs or crashes on.
+        MVStubURLProtocol.stub = .init(statusCode: 502, headers: [:], body: Data())
+        MVStubURLProtocol.stubsByPath = [
+            "/api/accounts": .init(statusCode: 502, headers: [:], body: Data(), delay: 0.3)
+        ]
+        let accountId = UUID()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let diskCache = MailboxesDiskCache(directory: directory)
+        diskCache.save(
+            MVMailboxesCacheSnapshot(
+                unified: [],
+                accounts: [
+                    MVMailboxesCachedAccount(
+                        id: accountId, name: "Work", emoji: nil,
+                        folders: [
+                            MVMailboxesCachedFolder(
+                                id: UUID(), displayName: "Inbox", specialUse: "inbox", badgeCount: 0, totalCount: 3)
+                        ])
+                ],
+                savedAt: Date(timeIntervalSinceNow: -3 * 86_400)))
+        let factory = try! MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none })
+        let client = MVApiClient(requestFactory: factory, urlSession: MVStubURLProtocol.makeSession())
+        let suite = try! XCTUnwrap(UserDefaults(suiteName: "mailboxes-store-\(UUID())"))
+        let store = MailboxesStore(
+            apiClient: client, ledger: makeTestLedger(transport: client), uiState: MailboxesUIState(defaults: suite),
+            diskCache: diskCache, recentViews: MVRecentViewRecord(defaults: suite))
+        XCTAssertTrue(store.accountSections.isEmpty, "a stale overview painted before the network answered")
+
+        await store.load()
+
+        XCTAssertEqual(store.accountSections.map(\.id), [accountId])
+        XCTAssertNotNil(store.loadError)
+    }
 }
 
 final class MailboxesFolderRowTests: XCTestCase {

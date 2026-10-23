@@ -97,7 +97,8 @@ final class ReaderSessionTests: XCTestCase {
 
     private func makeSession(
         rows: [UUID], opening: UUID, seen: Bool = false, tracker: MVExplicitUnreadTracker = MVExplicitUnreadTracker(),
-        threadCache: MVThreadCache? = nil, referenceCache: MVReferenceCache? = nil, toasts: MVToastStore? = nil
+        threadCache: MVThreadCache? = nil, referenceCache: MVReferenceCache? = nil, toasts: MVToastStore? = nil,
+        offlineCache: MVOfflineCache? = nil
     ) throws -> (ReaderSession, ReaderTestSource) {
         for id in rows {
             ReaderRouteStub.route(
@@ -119,7 +120,7 @@ final class ReaderSessionTests: XCTestCase {
             registry: registry, tracker: tracker,
             canvasStore: MVCanvasPreferenceStore(defaults: defaults),
             cacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
-            threadCache: threadCache, referenceCache: referenceCache)
+            threadCache: threadCache, referenceCache: referenceCache, offlineCache: offlineCache)
         return (session, source)
     }
 
@@ -133,6 +134,88 @@ final class ReaderSessionTests: XCTestCase {
     }
 
     private func actionPath(_ id: UUID) -> String { "POST /api/messages/\(id)/action" }
+
+    /// Reads `id` online through a session of its own, so the offline cache holds it.
+    private func saveOffline(_ id: UUID, in cache: MVOfflineCache) async throws -> Bool {
+        let (online, _) = try makeSession(rows: [id], opening: id, offlineCache: cache)
+        _ = online.document(for: id)
+        for _ in 0..<250 {
+            if await cache.conversation(for: id) != nil { return true }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return false
+    }
+
+    /// A conversation read once opens again with the server unreachable, from the saved copy. The
+    /// copy may say unread when the message has been read since, so nothing is marked read on its
+    /// strength; once the server is back the page is read again, and that answer is acted on.
+    func testAConversationOpensOfflineFromItsSavedCopyAndIsMarkedReadOnlyOnceBackOnline() async throws {
+        let (cache, _) = makeOfflineCache()
+        let wasSaved = try await saveOffline(a, in: cache)
+        XCTAssertTrue(wasSaved, "the conversation was never saved, so the rest proves nothing")
+        let (session, _) = try makeSession(rows: [a], opening: a, offlineCache: cache)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 502, body: Data())
+        ReaderRouteStub.route(
+            "POST", "/api/messages/\(a)/action",
+            json: MessageActionResponse(success: true, action: "mark_read", messageId: a, message: nil))
+
+        session.didSettle(on: a)
+
+        let drawn = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(drawn, "the saved copy was never drawn")
+        XCTAssertEqual(session.offlineNotice(reachability: .offline)?.text.hasPrefix("Offline · Saved"), true)
+        // An absence: given the time a mark-read would take to go out, none went.
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertFalse(ReaderRouteStub.recorded.contains(actionPath(a)), "marked read on the strength of the copy")
+        XCTAssertFalse(ReaderRouteStub.recorded.contains("GET /api/alerts"))
+
+        ReaderRouteStub.route(
+            "GET", "/api/messages/\(a)/thread", json: ThreadResponse(messages: [message(a, seen: false)]))
+        session.setConnected(true)
+
+        let marked = await waitUntil { ReaderRouteStub.recorded.contains(self.actionPath(self.a)) }
+        XCTAssertTrue(marked, "back online, the message was never marked read")
+        XCTAssertNil(session.offlineNotice(reachability: .online))
+    }
+
+    /// Opened offline with nothing saved, the page says so — and loads by itself once the live
+    /// connection is back.
+    func testAPageWithNothingSavedSaysSoAndLoadsOnReconnect() async throws {
+        let (cache, _) = makeOfflineCache()
+        let (session, _) = try makeSession(rows: [a], opening: a, offlineCache: cache)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 502, body: Data())
+
+        _ = session.document(for: a)
+
+        let failed = await waitUntil { session.pages[self.a] == .failed(ReaderSession.notSavedOfflineMessage) }
+        XCTAssertTrue(failed, "the page never said it was not saved: \(String(describing: session.pages[a]))")
+
+        ReaderRouteStub.route(
+            "GET", "/api/messages/\(a)/thread", json: ThreadResponse(messages: [message(a, seen: true)]))
+        session.setConnected(true)
+
+        let loaded = await waitUntil { session.conversation(for: self.a) != nil }
+        XCTAssertTrue(loaded, "back online, the page never loaded")
+    }
+
+    /// A server that answered with an error is not offline: the page says so, rather than showing
+    /// a copy of mail it may have removed since.
+    func testAServerErrorIsNotAnsweredWithTheSavedCopy() async throws {
+        let (cache, _) = makeOfflineCache()
+        let wasSaved = try await saveOffline(a, in: cache)
+        XCTAssertTrue(wasSaved, "the conversation was never saved, so this proves nothing")
+        let (session, _) = try makeSession(rows: [a], opening: a, offlineCache: cache)
+        ReaderRouteStub.route("GET", "/api/messages/\(a)/thread", status: 500, body: Data())
+
+        _ = session.document(for: a)
+
+        let failed = await waitUntil {
+            if case .failed = session.pages[self.a] { return true }
+            return false
+        }
+        XCTAssertTrue(failed, "the page never settled on the server's error")
+        XCTAssertNil(session.conversation(for: a))
+    }
 
     func testSettlingMarksOnlyTheSettledMessageRead() async throws {
         ReaderRouteStub.route(
