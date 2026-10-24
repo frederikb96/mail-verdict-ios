@@ -30,7 +30,7 @@ let package = Package(
         .library(name: "PushEnvelope", targets: ["PushEnvelope"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.14.1"),
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.14.3"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "5.0.3"),
     ],
     targets: [
