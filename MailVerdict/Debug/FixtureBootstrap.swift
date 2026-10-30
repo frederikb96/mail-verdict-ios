@@ -134,6 +134,8 @@ import MailVerdictKit
             register(.get, "/api/accounts/\(accountId2)/folder-order", folders2)
             register(.get, "/api/accounts/\(accountId1)/sync-status", syncStatus1)
             register(.get, "/api/accounts/\(accountId2)/sync-status", syncStatus2)
+            registerForAnyAccount("/folder-order", folders1)
+            registerForAnyAccount("/sync-status", syncStatus1)
             register(.get, "/api/unified/folders", [UnifiedFolderResponse]())
             register(.get, "/api/outbox", [OutboxResponse]())
             register(.get, "/api/outbox/pending", [PendingSendResponse]())
@@ -164,6 +166,11 @@ import MailVerdictKit
         private static func register<T: Encodable>(_ method: Method, _ path: String, _ value: T) {
             let data = (try? JSONEncoder.mvDefault.encode(value)) ?? Data("[]".utf8)
             MVFixtureURLProtocol.register(method: method.rawValue, path: path) { data }
+        }
+
+        private static func registerForAnyAccount<T: Encodable>(_ suffix: String, _ value: T) {
+            let data = (try? JSONEncoder.mvDefault.encode(value)) ?? Data("[]".utf8)
+            MVFixtureURLProtocol.registerForAnyAccount(method: "GET", suffix: suffix) { data }
         }
     }
 

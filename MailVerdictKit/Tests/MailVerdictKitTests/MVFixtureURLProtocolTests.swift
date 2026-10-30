@@ -56,6 +56,19 @@
             let match = MVFixtureURLProtocol.route(method: "POST", path: "/api/health")
             XCTAssertEqual(match.status, 404)
         }
+
+        func testAnAnyAccountRouteAnswersUnknownIdsAndLosesToAnExactRoute() {
+            MVFixtureURLProtocol.registerForAnyAccount(method: "GET", suffix: "/sync-status") { Data("any".utf8) }
+            MVFixtureURLProtocol.register(method: "GET", path: "/api/accounts/a/sync-status") { Data("exact".utf8) }
+
+            XCTAssertEqual(
+                MVFixtureURLProtocol.route(method: "GET", path: "/api/accounts/b/sync-status").body(), Data("any".utf8))
+            XCTAssertEqual(
+                MVFixtureURLProtocol.route(method: "GET", path: "/api/accounts/a/sync-status").body(),
+                Data("exact".utf8))
+            XCTAssertEqual(MVFixtureURLProtocol.route(method: "GET", path: "/api/other/sync-status").status, 404)
+            XCTAssertEqual(MVFixtureURLProtocol.misses, ["GET /api/other/sync-status"])
+        }
     }
 
     private struct FixtureErrorBody: Decodable {
