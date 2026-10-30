@@ -11,6 +11,8 @@
 		1B0000000000000000000016 /* Push in Frameworks */ = {isa = PBXBuildFile; productRef = 1B0000000000000000000015 /* Push */; };
 		1B000000000000000000003A /* PushEnvelope in Frameworks */ = {isa = PBXBuildFile; productRef = 1B0000000000000000000039 /* PushEnvelope */; };
 		1B0000000000000000000042 /* MailVerdictNotify.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1B0000000000000000000031 /* MailVerdictNotify.appex */; settings = {ATTRIBUTES = (RemoveHeaderOnCopy, ); }; };
+		1B000000000000000000005A /* MailVerdictKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1B0000000000000000000059 /* MailVerdictKit */; };
+		1B000000000000000000005B /* MailVerdictShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1B0000000000000000000051 /* MailVerdictShare.appex */; settings = {ATTRIBUTES = (RemoveHeaderOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -20,6 +22,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 1B0000000000000000000030;
 			remoteInfo = MailVerdictNotify;
+		};
+		1B000000000000000000005D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1B0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1B0000000000000000000050;
+			remoteInfo = MailVerdictShare;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -31,6 +40,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				1B0000000000000000000042 /* MailVerdictNotify.appex in Embed Foundation Extensions */,
+				1B000000000000000000005B /* MailVerdictShare.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -41,6 +51,7 @@
 		1B0000000000000000000003 /* MailVerdict.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MailVerdict.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B0000000000000000000013 /* Version.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Version.xcconfig; sourceTree = "<group>"; };
 		1B0000000000000000000031 /* MailVerdictNotify.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MailVerdictNotify.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		1B0000000000000000000051 /* MailVerdictShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MailVerdictShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -52,6 +63,11 @@
 		1B0000000000000000000032 /* MailVerdictNotify */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = MailVerdictNotify;
+			sourceTree = "<group>";
+		};
+		1B0000000000000000000052 /* MailVerdictShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MailVerdictShare;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -74,6 +90,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1B0000000000000000000054 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1B000000000000000000005A /* MailVerdictKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -82,6 +106,7 @@
 			children = (
 				1B0000000000000000000006 /* MailVerdict */,
 				1B0000000000000000000032 /* MailVerdictNotify */,
+				1B0000000000000000000052 /* MailVerdictShare */,
 				1B0000000000000000000014 /* Config */,
 				1B0000000000000000000005 /* Products */,
 			);
@@ -92,6 +117,7 @@
 			children = (
 				1B0000000000000000000003 /* MailVerdict.app */,
 				1B0000000000000000000031 /* MailVerdictNotify.appex */,
+				1B0000000000000000000051 /* MailVerdictShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -120,6 +146,7 @@
 			);
 			dependencies = (
 				1B0000000000000000000045 /* PBXTargetDependency */,
+				1B000000000000000000005C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				1B0000000000000000000006 /* MailVerdict */,
@@ -156,6 +183,29 @@
 			productReference = 1B0000000000000000000031 /* MailVerdictNotify.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		1B0000000000000000000050 /* MailVerdictShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1B0000000000000000000056 /* Build configuration list for PBXNativeTarget "MailVerdictShare" */;
+			buildPhases = (
+				1B0000000000000000000053 /* Sources */,
+				1B0000000000000000000054 /* Frameworks */,
+				1B0000000000000000000055 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				1B0000000000000000000052 /* MailVerdictShare */,
+			);
+			name = MailVerdictShare;
+			packageProductDependencies = (
+				1B0000000000000000000059 /* MailVerdictKit */,
+			);
+			productName = MailVerdictShare;
+			productReference = 1B0000000000000000000051 /* MailVerdictShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -170,6 +220,9 @@
 						CreatedOnToolsVersion = 26.0;
 					};
 					1B0000000000000000000030 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					1B0000000000000000000050 = {
 						CreatedOnToolsVersion = 26.0;
 					};
 				};
@@ -193,6 +246,7 @@
 			targets = (
 				1B0000000000000000000002 /* MailVerdict */,
 				1B0000000000000000000030 /* MailVerdictNotify */,
+				1B0000000000000000000050 /* MailVerdictShare */,
 			);
 		};
 /* End PBXProject section */
@@ -206,6 +260,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		1B0000000000000000000035 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1B0000000000000000000055 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -229,6 +290,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1B0000000000000000000053 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -236,6 +304,11 @@
 			isa = PBXTargetDependency;
 			target = 1B0000000000000000000030 /* MailVerdictNotify */;
 			targetProxy = 1B0000000000000000000046 /* PBXContainerItemProxy */;
+		};
+		1B000000000000000000005C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1B0000000000000000000050 /* MailVerdictShare */;
+			targetProxy = 1B000000000000000000005D /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -384,6 +457,53 @@
 			};
 			name = Release;
 		};
+		1B0000000000000000000057 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = MailVerdictShare/MailVerdictShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Info-MailVerdictShare.plist";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(MARKETING_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.frederikberg.mailverdict.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		1B0000000000000000000058 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = MailVerdictShare/MailVerdictShare.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = CSHG4AV9YH;
+				PROVISIONING_PROFILE_SPECIFIER = "MailVerdict Share App Store";
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Info-MailVerdictShare.plist";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(MARKETING_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.frederikberg.mailverdict.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -414,6 +534,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		1B0000000000000000000056 /* Build configuration list for PBXNativeTarget "MailVerdictShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1B0000000000000000000057 /* Debug */,
+				1B0000000000000000000058 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -435,6 +564,10 @@
 		1B0000000000000000000039 /* PushEnvelope */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PushEnvelope;
+		};
+		1B0000000000000000000059 /* MailVerdictKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MailVerdictKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

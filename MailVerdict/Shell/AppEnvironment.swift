@@ -157,6 +157,7 @@ final class AppEnvironment {
         connection?.liveEventHub.disconnect()
         connection?.intentLedger.stop()
         credentials.write(nil)
+        credentials.writeBackendURL(nil)
         connection = nil
         lastAuthFailure = detail
         router.gate = .tokenRejected
@@ -169,6 +170,7 @@ final class AppEnvironment {
         if let offlineCache = connection?.offlineCache { Task { await offlineCache.discard() } }
         MVOfflineCache.removeAll(under: Self.offlineCacheBase)
         credentials.write(nil)
+        credentials.writeBackendURL(nil)
         connection = nil
         lastAuthFailure = nil
         router = Router(gate: .needsConfiguration)
@@ -274,6 +276,9 @@ final class AppEnvironment {
             networkStatus: MVNetworkStatus(connectivity: connectivity),
             offlineCache: offlineCache)
         lastAuthFailure = nil
+        // Every launch with a stored credential comes through here, so an install that predates
+        // the share extension publishes its address on first launch after the update.
+        credentials.writeBackendURL(backendURL)
         router.gate = .ready
         return true
     }

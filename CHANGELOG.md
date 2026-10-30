@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- A share extension: files, images, text and links shared from any app can be added to Orders, or
+  saved as a draft with the files attached in a chosen account. The Keychain credential store
+  moved into the package so the extension reads the same item, and the app publishes the backend
+  address next to it.
+
 ### Fixed
 
 - The push relay rejects a ticket whose last base64 character has unused bits set. Before, one
