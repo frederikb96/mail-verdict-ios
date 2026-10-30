@@ -263,7 +263,7 @@ import UIKit
             guard let output else { return Data() }
             let scaled = output.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
             let padded = scaled.composited(
-                over: CIImage(color: .white).cropped(to: scaled.extent.insetBy(dx: -64, dy: -64)))
+                over: CIImage(color: .white).cropped(to: scaled.extent.insetBy(dx: -24, dy: -24)))
             let context = CIContext()
             guard let cg = context.createCGImage(padded, from: padded.extent) else { return Data() }
             return UIImage(cgImage: cg).pngData() ?? Data()
