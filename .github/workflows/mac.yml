@@ -9,6 +9,7 @@ name: Mac
 # looking at — `gh workflow run mac.yml` — or open a pull request. Batch the questions into that
 # one run rather than spending several to answer them one at a time.
 #
+# `Tooling/sim/` holds the simulator lane, so the same scripts run here and on any other Mac.
 # On pull requests only the compile and the built-bundle assertions run. The simulator lane (boot,
 # screenshots, debug bridge) runs on manual dispatch with `run_app`; `release.yml` calls this
 # without it, so the compile and the bundle assertions gate every upload.
@@ -45,11 +46,19 @@ on:
         type: choice
         options: [default, accessibility-large]
         default: default
+      only:
+        description: 'Comma-separated screen ids from Tooling/sim/sweep.sh; empty runs all, none only the plain launch'
+        type: string
+        default: ''
+      script:
+        description: 'Repo path of a probe sourced after the sweep'
+        type: string
+        default: ''
 
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
@@ -62,9 +71,19 @@ jobs:
 
       - uses: actions/cache@v6
         with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: dd-${{ runner.os }}-${{ hashFiles('MailVerdictKit/Package.swift', 'MailVerdict.xcodeproj/project.pbxproj') }}
-          restore-keys: dd-${{ runner.os }}-
+          path: |
+            build/dd/SourcePackages
+            build/dd/CompilationCache.noindex
+          key: xcode-${{ runner.os }}-${{ hashFiles('MailVerdictKit/Package.swift', 'MailVerdict.xcodeproj/project.pbxproj') }}-${{ github.run_id }}
+          restore-keys: |
+            xcode-${{ runner.os }}-${{ hashFiles('MailVerdictKit/Package.swift', 'MailVerdict.xcodeproj/project.pbxproj') }}-
+            xcode-${{ runner.os }}-
+
+      # A boot is minutes of waiting, not of work, so it overlaps the build.
+      - name: Start a simulator
+        id: sim
+        if: inputs.run_app
+        run: echo "udid=$(Tooling/sim/boot.sh start)" >> "$GITHUB_OUTPUT"
 
       # Everything else in the package is already green from free-checks, so this builds only the
       # app target — the part that needs an iOS SDK.
@@ -74,6 +93,7 @@ jobs:
           xcodebuild -project MailVerdict.xcodeproj -scheme MailVerdict \
             -destination 'generic/platform=iOS Simulator' \
             -configuration "${{ inputs.configuration || 'Debug' }}" -derivedDataPath build/dd \
+            COMPILATION_CACHE_ENABLE_CACHING=YES \
             CODE_SIGNING_ALLOWED=NO build 2>&1 | tee /tmp/build.log | tail -20
 
       - name: Surface compiler errors
@@ -157,245 +177,24 @@ jobs:
 
       # `inputs` is empty on pull_request, and an expression compares null equal to false, so the
       # guard names the event rather than testing `inputs.run_app != false`.
-      - name: Boot a simulator
-        id: sim
+      - name: Wait for the simulator
         if: inputs.run_app
-        run: |
-          # Chosen from what the image actually has: runner images change their device list
-          # between releases, and a hardcoded name fails late and confusingly.
-          udid=$(xcrun simctl list devices available -j | python3 -c "
-          import json,sys
-          devices = json.load(sys.stdin)['devices']
-          for runtime in sorted(devices, reverse=True):
-              if 'iOS' not in runtime: continue
-              for d in devices[runtime]:
-                  if d.get('isAvailable') and 'iPhone' in d['name']:
-                      print(d['udid']); raise SystemExit
-          ")
-          [ -n "$udid" ] || { echo 'no iPhone simulator available'; exit 1; }
-          echo "udid=$udid" >> "$GITHUB_OUTPUT"
-          xcrun simctl boot "$udid" || true
-          xcrun simctl bootstatus "$udid" -b
-          xcrun simctl ui "$udid" appearance "${{ inputs.appearance || 'dark' }}"
-
-          # The keyboard's one-time "slide to type" introduction covers the bottom third of the
-          # screen the first time a text field is focused — exactly where search-with-results'
-          # own results sit. Suppressing it here, once, at boot, is what keeps every later
-          # screenshot from depending on whether this is the simulator's first keyboard focus.
-          xcrun simctl spawn "$udid" defaults write com.apple.keyboard.preferences \
-            DidShowContinuousPathIntroduction -bool true
-
-          # A reference point for "Collect crash reports" below, rather than a literal date —
-          # `find -newermt` takes a parseable date string on Linux's GNU find but nothing this
-          # portable on the runner's own BSD one, and a timestamp this job minted is already
-          # exactly the boundary that matters.
-          touch /tmp/mac-sweep-start-marker
+        env:
+          APPEARANCE: ${{ inputs.appearance }}
+        run: Tooling/sim/boot.sh wait "${{ steps.sim.outputs.udid }}"
 
       - name: Install the app
         if: inputs.run_app
-        run: |
-          udid="${{ steps.sim.outputs.udid }}"
-          app=$(find build/dd/Build/Products -name '*.app' -maxdepth 3 | head -1)
-          [ -n "$app" ] || { echo 'build produced no .app'; exit 1; }
-          xcrun simctl install "$udid" "$app"
+        run: Tooling/sim/install.sh "${{ steps.sim.outputs.udid }}" build/dd
 
-      # The debug bridge and its routes are `#if DEBUG`, so this only runs for Debug. A plain,
-      # non-fixture launch — this is the sign-in screen by design (no Keychain credential exists
-      # on a fresh simulator), proof the real (non-fixture) launch path still reaches it.
-      - name: Launch and ask the debug bridge what it thinks
-        if: inputs.run_app && (inputs.configuration || 'Debug') == 'Debug'
-        run: |
-          set -o pipefail
-          mkdir -p artifacts
-          udid="${{ steps.sim.outputs.udid }}"
-          bundle=com.frederikberg.mailverdict
-          fail=0
-
-          xcrun simctl launch "$udid" "$bundle" > /dev/null
-          ok=0
-          for attempt in $(seq 1 10); do
-            if curl -sS --max-time 3 "http://127.0.0.1:8765/health" -o artifacts/health.json; then
-              ok=1
-              break
-            fi
-            sleep 2
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "::warning::debug bridge never answered"
-            fail=1
-          fi
-          curl -sS --max-time 3 "http://127.0.0.1:8765/routes" -o artifacts/routes.json || true
-
-          # The bridge starts listening before the first frame is drawn, so "/health answered"
-          # proves the process is alive and proves nothing about the screen. Settle before the
-          # screenshot, same reasoning as every other screenshot workflow in this family.
-          sleep 6
-          xcrun simctl io "$udid" screenshot artifacts/screen-root.png
-          bytes=$(stat -f %z artifacts/screen-root.png)
-          echo "root: ${bytes} bytes"
-          if [ "$bytes" -le 20000 ]; then
-            echo "::warning::screenshot suspiciously small — the screen may be blank"
-            fail=1
-          fi
-          curl -sS --max-time 3 "http://127.0.0.1:8765/logs?level=info&limit=200" \
-            -o artifacts/logs.json || true
-          xcrun simctl terminate "$udid" "$bundle" || true
-
-          [ "$fail" -eq 0 ] || { echo 'one or more checks failed — see the warnings above'; exit 1; }
-
-      # Every registered screen, captured by name. `-MVFixtureMode YES` connects to the fixture
-      # backend and skips sign-in straight into the shell (no network, no real credential); a
-      # second relaunch per id adds `-MVFixtureScreen <id>`, which the app reads to navigate
-      # there itself. `/screen/current` is set by the destination screen's own body once it has
-      # genuinely appeared (never by this workflow, and never by the app's own launcher) — so
-      # polling it rather than sleeping-and-hoping is what catches a screen that silently never
-      # rendered (a sign-in gate fixture mode failed to skip, a crash, a broken route) as a
-      # failure instead of a screenshot of the wrong thing.
       - name: Fixture-mode screenshot sweep
         if: inputs.run_app && (inputs.configuration || 'Debug') == 'Debug'
-        run: |
-          set -o pipefail
-          mkdir -p artifacts artifacts/logs
-          udid="${{ steps.sim.outputs.udid }}"
-          bundle=com.frederikberg.mailverdict
-          fail=0
-
-          # `simctl terminate` returns once the request is issued, not once the process and its
-          # debug-bridge listener are actually gone — relaunching before that finishes risks the
-          # new launch racing the old process, which is what let one screen's `/fixtures/misses`
-          # carry the previous screen's own still-in-flight requests. Both signals have to clear:
-          # the process itself (`launchctl list`) and the port it was listening on (refused, not
-          # merely timed out, is what "nothing is there" looks like).
-          terminate_and_wait() {
-            xcrun simctl terminate "$udid" "$bundle" || true
-            for attempt in $(seq 1 10); do
-              if ! xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "$bundle" \
-                && ! curl -sS --max-time 1 "http://127.0.0.1:8765/health" >/dev/null 2>&1; then
-                return 0
-              fi
-              sleep 1
-            done
-            echo "::warning::old process or its debug bridge had not gone away after 10s"
-          }
-
-          terminate_and_wait
-          xcrun simctl launch "$udid" "$bundle" -MVFixtureMode YES > /dev/null
-
-          ok=0
-          for attempt in $(seq 1 10); do
-            if curl -sS --max-time 3 "http://127.0.0.1:8765/screens" -o artifacts/screens.json; then
-              ok=1
-              break
-            fi
-            sleep 2
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "::error::debug bridge never answered /screens in fixture mode"
-            terminate_and_wait
-            exit 1
-          fi
-
-          # A plain `while read` rather than `mapfile` — the macOS runner's default `/bin/bash`
-          # is the ancient Apple-shipped 3.2, which does not have `mapfile` (bash 4+ only).
-          ids_list=$(python3 -c "import json; print('\n'.join(json.load(open('artifacts/screens.json'))['screens']))")
-          terminate_and_wait
-
-          if [ -z "$ids_list" ]; then
-            echo "no registered screenshot ids yet — nothing to sweep"
-          fi
-
-          # Dynamic Type is a per-process launch argument, not a simulator-wide setting like
-          # appearance above — every relaunch in the sweep below needs it repeated.
-          content_size_args=()
-          if [ "${{ inputs.content_size || 'default' }}" = "accessibility-large" ]; then
-            content_size_args=(-UIPreferredContentSizeCategoryName UICTContentSizeCategoryAccessibilityL)
-          fi
-
-          while IFS= read -r id; do
-            [ -n "$id" ] || continue
-            # A fresh process starts this ring empty anyway, but `since` is what keeps this
-            # screen's own dump from also carrying the previous screen's entries if its process
-            # (and bridge) were not entirely gone by the time this one launched.
-            since=$(date -u +%s)
-            xcrun simctl launch "$udid" "$bundle" -MVFixtureMode YES -MVFixtureScreen "$id" \
-              "${content_size_args[@]}" > /dev/null
-
-            reached=0
-            for attempt in $(seq 1 15); do
-              current=$(curl -sS --max-time 3 "http://127.0.0.1:8765/screen/current" 2>/dev/null \
-                | python3 -c "import json,sys; print(json.load(sys.stdin).get('id') or '')" 2>/dev/null || echo "")
-              if [ "$current" = "$id" ]; then
-                reached=1
-                break
-              fi
-              sleep 2
-            done
-
-            if [ "$reached" -ne 1 ]; then
-              echo "::error::screen '$id' never reported ready on /screen/current"
-              # The debug bridge never answering again is exactly what a dead process looks
-              # like too — `launchctl list` is what actually distinguishes "still starting up
-              # slowly" from "crashed and gone", rather than leaving that to be guessed from the
-              # device log, which carries nothing about a crash at all.
-              if ! xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "$bundle"; then
-                echo "screen $id: app crashed"
-              fi
-              # Whatever is actually on screen when a screen fails to settle, captured anyway —
-              # and whether the main actor itself ever answers tells "pushed but its view never
-              # appeared" apart from "nothing will ever appear, the main actor is stuck", which a
-              # bridge route answering from its own queue (every other one here) cannot.
-              xcrun simctl io "$udid" screenshot "artifacts/screen-$id-notready.png" || true
-              probe=$(curl -sS --max-time 3 "http://127.0.0.1:8765/main-actor-probe" 2>/dev/null || echo "")
-              if [ -n "$probe" ]; then
-                echo "screen $id: main-actor-probe answered: $probe"
-              else
-                echo "screen $id: main-actor-probe did not answer within 3s — main actor may be stuck"
-              fi
-              fail=1
-            else
-              xcrun simctl io "$udid" screenshot "artifacts/screen-$id.png"
-              bytes=$(stat -f %z "artifacts/screen-$id.png")
-              echo "$id: ${bytes} bytes"
-              if [ "$bytes" -le 20000 ]; then
-                echo "::warning::screenshot for '$id' suspiciously small — the screen may be blank"
-                fail=1
-              fi
-
-              # A screen that silently fell back to an error state instead of its fixture still
-              # "succeeds" the two checks above — this is what actually proves every request it
-              # made was answered by the table rather than reaching the real network.
-              misses=$(curl -sS --max-time 3 "http://127.0.0.1:8765/fixtures/misses" 2>/dev/null \
-                | python3 -c "import json,sys; print(','.join(json.load(sys.stdin).get('misses') or []))" 2>/dev/null || echo "")
-              if [ -n "$misses" ]; then
-                echo "::error::screen '$id' hit request(s) no fixture route answered: $misses"
-                fail=1
-              fi
-
-              # Each AppEnvironment owns a live stream and an intent ledger, and a second one is
-              # invisible on screen — it shows up as the server being hammered and the app's own
-              # requests timing out behind the extra streams. Two are legitimate: the shell's, and
-              # the short-lived stand-in push registration builds when no shell has attached yet.
-              # An unanswered route must read as a failure, not as a zero: a check that cannot
-              # reach its measurement proves nothing and looks exactly like a pass.
-              envs=$(curl -sS --max-time 3 "http://127.0.0.1:8765/shell/state" 2>/dev/null \
-                | python3 -c "import json,sys; print(json.load(sys.stdin)['environmentsCreated'])" 2>/dev/null || echo "")
-              echo "$id: $envs app environment(s)"
-              if [ -z "$envs" ] || [ "$envs" -gt 2 ]; then
-                echo "::error::screen '$id' reported '$envs' app environments — each one is another live stream and ledger"
-                fail=1
-              fi
-            fi
-
-            # Before terminate_and_wait, which is what makes this the last chance to ask this
-            # screen's own process anything — /logs was otherwise only ever read once, before
-            # this loop even starts, so no feature's own debug markers reached the artifacts for
-            # any individual screen, success or failure alike.
-            curl -sS --max-time 3 "http://127.0.0.1:8765/logs?since=$since&limit=500" \
-              -o "artifacts/logs/$id.json" 2>/dev/null || true
-            terminate_and_wait
-          done <<< "$ids_list"
-
-          [ "$fail" -eq 0 ] || { echo 'one or more fixture screenshots failed — see above'; exit 1; }
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
+          ONLY: ${{ inputs.only }}
+          PROBE: ${{ inputs.script }}
+          CONTENT_SIZE: ${{ inputs.content_size }}
+        run: Tooling/sim/sweep.sh
 
       # No debug bridge in Release — this is the plain "does it draw anything" check the Debug
       # path above replaces with a bridge-verified one.
