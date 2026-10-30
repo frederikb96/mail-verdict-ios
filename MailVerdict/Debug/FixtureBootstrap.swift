@@ -21,10 +21,9 @@ import MailVerdictKit
     /// - register the shell-level baseline (`registerShellBaseline`) every screenshot needs
     ///   answered regardless of which one is on top
     ///
-    /// Reuses `MVKeychainCredentialStore` rather than writing to the Keychain independently: it is
-    /// `internal` and this file compiles into the same app target, so the query attributes
-    /// (service, account, `kSecAttrSynchronizable`) stay defined in exactly the one place that
-    /// already owns them. The Keychain itself is untouched by the `UserDefaults` wipe below — a
+    /// Reuses `MVKeychainCredentialStore` rather than writing to the Keychain independently, so the
+    /// query attributes (service, account, `kSecAttrSynchronizable`) stay defined in exactly the
+    /// one place that already owns them. The Keychain itself is untouched by the `UserDefaults` wipe below — a
     /// separate store, and the credential this same function plants right after has to survive
     /// it regardless.
     enum FixtureBootstrap {

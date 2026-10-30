@@ -184,6 +184,54 @@ jobs:
             exit 1
           fi
 
+      # The share extension: the same install-time traps as the notification extension, plus the
+      # activation rule — without one the app never appears in the share sheet, with no error.
+      - name: The share extension is embedded and declares what it needs
+        run: |
+          set -o pipefail
+          app=$(find build/dd/Build/Products -name '*.app' -maxdepth 3 | head -1)
+          [ -n "$app" ] || { echo 'build produced no .app'; exit 1; }
+          appex="$app/PlugIns/MailVerdictShare.appex"
+          [ -d "$appex" ] \
+            || { echo '::error::MailVerdictShare.appex is not embedded in PlugIns/ — check the copy phase and the target dependency'; exit 1; }
+
+          plutil -p "$appex/Info.plist" > /tmp/share-info.txt
+          fail=0
+
+          display_name=$(plutil -extract CFBundleDisplayName raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ -n "$display_name" ] \
+            || { echo '::error::MailVerdictShare CFBundleDisplayName is empty — fails at install as an opaque "Unable to Install"'; fail=1; }
+
+          point_id=$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ "$point_id" = "com.apple.share-services" ] \
+            || { echo "::error::NSExtensionPointIdentifier is '$point_id', not com.apple.share-services"; fail=1; }
+
+          principal=$(plutil -extract NSExtension.NSExtensionPrincipalClass raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ "$principal" = "MailVerdictShare.ShareViewController" ] \
+            || { echo "::error::NSExtensionPrincipalClass is '$principal', not MailVerdictShare.ShareViewController"; fail=1; }
+
+          grep -q 'NSExtensionActivationSupportsFileWithMaxCount' /tmp/share-info.txt \
+            || { echo '::error::the share extension has no file activation rule — MailVerdict would never show in the share sheet'; fail=1; }
+          grep -q 'NSExtensionActivationSupportsImageWithMaxCount' /tmp/share-info.txt \
+            || { echo '::error::the share extension has no image activation rule'; fail=1; }
+
+          appex_id=$(plutil -extract CFBundleIdentifier raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ "$appex_id" = "com.frederikberg.mailverdict.share" ] \
+            || { echo "::error::appex CFBundleIdentifier is '$appex_id', not com.frederikberg.mailverdict.share"; fail=1; }
+
+          app_short=$(plutil -extract CFBundleShortVersionString raw "$app/Info.plist" 2>/dev/null || echo "")
+          app_build=$(plutil -extract CFBundleVersion raw "$app/Info.plist" 2>/dev/null || echo "")
+          appex_short=$(plutil -extract CFBundleShortVersionString raw "$appex/Info.plist" 2>/dev/null || echo "")
+          appex_build=$(plutil -extract CFBundleVersion raw "$appex/Info.plist" 2>/dev/null || echo "")
+          [ "$app_short" = "$appex_short" ] && [ "$app_build" = "$appex_build" ] \
+            || { echo "::error::version mismatch: app ${app_short}/${app_build} vs appex ${appex_short}/${appex_build} — App Store Connect rejects this"; fail=1; }
+
+          if [ "$fail" -ne 0 ]; then
+            cat /tmp/share-info.txt
+            exit 1
+          fi
+          echo 'share appex Info.plist checks out'
+
       # `inputs` is empty on pull_request, and an expression compares null equal to false, so the
       # guard names the event rather than testing `inputs.run_app != false`.
       - name: Wait for the simulator
