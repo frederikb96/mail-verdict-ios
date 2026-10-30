@@ -32,7 +32,9 @@ struct SettingsScreen: View {
 
             Section("Advanced") {
                 NavigationLink("Orders", value: Route.settingsCategory(MVSettingsCategory.orders.rawValue))
-                NavigationLink("AI", value: Route.settingsCategory(MVSettingsCategory.ai.rawValue))
+                NavigationLink("Spam Verdicts", value: Route.settingsCategory(MVSettingsCategory.ai.rawValue))
+                NavigationLink(
+                    "Rule Assistant", value: Route.settingsCategory(MVSettingsCategory.assistant.rawValue))
                 NavigationLink("Semantic Search", value: Route.settingsCategory(MVSettingsCategory.semantic.rawValue))
                 NavigationLink("Retry", value: Route.settingsCategory(MVSettingsCategory.retry.rawValue))
                 NavigationLink("Pipeline", value: Route.settingsCategory(MVSettingsCategory.pipeline.rawValue))

@@ -122,28 +122,32 @@ public struct MVApiClient: Sendable {
         jsonPart: Data,
         attachments: [MVOutboxAttachmentUpload]
     ) async throws -> T {
+        var parts = [MVMultipartPart(name: "data", data: jsonPart)]
+        for attachment in attachments {
+            parts.append(
+                MVMultipartPart(
+                    name: "attachments", data: attachment.data, filename: attachment.filename,
+                    contentType: attachment.contentType ?? "application/octet-stream"))
+        }
+        return try await sendMultipart(path: path, parts: parts)
+    }
+
+    /// A `multipart/form-data` POST made of the given parts, in order.
+    func sendMultipart<T: Decodable>(path: String, parts: [MVMultipartPart]) async throws -> T {
         let boundary = "MVBoundary-\(UUID().uuidString)"
         var body = Data()
 
-        func appendField(name: String, data: Data, filename: String? = nil, contentType: String? = nil) {
+        for part in parts {
             body.append(Data("--\(boundary)\r\n".utf8))
-            var disposition = "Content-Disposition: form-data; name=\"\(name)\""
-            if let filename { disposition += "; filename=\"\(filename)\"" }
+            var disposition = "Content-Disposition: form-data; name=\"\(part.name)\""
+            if let filename = part.filename { disposition += "; filename=\"\(filename)\"" }
             body.append(Data("\(disposition)\r\n".utf8))
-            if let contentType {
+            if let contentType = part.contentType {
                 body.append(Data("Content-Type: \(contentType)\r\n".utf8))
             }
             body.append(Data("\r\n".utf8))
-            body.append(data)
+            body.append(part.data)
             body.append(Data("\r\n".utf8))
-        }
-
-        appendField(name: "data", data: jsonPart)
-        for attachment in attachments {
-            appendField(
-                name: "attachments", data: attachment.data, filename: attachment.filename,
-                contentType: attachment.contentType ?? "application/octet-stream"
-            )
         }
         body.append(Data("--\(boundary)--\r\n".utf8))
 
@@ -241,6 +245,14 @@ public struct MVApiClient: Sendable {
             throw MVError.decoding("\(error)")
         }
     }
+}
+
+/// One part of a multipart form: a plain field (`filename` and `contentType` nil) or a file.
+struct MVMultipartPart: Sendable, Equatable {
+    let name: String
+    let data: Data
+    var filename: String? = nil
+    var contentType: String? = nil
 }
 
 /// One file a multipart `POST /api/outbox` upload carries — a picked file or a pasted inline

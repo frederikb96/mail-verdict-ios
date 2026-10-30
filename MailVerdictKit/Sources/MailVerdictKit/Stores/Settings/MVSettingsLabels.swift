@@ -14,6 +14,17 @@ public enum MVSettingsLabels {
         "base_url",
         "reasoning_effort",
         "max_tokens",
+        "call_timeout_seconds",
+        "decide_provider",
+        "decide_model",
+        "decide_base_url",
+        "decide_reasoning_effort",
+        "decide_max_tokens",
+        "write_provider",
+        "write_model",
+        "write_base_url",
+        "write_reasoning_effort",
+        "write_max_tokens",
         "max_retries",
         "base_delay_seconds",
         "max_delay_seconds",
@@ -44,6 +55,17 @@ public enum MVSettingsLabels {
         "base_url": "Server address (custom provider only)",
         "reasoning_effort": "Reasoning effort",
         "max_tokens": "Max tokens",
+        "call_timeout_seconds": "Model call timeout (seconds)",
+        "decide_provider": "Matching: provider",
+        "decide_model": "Matching: model",
+        "decide_base_url": "Matching: server address (custom provider only)",
+        "decide_reasoning_effort": "Matching: reasoning effort",
+        "decide_max_tokens": "Matching: max tokens",
+        "write_provider": "Writing: provider",
+        "write_model": "Writing: model",
+        "write_base_url": "Writing: server address (custom provider only)",
+        "write_reasoning_effort": "Writing: reasoning effort",
+        "write_max_tokens": "Writing: max tokens",
         "max_retries": "Max retries",
         "base_delay_seconds": "Base retry delay (seconds)",
         "max_delay_seconds": "Max retry delay (seconds)",
@@ -90,13 +112,31 @@ extension MVSettingsCategory {
     /// rather than a bare capitalised key, matching the card headings on the web's settings page.
     public var displayTitle: String {
         switch self {
-        case .ai: return "AI"
+        case .ai: return "Spam Verdicts"
+        case .assistant: return "Rule Assistant"
         case .semantic: return "Semantic Search"
         case .retry: return "Retry"
         case .pipeline: return "Pipeline"
         case .outbox: return "Outbox"
         case .mail: return "Filing and Notifications"
         case .orders: return "Orders"
+        }
+    }
+}
+
+extension MVSettingsCategory {
+    /// One line under the form saying which mail this category's model reads -- the provider is
+    /// chosen here, so what it gets to see is stated where it is chosen.
+    public var privacyNote: String? {
+        switch self {
+        case .ai: return "Reads every incoming mail to judge spam."
+        case .semantic: return "Embeds every mail for search by meaning."
+        case .assistant:
+            return "Reads the open mail and the subjects and senders of the account's newest mails."
+        case .orders:
+            return
+                "Matching reads each mail that passes the first filter; writing reads only mail already in an order, its attachments and files added on purpose."
+        case .retry, .pipeline, .outbox, .mail: return nil
         }
     }
 }

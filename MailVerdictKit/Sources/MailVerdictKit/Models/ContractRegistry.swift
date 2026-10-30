@@ -116,7 +116,9 @@ public enum ContractRegistry {
         // Order.swift
         OrderListItem.self,
         OrderListResponse.self,
-        OrderIdentifierOut.self,
+        OrderCodeOut.self,
+        OrderFactOut.self,
+        OrderFileStatus.self,
         OrderMailOut.self,
         OrderDocumentOut.self,
         OrderDetail.self,

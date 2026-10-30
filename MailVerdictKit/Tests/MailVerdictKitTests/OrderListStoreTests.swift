@@ -9,10 +9,15 @@ final class OrderListStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeStore(filter: OrderListStore.Filter = .all) -> OrderListStore {
+    private func makeStore(
+        view: OrderViewState = OrderViewState(), persistence: OrderViewPersistence? = nil,
+        offlineCache: MVOfflineCache? = nil, today: String = "2026-05-10"
+    ) -> OrderListStore {
         let factory = try! MVRequestFactory(baseURL: "https://stub.example.com", authProvider: { .none })
         let client = MVApiClient(requestFactory: factory, urlSession: MVStubURLProtocol.makeSession())
-        return OrderListStore(apiClient: client, filter: filter)
+        return OrderListStore(
+            apiClient: client, view: view, persistence: persistence, offlineCache: offlineCache,
+            today: { today })
     }
 
     private func itemJSON(
@@ -70,8 +75,8 @@ final class OrderListStoreTests: XCTestCase {
             statusCode: 200, headers: [:],
             body: Data("{\"items\":[\(itemJSON(id: a))],\"has_more\":false,\"next_cursor\":null}".utf8))
         let store = makeStore()
-        await store.setFilter(.open)
-        XCTAssertEqual(store.filter, .open)
+        await store.toggleOpen()
+        XCTAssertTrue(store.view.open)
         XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.query?.contains("state=open"), true)
         XCTAssertEqual(store.rows.map(\.id), [a])
     }
@@ -212,7 +217,7 @@ final class OrderListStoreTests: XCTestCase {
     func testFavoritesFilterAsksForAllStateWithTheFavoritesFlag() async {
         stubList([UUID()])
         let store = makeStore()
-        await store.setFilter(.favorites)
+        await store.toggleFavorites()
         let query = MVStubURLProtocol.capturedRequest?.url?.query ?? ""
         XCTAssertTrue(query.contains("state=all"))
         XCTAssertTrue(query.contains("favorites=true"))
