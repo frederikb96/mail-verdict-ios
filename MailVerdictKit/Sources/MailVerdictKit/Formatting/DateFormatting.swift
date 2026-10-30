@@ -11,6 +11,8 @@ public enum MVDateFormat {
     nonisolated(unsafe) private static let weekdayFormatter = makeFormatter("EEE")
     nonisolated(unsafe) private static let dayMonthFormatter = makeFormatter("d MMM")
     nonisolated(unsafe) private static let dayMonthYearFormatter = makeFormatter("d MMM yyyy")
+    nonisolated(unsafe) private static let weekdayDayMonthFormatter = makeFormatter("EEE d MMM")
+    nonisolated(unsafe) private static let weekdayDayMonthYearFormatter = makeFormatter("EEE d MMM yyyy")
     nonisolated(unsafe) private static let fullFormatter = makeFormatter("EEE, d MMM yyyy, HH:mm")
 
     private static func makeFormatter(_ format: String) -> DateFormatter {
@@ -74,6 +76,24 @@ public enum MVDateFormat {
             return day(first, now: now, calendar: calendar)
         }
         return "\(day(first, now: now, calendar: calendar)) – \(day(last, now: now, calendar: calendar))"
+    }
+
+    /// A `YYYY-MM-DD` event day as "Sat 31 Oct", the year appended once it is not the current one.
+    /// Text that is not a day is returned as it came.
+    public static func eventDay(_ day: String, now: Date = Date(), calendar: Calendar = .current) -> String {
+        guard let date = MVOrderDay.date(from: day, calendar: calendar) else { return day }
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+        return (sameYear ? weekdayDayMonthFormatter : weekdayDayMonthYearFormatter).string(from: date)
+    }
+
+    /// "Sat 31 Oct", or "Sat 31 Oct – Mon 2 Nov" when the event spans days; `nil` with no start.
+    public static func eventRange(
+        start: String?, end: String?, now: Date = Date(), calendar: Calendar = .current
+    ) -> String? {
+        guard let start else { return nil }
+        let first = eventDay(start, now: now, calendar: calendar)
+        guard let end, end != start else { return first }
+        return "\(first) – \(eventDay(end, now: now, calendar: calendar))"
     }
 
     private static func day(_ date: Date, now: Date, calendar: Calendar) -> String {

@@ -8,6 +8,7 @@
 /// it into an order-preserving form is a screen's own work.
 public enum MVSettingsCategory: String, Sendable, Equatable, CaseIterable {
     case ai
+    case assistant
     case retry
     case pipeline
     case semantic

@@ -94,3 +94,13 @@ public enum MVDefaultFolderKindImap: MVDefaultValueSource {
 public enum MVDefaultOpenSetByAi: MVDefaultValueSource {
     public static let defaultValue = "ai"
 }
+
+/// `OrderListItem.kind`'s own default for a server that predates the field.
+public enum MVDefaultOrderKind: MVDefaultValueSource {
+    public static let defaultValue = OrderKind.order
+}
+
+/// `OrderListItem.kind_set_by`'s own default -- the model decides the kind until a person does.
+public enum MVDefaultKindSetByAi: MVDefaultValueSource {
+    public static let defaultValue = "ai"
+}

@@ -38,6 +38,19 @@ public struct MVOfflineResource: Codable, Sendable, Equatable {
     public let mimeType: String
 }
 
+/// An order's detail as it was last read from the server -- everything a ticket shows at a gate.
+public struct MVOfflineOrder: Codable, Sendable, Equatable {
+    public let detail: OrderDetail
+    public let savedAt: Date
+}
+
+/// One orders list view (a kind, open, favorites) as it was last read.
+public struct MVOfflineOrderList: Codable, Sendable, Equatable {
+    public let items: [OrderListItem]
+    public let hasMore: Bool
+    public let savedAt: Date
+}
+
 /// A conversation as the reader last read it.
 public struct MVOfflineConversation: Codable, Sendable, Equatable {
     public let thread: ThreadResponse
@@ -63,6 +76,10 @@ public actor MVOfflineCache {
         public var rowsPerList = 100
         public var resources = 300
         public var resourceBytes = 50 * 1024 * 1024
+        public var orders = 100
+        public var orderLists = 12
+        public var orderCodes = 150
+        public var orderCodeBytes = 30 * 1024 * 1024
 
         public init() {}
     }
@@ -78,6 +95,9 @@ public actor MVOfflineCache {
     private let listsURL: URL
     private let resourcesURL: URL
     private let folderRolesURL: URL
+    private let ordersURL: URL
+    private let orderListsURL: URL
+    private let orderCodesURL: URL
     /// This server's directory: everything kept for it lives under it, the Mailboxes overview
     /// included, so discarding it leaves nothing of the server behind.
     public nonisolated let directory: URL
@@ -91,6 +111,9 @@ public actor MVOfflineCache {
         listsURL = directory.appendingPathComponent("lists", isDirectory: true)
         resourcesURL = directory.appendingPathComponent("resources", isDirectory: true)
         folderRolesURL = directory.appendingPathComponent("folder-roles.json")
+        ordersURL = directory.appendingPathComponent("orders", isDirectory: true)
+        orderListsURL = directory.appendingPathComponent("order-lists", isDirectory: true)
+        orderCodesURL = directory.appendingPathComponent("order-codes", isDirectory: true)
         self.budget = budget
         self.now = now
         // Created up front so the Mailboxes overview, which only ever writes into a directory that
@@ -119,6 +142,54 @@ public actor MVOfflineCache {
 
     public func conversation(for rowId: UUID) -> MVOfflineConversation? {
         read(MVOfflineConversation.self, from: conversationsURL.appendingPathComponent(Self.fileName(rowId)))
+    }
+
+    // MARK: Orders and tickets
+
+    public func saveOrder(_ detail: OrderDetail) {
+        write(
+            MVOfflineOrder(detail: detail, savedAt: now()),
+            to: ordersURL.appendingPathComponent(Self.fileName(detail.id)))
+        prune(ordersURL, maxCount: budget.orders, maxBytes: nil)
+    }
+
+    public func order(id: UUID) -> MVOfflineOrder? {
+        read(MVOfflineOrder.self, from: ordersURL.appendingPathComponent(Self.fileName(id)))
+    }
+
+    /// `key` names the view (`OrderViewState.identity`); only the first page is kept.
+    public func saveOrderList(_ items: [OrderListItem], hasMore: Bool, key: String) {
+        guard !items.isEmpty else { return }
+        write(
+            MVOfflineOrderList(items: items, hasMore: hasMore, savedAt: now()),
+            to: orderListsURL.appendingPathComponent("\(key).json"))
+        prune(orderListsURL, maxCount: budget.orderLists, maxBytes: nil)
+    }
+
+    public func orderList(key: String) -> MVOfflineOrderList? {
+        read(MVOfflineOrderList.self, from: orderListsURL.appendingPathComponent("\(key).json"))
+    }
+
+    /// The PNG of a code fact as served; a fact id names the same code for as long as it exists.
+    public func saveOrderCode(_ png: Data, factId: UUID) {
+        guard !isDiscarded, !png.isEmpty else { return }
+        let url = orderCodesURL.appendingPathComponent("\(factId.uuidString.lowercased()).png")
+        do {
+            try FileManager.default.createDirectory(at: orderCodesURL, withIntermediateDirectories: true)
+            try png.write(to: url, options: Self.writingOptions)
+            touch(url)
+            prune(orderCodesURL, maxCount: budget.orderCodes, maxBytes: budget.orderCodeBytes)
+        } catch {
+            // A code that could not be written is simply not there offline.
+        }
+    }
+
+    public func orderCode(factId: UUID) -> Data? {
+        guard !isDiscarded else { return nil }
+        let url = orderCodesURL.appendingPathComponent("\(factId.uuidString.lowercased()).png")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        touch(url)
+        return data
     }
 
     // MARK: Lists

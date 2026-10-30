@@ -44,6 +44,7 @@ struct MailVerdictApp: App {
             MailboxesDebugRoutes.register, SearchDebugRoutes.register, SpamReviewDebugRoutes.register,
             NotificationsDebugRoutes.register, PushDebugRoutes.register, MailListDebugRoutes.register,
             ComposerDebugRoutes.register, ReaderDebugRoutes.register, ShellDebugRoutes.register,
+            OrdersDebugRoutes.register,
         ]
 
         static func make() -> DebugRouter {

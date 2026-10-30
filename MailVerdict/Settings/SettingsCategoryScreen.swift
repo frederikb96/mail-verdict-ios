@@ -97,6 +97,8 @@ private struct CategoryForm: View {
                                     store: store, field: field, environment: environment,
                                     focusedFieldKey: focusedFieldKey)
                             }
+                        } footer: {
+                            if let note = category.privacyNote { Text(note) }
                         }
                     }
                 }

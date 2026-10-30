@@ -2,9 +2,10 @@ import MailVerdictKit
 import QuickLook
 import SwiftUI
 
-/// One order's detail -- summary, numbers, documents and its mails in time order, plus the three
-/// corrections a person can make here: remove a mail, rewrite the summary, delete the order, and
-/// the flags (favorite, closed, sealed) through the Options menu.
+/// One order's detail -- summary, key facts with their codes, documents and its mails in time
+/// order, plus the corrections a person can make here: remove a mail, rewrite the summary, delete
+/// the order, add or delete a file, and the flags (favorite, closed, sealed) and the kind through
+/// the Options menu.
 struct OrderDetailScreen: View {
     let orderId: UUID
     let environment: AppEnvironment
@@ -13,6 +14,9 @@ struct OrderDetailScreen: View {
     @State private var store: OrderDetailStore
     @State private var quickLookURL: URL?
     @State private var pendingRemove: OrderMailOut?
+    @State private var pendingDeleteFile: OrderDocumentOut?
+    @State private var isImportingFile = false
+    @State private var isPickingPhoto = false
     @State private var confirmDelete = false
     @State private var didRequestDelete = false
     @Environment(\.dismiss) private var dismiss
@@ -21,14 +25,41 @@ struct OrderDetailScreen: View {
         self.orderId = orderId
         self.environment = environment
         self.connection = connection
-        let freshStore = OrderDetailStore(orderId: orderId, apiClient: connection.apiClient)
+        let freshStore = OrderDetailStore(
+            orderId: orderId, apiClient: connection.apiClient, offlineCache: connection.offlineCache)
         self._store = State(initialValue: freshStore)
         #if DEBUG
             OrdersFixtures.activeDetailStore = freshStore
         #endif
     }
 
+    /// The presentation modifiers are split over three properties: a body chaining this many
+    /// alerts, dialogs and covers is a type check the compiler gives up on.
     var body: some View {
+        screen
+            .quickLookPreview($quickLookURL)
+            .removeMailDialog(pendingRemove: $pendingRemove) { mail in Task { await remove(mail) } }
+            .deleteOrderAlert(isPresented: $confirmDelete) { Task { await delete() } }
+            .deleteFileDialog(pending: $pendingDeleteFile) { document in Task { await deleteFile(document) } }
+            .modifier(filePicking)
+            .fullScreenCover(isPresented: codeIsPresented) { codeScreen }
+    }
+
+    private var filePicking: some ViewModifier {
+        OrderFilePickingModifier(
+            isImporting: $isImportingFile, isPickingPhoto: $isPickingPhoto,
+            onPicked: { file in
+                Task {
+                    await store.addFile(data: file.data, filename: file.filename, contentType: file.contentType)
+                }
+            },
+            onFailure: { error in
+                environment.toasts.show(
+                    .init(variant: .error, message: "Could not add the file: \(error.mvUserMessage)"))
+            })
+    }
+
+    private var screen: some View {
         content
             .navigationTitle(store.order?.merchant ?? "Order")
             .navigationBarTitleDisplayMode(.inline)
@@ -42,9 +73,7 @@ struct OrderDetailScreen: View {
                 .screenshotReady(route: .order(orderId), environment: environment, connection: connection)
             #endif
             .toolbar { toolbarContent }
-            .quickLookPreview($quickLookURL)
-            .removeMailDialog(pendingRemove: $pendingRemove) { mail in Task { await remove(mail) } }
-            .deleteOrderAlert(isPresented: $confirmDelete) { Task { await delete() } }
+            .safeAreaInset(edge: .top, spacing: 0) { offlineNotice }
             .task {
                 ReaderSourceRegistry.shared.register(store, for: .order(orderId))
                 store.subscribeToLive(connection.liveEventHub)
@@ -66,6 +95,22 @@ struct OrderDetailScreen: View {
             Menu {
                 if let order = store.order {
                     OrderActionMenuItems(flags: order.flags) { action in run(action) }
+                    Divider()
+                    Menu {
+                        ForEach(OrderKind.allCases, id: \.self) { kind in
+                            Button {
+                                setKind(kind)
+                            } label: {
+                                if order.kind == kind {
+                                    Label(kind.label, systemImage: "checkmark")
+                                } else {
+                                    Text(kind.label)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Kind: \(order.kind.label)", systemImage: "tag")
+                    }
                 }
             } label: {
                 Image(systemName: MVSymbols.options)
@@ -82,12 +127,13 @@ struct OrderDetailScreen: View {
             List {
                 OrderHeaderSection(order: order)
                 OrderSummarySection(order: order)
-                if !order.identifiers.isEmpty {
-                    OrderNumbersSection(identifiers: order.identifiers, environment: environment)
+                if !order.facts.isEmpty {
+                    OrderFactsSection(store: store, order: order, environment: environment)
                 }
-                if !order.documents.isEmpty {
-                    OrderDocumentsSection(documents: order.documents, onOpen: openDocument)
-                }
+                OrderDocumentsSection(
+                    documents: order.documents, uploads: store.uploads, onOpen: openDocument,
+                    onDelete: { pendingDeleteFile = $0 }, onDismissUpload: { store.dismissUpload($0) },
+                    onAddFile: { isImportingFile = true }, onAddPhoto: { isPickingPhoto = true })
                 OrderMailsSection(
                     mails: order.mails, orderId: orderId, environment: environment, pendingRemove: $pendingRemove)
             }
@@ -116,6 +162,45 @@ struct OrderDetailScreen: View {
         }
     }
 
+    private func setKind(_ kind: OrderKind) {
+        Task {
+            do {
+                try await store.setKind(kind)
+            } catch {
+                environment.toasts.show(.init(variant: .error, message: "Could not update: \(error.mvUserMessage)"))
+            }
+        }
+    }
+
+    private func deleteFile(_ document: OrderDocumentOut) async {
+        do {
+            try await store.deleteFile(document)
+        } catch {
+            environment.toasts.show(.init(variant: .error, message: "Could not delete: \(error.mvUserMessage)"))
+        }
+    }
+
+    private var codeIsPresented: Binding<Bool> {
+        Binding(
+            get: { store.presentedCodeFactId != nil },
+            set: { if !$0 { store.presentedCodeFactId = nil } })
+    }
+
+    @ViewBuilder
+    private var codeScreen: some View {
+        if let id = store.presentedCodeFactId, let fact = store.order?.facts.first(where: { $0.id == id }) {
+            OrderCodeScreen(store: store, fact: fact) { store.presentedCodeFactId = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var offlineNotice: some View {
+        if let notice = MVOfflineNotice.make(reachability: connection.reachability, savedAt: store.savedCopyAt) {
+            OfflineCapsule(notice: notice)
+                .accessibilityIdentifier("order-offline")
+        }
+    }
+
     private func remove(_ mail: OrderMailOut) async {
         do {
             try await store.detachMail(mail)
@@ -138,9 +223,8 @@ struct OrderDetailScreen: View {
     private func openDocument(_ document: OrderDocumentOut) {
         Task {
             do {
-                let result = try await connection.apiClient.getAttachment(
-                    messageId: document.messageId, attachmentId: document.attachmentId)
-                quickLookURL = try Self.writeTemp(result.data, filename: document.filename)
+                let data = try await store.downloadDocument(document)
+                quickLookURL = try Self.writeTemp(data, filename: document.filename)
             } catch {
                 environment.toasts.show(.init(variant: .error, message: "Could not download: \(error.mvUserMessage)"))
             }
@@ -174,6 +258,22 @@ extension View {
     }
 }
 
+extension View {
+    fileprivate func deleteFileDialog(
+        pending: Binding<OrderDocumentOut?>, onConfirm: @escaping (OrderDocumentOut) -> Void
+    ) -> some View {
+        confirmationDialog(
+            "Delete this file?",
+            isPresented: Binding(get: { pending.wrappedValue != nil }, set: { if !$0 { pending.wrappedValue = nil } }),
+            presenting: pending.wrappedValue
+        ) { document in
+            Button("Delete", role: .destructive) { onConfirm(document) }
+        } message: { document in
+            Text("\(document.filename) is removed from this order. Mail attachments are never touched.")
+        }
+    }
+}
+
 private struct OrderHeaderSection: View {
     let order: OrderDetail
 
@@ -195,6 +295,13 @@ private struct OrderHeaderSection: View {
                     Text(order.subject)
                         .font(.title3.weight(.semibold))
                         .lineLimit(3)
+                    if order.kind == .ticket,
+                        let day = MVDateFormat.eventRange(start: order.eventStart, end: order.eventEnd)
+                    {
+                        Label(day, systemImage: "calendar")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.orange)
+                    }
                     HStack(spacing: 6) {
                         if order.isFavorite {
                             Image(systemName: MVSymbols.starFilled).foregroundStyle(.yellow)
@@ -208,7 +315,7 @@ private struct OrderHeaderSection: View {
                             Chip(text: order.status.capitalized, tint: order.isOpen ? .blue : .secondary)
                         }
                         Text(
-                            "\(order.mailCount) mail\(order.mailCount == 1 ? "" : "s") · \(MVDateFormat.dateRange(order.firstMailAt, order.lastMailAt))"
+                            "\(countText) · \(MVDateFormat.dateRange(order.firstMailAt, order.lastMailAt))"
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -219,6 +326,14 @@ private struct OrderHeaderSection: View {
             .padding(.vertical, 8)
         }
         .listRowBackground(Color.clear)
+    }
+}
+
+extension OrderHeaderSection {
+    fileprivate var countText: String {
+        var parts = ["\(order.mailCount) mail\(order.mailCount == 1 ? "" : "s")"]
+        if order.fileCount > 0 { parts.append("\(order.fileCount) file\(order.fileCount == 1 ? "" : "s")") }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -258,41 +373,14 @@ private struct OrderSummarySection: View {
     }
 }
 
-private struct OrderNumbersSection: View {
-    let identifiers: [OrderIdentifierOut]
-    let environment: AppEnvironment
-
-    var body: some View {
-        Section("Numbers") {
-            ForEach(Array(identifiers.enumerated()), id: \.offset) { _, identifier in
-                Button {
-                    UIPasteboard.general.string = identifier.value
-                    environment.toasts.show(.init(variant: .info, message: "Copied", duration: 2))
-                } label: {
-                    LabeledContent(Self.label(for: identifier.kind)) {
-                        Text(identifier.value).monospaced().foregroundStyle(.primary)
-                    }
-                }
-                .accessibilityLabel("Copy \(Self.label(for: identifier.kind)) number \(identifier.value)")
-            }
-        }
-    }
-
-    private static func label(for kind: String) -> String {
-        switch kind {
-        case "order_number": return "Order"
-        case "booking_code": return "Booking"
-        case "tracking_number": return "Tracking"
-        case "invoice_number": return "Invoice"
-        case "ticket_number": return "Ticket"
-        default: return kind.capitalized
-        }
-    }
-}
-
 private struct OrderDocumentsSection: View {
     let documents: [OrderDocumentOut]
+    let uploads: [OrderUpload]
     let onOpen: (OrderDocumentOut) -> Void
+    let onDelete: (OrderDocumentOut) -> Void
+    let onDismissUpload: (UUID) -> Void
+    let onAddFile: () -> Void
+    let onAddPhoto: () -> Void
 
     var body: some View {
         Section("Documents") {
@@ -304,11 +392,53 @@ private struct OrderDocumentsSection: View {
                         Label(document.filename, systemImage: Self.icon(for: document.contentType))
                             .lineLimit(1)
                         Spacer()
+                        if document.barcodeCount > 0 {
+                            Image(systemName: "qrcode").font(.caption).foregroundStyle(.secondary)
+                                .accessibilityLabel("Contains a code")
+                        }
                         Text(formatSize(document.sizeBytes)).font(.caption).foregroundStyle(.secondary)
                     }
+                    .contentShape(Rectangle())
                 }
                 .foregroundStyle(.primary)
+                .disabled(document.downloadUrl == nil)
+                .swipeActions(edge: .trailing) {
+                    if document.isFile {
+                        Button("Delete", role: .destructive) { onDelete(document) }
+                    }
+                }
             }
+            ForEach(uploads) { upload in
+                HStack(spacing: 10) {
+                    switch upload.state {
+                    case .uploading, .analysing:
+                        ProgressView()
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(upload.filename).lineLimit(1)
+                            Text(upload.state == .uploading ? "Uploading…" : "Analysing…")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    case .failed(let message):
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(upload.filename).lineLimit(1)
+                            Text(message).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Dismiss") { onDismissUpload(upload.id) }
+                            .font(.caption)
+                            .buttonStyle(.borderless)
+                    }
+                }
+            }
+            Button(action: onAddFile) {
+                Label("Add File…", systemImage: "doc.badge.plus")
+            }
+            .accessibilityIdentifier("order-add-file")
+            Button(action: onAddPhoto) {
+                Label("Add Photo…", systemImage: "photo.badge.plus")
+            }
+            .accessibilityIdentifier("order-add-photo")
         }
     }
 
@@ -317,7 +447,8 @@ private struct OrderDocumentsSection: View {
         case "application/pdf": return "doc.text"
         case "application/vnd.apple.pkpass": return "wallet.pass"
         case "text/calendar", "application/ics": return "calendar"
-        default: return "doc"
+        default:
+            return contentType.hasPrefix("image/") ? "photo" : "doc"
         }
     }
 }

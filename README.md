@@ -53,6 +53,31 @@ on a train, or while the server or the VPN in front of it is down.
   saved message the server no longer has leaves the screen; a message is marked read only once
   the server has answered for it.
 
+## Orders and tickets
+
+Orders & Tickets (from Mailboxes) is the wallet for what the server's order register collects from
+mail and files.
+
+- **Choosing a view:** a segmented control picks All, Orders or Tickets; the Open and Favorites
+  chips narrow any of them and combine with it (Open + Tickets is what is still ahead). The choice
+  survives a relaunch.
+- **Tickets are a timeline:** by the day they are for, what is ahead above a "Today" marker and
+  what has passed below. It opens with the marker in the middle of the screen and keeps it there
+  until you first touch the list.
+- **Key facts:** an order shows its numbers, dates, places, seats and amounts. A tracking number
+  opens the carrier's page, a link opens in the browser, anything else copies on tap.
+- **Codes:** the QR, Aztec and barcodes of a ticket show as thumbnails. Tapping one shows it
+  fullscreen on white at full brightness with the display kept awake; leaving it, or the app
+  leaving the foreground, puts the brightness back.
+- **Files:** Add File and Add Photo on an order (and the plus on the list, which lets the server
+  pick the order) send a document to be read into the order. HEIC photos are converted to JPEG
+  first, since the server does not take HEIC. Documents of an order, mail attachments and added
+  files alike, open in the system preview; an added file can be deleted.
+- **Without reception:** the detail of every ticket you open, its codes, and the ticket timeline
+  are saved on the device; the tickets for today and later are saved ahead of time whenever the
+  list loads. They are used under the same rule as saved mail (only when the server cannot be
+  reached) and the capsule says so.
+
 ## How it is arranged
 
 Almost everything lives in `MailVerdictKit`, a local Swift package. **The package builds and

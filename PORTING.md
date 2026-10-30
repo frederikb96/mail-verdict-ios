@@ -562,3 +562,15 @@ the app stays open, the saved copy is replaced within about a minute without tou
 Delete a message on the web while it shows offline from a saved copy on the phone, then reconnect:
 the reader says it no longer exists. After signing out and into another server offline, Mailboxes
 shows none of the first server's accounts.
+
+### The ticket timeline opens with today in the middle and lets go at the first touch — web anchor: `components/orders/`
+Needs a device because: the centring is held by repeated `scrollTo` calls while the list settles, and released when `onScrollPhaseChange` reports the reader's own touch; only a real finger tells whether a flick right after opening is obeyed or pulled back. Confirm: Tickets opens with the Today marker mid-screen on a phone with many tickets either side; a quick swipe in the first second stays where it was dragged; Open or Favorites, then switching kind, each start at Today again; after a pull to refresh the list does not jump.
+
+### A ticket's code is fullscreen at full brightness and the brightness comes back — web anchor: `components/orders/`
+Needs a device because: `UIScreen.brightness`, the idle timer and the scene-phase release have no effect on a simulator. Confirm: set the brightness low, open a code: the screen goes to full and does not dim or lock; close it: the earlier brightness returns; open it, press the side button or swipe to the app switcher, come back: brightness returns on leaving and rises again on coming back; the code scans at a real gate or from another phone's camera.
+
+### Tickets work without reception — web anchor: n/a (native offline cache)
+Needs a device because: the fallback is unit-tested and the simulator sweep photographs a saved copy answering a 503, but real airplane mode, `NWPathMonitor` timing and file protection on a locked phone only show on a device. Confirm: with the app on the ticket timeline while online, wait a few seconds, switch on airplane mode, force-quit and relaunch: the timeline shows under the capsule, a ticket for today opens with its code thumbnails and the code opens fullscreen, a ticket you never opened but that is for today or later does too; the tracking link and Add File say the connection is missing.
+
+### Adding a file and a photo to an order — web anchor: `components/orders/`
+Needs a device because: the Files and Photos pickers, a HEIC photo converted to JPEG and a document from another app only exist on a device. Confirm: a PDF from Files, a photo taken as HEIC and a screenshot each appear in the order's Documents as "Analysing…" and then as documents (the order reloads itself); a file the server refuses (an unsupported type) stays listed with the server's reason and can be dismissed; Add File on the list creates or finds an order and the list updates by itself; deleting an added file asks first.

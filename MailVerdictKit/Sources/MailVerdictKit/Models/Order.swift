@@ -2,6 +2,26 @@ import Foundation
 
 // Mirrors mail_verdict/api/schemas.py's order shapes (api/orders.py).
 
+/// What an entry is: somewhere to be on a date (`ticket`), goods or a one-off service handed over
+/// (`order`), or anything else -- subscriptions, claims, service cases (`other`). A kind a newer
+/// server adds reads as `.other`.
+public enum OrderKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case ticket, order, other
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = OrderKind(rawValue: raw) ?? .other
+    }
+
+    public var label: String {
+        switch self {
+        case .ticket: return "Ticket"
+        case .order: return "Order"
+        case .other: return "Other"
+        }
+    }
+}
+
 /// One row of the orders list -- everything a screen renders without opening the order.
 public struct OrderListItem: ContractModel, Codable, Sendable, Equatable, Identifiable {
     public static let schemaName = "OrderListItem"
@@ -10,7 +30,10 @@ public struct OrderListItem: ContractModel, Codable, Sendable, Equatable, Identi
             summaryPreview = "summary_preview", firstMailAt = "first_mail_at",
             lastMailAt = "last_mail_at", mailCount = "mail_count", accountIds = "account_ids",
             textStale = "text_stale", updatedAt = "updated_at", isFavorite = "is_favorite",
-            isSealed = "is_sealed", openSetBy = "open_set_by", expectedUntil = "expected_until"
+            isSealed = "is_sealed", openSetBy = "open_set_by", expectedUntil = "expected_until",
+            kind, kindSetBy = "kind_set_by", eventStart = "event_start", eventEnd = "event_end",
+            timelineDate = "timeline_date", firstActivityAt = "first_activity_at",
+            lastActivityAt = "last_activity_at", fileCount = "file_count"
     }
     public typealias CodingKeys = ContractKeys
 
@@ -36,17 +59,42 @@ public struct OrderListItem: ContractModel, Codable, Sendable, Equatable, Identi
     @MVDefaulted<MVDefaultOpenSetByAi> public var openSetBy: String
     /// `YYYY-MM-DD` of the last thing still expected; a date-only value, so kept as the wire string.
     public let expectedUntil: String?
+    /// Whether the entry is somewhere to be on a date, goods handed over, or neither.
+    @MVDefaulted<MVDefaultOrderKind> public var kind: OrderKind
+    /// Who decided `kind`: `"ai"` or `"user"` (a person's choice is never overwritten).
+    @MVDefaulted<MVDefaultKindSetByAi> public var kindSetBy: String
+    /// `YYYY-MM-DD` dates, kept as wire strings like `expectedUntil`.
+    public let eventStart: String?
+    public let eventEnd: String?
+    /// The day the entry sits on in the ticket timeline: its event start, else the day of its first
+    /// activity -- decided once by the server, never recomputed here.
+    public let timelineDate: String?
+    public let firstActivityAt: Date?
+    public let lastActivityAt: Date?
+    /// Files a person added by hand (mails are `mailCount`).
+    @MVDefaulted<MVDefaultZero> public var fileCount: Int
 
     public init(
         id: UUID, merchant: String, subject: String, status: String, title: String, isOpen: Bool,
         icon: String, summaryPreview: String, firstMailAt: Date?, lastMailAt: Date?, mailCount: Int,
         accountIds: [UUID], textStale: Bool, updatedAt: Date, isFavorite: Bool = false,
-        isSealed: Bool = false, openSetBy: String = "ai", expectedUntil: String? = nil
+        isSealed: Bool = false, openSetBy: String = "ai", expectedUntil: String? = nil,
+        kind: OrderKind = .order, kindSetBy: String = "ai", eventStart: String? = nil,
+        eventEnd: String? = nil, timelineDate: String? = nil, firstActivityAt: Date? = nil,
+        lastActivityAt: Date? = nil, fileCount: Int = 0
     ) {
         self.isFavorite = isFavorite
         self.isSealed = isSealed
         self.openSetBy = openSetBy
         self.expectedUntil = expectedUntil
+        self.kind = kind
+        self.kindSetBy = kindSetBy
+        self.eventStart = eventStart
+        self.eventEnd = eventEnd
+        self.timelineDate = timelineDate
+        self.firstActivityAt = firstActivityAt
+        self.lastActivityAt = lastActivityAt
+        self.fileCount = fileCount
         self.id = id
         self.merchant = merchant
         self.subject = subject
@@ -82,17 +130,73 @@ public struct OrderListResponse: ContractModel, Codable, Sendable, Equatable {
     }
 }
 
-public struct OrderIdentifierOut: ContractModel, Codable, Sendable, Equatable {
-    public static let schemaName = "OrderIdentifierOut"
-    public enum ContractKeys: String, CodingKey, CaseIterable { case kind, value }
+/// What a key fact is. Unknown kinds a newer server may send read as `.other`, so one new kind
+/// never fails a whole order's decode.
+public enum OrderFactKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case orderNumber = "order_number", bookingCode = "booking_code", ticketNumber = "ticket_number",
+        invoiceNumber = "invoice_number", trackingNumber = "tracking_number", date, time, amount,
+        place, seat, person, code, link, other
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = OrderFactKind(rawValue: raw) ?? .other
+    }
+}
+
+/// A scannable code of a fact, drawn by the server.
+public struct OrderCodeOut: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "OrderCodeOut"
+    public enum ContractKeys: String, CodingKey, CaseIterable {
+        case format, payloadText = "payload_text", imageUrl = "image_url", page
+    }
     public typealias CodingKeys = ContractKeys
 
-    public let kind: String
-    public let value: String
+    public let format: String
+    /// The printable payload, or `nil` for a binary one.
+    public let payloadText: String?
+    /// A server path (with the `/api` prefix) of the PNG.
+    public let imageUrl: String
+    public let page: Int?
 
-    public init(kind: String, value: String) {
+    public init(format: String, payloadText: String?, imageUrl: String, page: Int?) {
+        self.format = format
+        self.payloadText = payloadText
+        self.imageUrl = imageUrl
+        self.page = page
+    }
+}
+
+/// One typed key fact of an order, in display order.
+public struct OrderFactOut: ContractModel, Codable, Sendable, Equatable, Identifiable {
+    public static let schemaName = "OrderFactOut"
+    public enum ContractKeys: String, CodingKey, CaseIterable {
+        case id, kind, label, value, carrier, trackingUrl = "tracking_url", code,
+            documentId = "document_id"
+    }
+    public typealias CodingKeys = ContractKeys
+
+    public let id: UUID
+    public let kind: OrderFactKind
+    public let label: String
+    public let value: String
+    public let carrier: String?
+    /// Built by the server for a tracking number with a known carrier.
+    public let trackingUrl: String?
+    public let code: OrderCodeOut?
+    public let documentId: UUID?
+
+    public init(
+        id: UUID, kind: OrderFactKind, label: String, value: String, carrier: String? = nil,
+        trackingUrl: String? = nil, code: OrderCodeOut? = nil, documentId: UUID? = nil
+    ) {
+        self.id = id
         self.kind = kind
+        self.label = label
         self.value = value
+        self.carrier = carrier
+        self.trackingUrl = trackingUrl
+        self.code = code
+        self.documentId = documentId
     }
 }
 
@@ -143,33 +247,81 @@ public struct OrderMailOut: ContractModel, Codable, Sendable, Equatable, Identif
     public var isGone: Bool { location == "gone" }
 }
 
+/// A readable attachment of one of the order's mails, or a file added to the order by hand.
 public struct OrderDocumentOut: ContractModel, Codable, Sendable, Equatable, Identifiable {
     public static let schemaName = "OrderDocumentOut"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case messageId = "message_id", attachmentId = "attachment_id", filename,
-            contentType = "content_type", sizeBytes = "size_bytes", receivedAt = "received_at"
+        case id, source, messageId = "message_id", attachmentId = "attachment_id",
+            fileId = "file_id", filename, contentType = "content_type", sizeBytes = "size_bytes",
+            receivedAt = "received_at", pageCount = "page_count", method,
+            barcodeCount = "barcode_count", downloadUrl = "download_url"
     }
     public typealias CodingKeys = ContractKeys
 
-    public var id: UUID { attachmentId }
-    public let messageId: UUID
-    public let attachmentId: UUID
+    public let id: UUID
+    /// `"mail"` or `"file"`.
+    public let source: String
+    public let messageId: UUID?
+    public let attachmentId: UUID?
+    public let fileId: UUID?
     public let filename: String
     public let contentType: String
     public let sizeBytes: Int?
     public let receivedAt: Date
+    public let pageCount: Int?
+    public let method: String
+    public let barcodeCount: Int
+    /// A server path (with the `/api` prefix) serving the bytes; `nil` when the mail it belongs to
+    /// is gone.
+    public let downloadUrl: String?
 
     public init(
-        messageId: UUID, attachmentId: UUID, filename: String, contentType: String,
-        sizeBytes: Int?, receivedAt: Date
+        id: UUID, source: String, messageId: UUID?, attachmentId: UUID?, fileId: UUID?, filename: String,
+        contentType: String, sizeBytes: Int?, receivedAt: Date, pageCount: Int? = nil, method: String = "none",
+        barcodeCount: Int = 0, downloadUrl: String?
     ) {
+        self.id = id
+        self.source = source
         self.messageId = messageId
         self.attachmentId = attachmentId
+        self.fileId = fileId
         self.filename = filename
         self.contentType = contentType
         self.sizeBytes = sizeBytes
         self.receivedAt = receivedAt
+        self.pageCount = pageCount
+        self.method = method
+        self.barcodeCount = barcodeCount
+        self.downloadUrl = downloadUrl
     }
+
+    public var isFile: Bool { source == "file" }
+}
+
+/// Where an added file stands: `"pending"` until the orders queue has placed it, then
+/// `"attached"` (with its `orderId`) or `"failed"` (with `lastError`).
+public struct OrderFileStatus: ContractModel, Codable, Sendable, Equatable {
+    public static let schemaName = "OrderFileStatus"
+    public enum ContractKeys: String, CodingKey, CaseIterable {
+        case fileId = "file_id", orderId = "order_id", status, lastError = "last_error"
+    }
+    public typealias CodingKeys = ContractKeys
+
+    public let fileId: UUID
+    public let orderId: UUID?
+    public let status: String
+    public let lastError: String?
+
+    public init(fileId: UUID, orderId: UUID?, status: String, lastError: String? = nil) {
+        self.fileId = fileId
+        self.orderId = orderId
+        self.status = status
+        self.lastError = lastError
+    }
+
+    public var isPending: Bool { status == "pending" }
+    public var isAttached: Bool { status == "attached" }
+    public var isFailed: Bool { status == "failed" }
 }
 
 public struct OrderDetail: ContractModel, Codable, Sendable, Equatable, Identifiable {
@@ -180,7 +332,10 @@ public struct OrderDetail: ContractModel, Codable, Sendable, Equatable, Identifi
             lastMailAt = "last_mail_at", mailCount = "mail_count", accountIds = "account_ids",
             textStale = "text_stale", updatedAt = "updated_at", isFavorite = "is_favorite",
             isSealed = "is_sealed", openSetBy = "open_set_by", expectedUntil = "expected_until",
-            summary, identifiers, mails, documents
+            kind, kindSetBy = "kind_set_by", eventStart = "event_start", eventEnd = "event_end",
+            timelineDate = "timeline_date", firstActivityAt = "first_activity_at",
+            lastActivityAt = "last_activity_at", fileCount = "file_count", summary, facts, mails,
+            documents
     }
     public typealias CodingKeys = ContractKeys
 
@@ -206,25 +361,44 @@ public struct OrderDetail: ContractModel, Codable, Sendable, Equatable, Identifi
     @MVDefaulted<MVDefaultOpenSetByAi> public var openSetBy: String
     /// `YYYY-MM-DD` of the last thing still expected; a date-only value, so kept as the wire string.
     public let expectedUntil: String?
+    @MVDefaulted<MVDefaultOrderKind> public var kind: OrderKind
+    @MVDefaulted<MVDefaultKindSetByAi> public var kindSetBy: String
+    public let eventStart: String?
+    public let eventEnd: String?
+    public let timelineDate: String?
+    public let firstActivityAt: Date?
+    public let lastActivityAt: Date?
+    @MVDefaulted<MVDefaultZero> public var fileCount: Int
     public let summary: String
-    public let identifiers: [OrderIdentifierOut]
+    /// Typed key facts in the server's display order.
+    @MVDefaulted<MVDefaultEmptyArray<OrderFactOut>> public var facts: [OrderFactOut]
     /// Oldest first -- the server's own order (`order_mails.received_at` ascending).
     public let mails: [OrderMailOut]
-    /// Newest first, at most 12 -- the server's own order.
-    public let documents: [OrderDocumentOut]
+    /// Every readable attachment of the order's mails and every file added to it, newest first.
+    @MVDefaulted<MVDefaultEmptyArray<OrderDocumentOut>> public var documents: [OrderDocumentOut]
 
     public init(
         id: UUID, merchant: String, subject: String, status: String, title: String, isOpen: Bool,
         icon: String, summaryPreview: String, firstMailAt: Date?, lastMailAt: Date?, mailCount: Int,
         accountIds: [UUID], textStale: Bool, updatedAt: Date, summary: String,
-        identifiers: [OrderIdentifierOut], mails: [OrderMailOut], documents: [OrderDocumentOut],
+        facts: [OrderFactOut], mails: [OrderMailOut], documents: [OrderDocumentOut],
         isFavorite: Bool = false, isSealed: Bool = false, openSetBy: String = "ai",
-        expectedUntil: String? = nil
+        expectedUntil: String? = nil, kind: OrderKind = .order, kindSetBy: String = "ai",
+        eventStart: String? = nil, eventEnd: String? = nil, timelineDate: String? = nil,
+        firstActivityAt: Date? = nil, lastActivityAt: Date? = nil, fileCount: Int = 0
     ) {
         self.isFavorite = isFavorite
         self.isSealed = isSealed
         self.openSetBy = openSetBy
         self.expectedUntil = expectedUntil
+        self.kind = kind
+        self.kindSetBy = kindSetBy
+        self.eventStart = eventStart
+        self.eventEnd = eventEnd
+        self.timelineDate = timelineDate
+        self.firstActivityAt = firstActivityAt
+        self.lastActivityAt = lastActivityAt
+        self.fileCount = fileCount
         self.id = id
         self.merchant = merchant
         self.subject = subject
@@ -240,7 +414,7 @@ public struct OrderDetail: ContractModel, Codable, Sendable, Equatable, Identifi
         self.textStale = textStale
         self.updatedAt = updatedAt
         self.summary = summary
-        self.identifiers = identifiers
+        self.facts = facts
         self.mails = mails
         self.documents = documents
     }
@@ -253,7 +427,9 @@ public struct OrderDetail: ContractModel, Codable, Sendable, Equatable, Identifi
             isOpen: isOpen, icon: icon, summaryPreview: summaryPreview, firstMailAt: firstMailAt,
             lastMailAt: lastMailAt, mailCount: mailCount, accountIds: accountIds,
             textStale: textStale, updatedAt: updatedAt, isFavorite: isFavorite, isSealed: isSealed,
-            openSetBy: openSetBy, expectedUntil: expectedUntil
+            openSetBy: openSetBy, expectedUntil: expectedUntil, kind: kind, kindSetBy: kindSetBy,
+            eventStart: eventStart, eventEnd: eventEnd, timelineDate: timelineDate,
+            firstActivityAt: firstActivityAt, lastActivityAt: lastActivityAt, fileCount: fileCount
         )
     }
 }
@@ -321,17 +497,22 @@ public struct OrderCatchUpResponse: ContractModel, Codable, Sendable, Equatable 
 public struct OrderUpdateRequest: ContractModel, Codable, Sendable, Equatable {
     public static let schemaName = "OrderUpdateRequest"
     public enum ContractKeys: String, CodingKey, CaseIterable {
-        case isFavorite = "is_favorite", isOpen = "is_open", isSealed = "is_sealed"
+        case isFavorite = "is_favorite", isOpen = "is_open", isSealed = "is_sealed", kind
     }
     public typealias CodingKeys = ContractKeys
 
     public let isFavorite: Bool?
     public let isOpen: Bool?
     public let isSealed: Bool?
+    /// A person's choice of kind; the model's rewrites leave it alone from then on.
+    public let kind: OrderKind?
 
-    public init(isFavorite: Bool? = nil, isOpen: Bool? = nil, isSealed: Bool? = nil) {
+    public init(
+        isFavorite: Bool? = nil, isOpen: Bool? = nil, isSealed: Bool? = nil, kind: OrderKind? = nil
+    ) {
         self.isFavorite = isFavorite
         self.isOpen = isOpen
         self.isSealed = isSealed
+        self.kind = kind
     }
 }
