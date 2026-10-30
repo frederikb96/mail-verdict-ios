@@ -302,7 +302,13 @@ final class AppEnvironment {
 
     private static func offlineCache(serverURL: String) -> MVOfflineCache? {
         #if DEBUG
-            if MVFixtureLaunch.isEnabled() { return nil }
+            // Fixture mode keeps its copies in a throwaway directory, so a screen that shows what
+            // is saved on the device can seed it and nothing outlives the simulator.
+            if MVFixtureLaunch.isEnabled() {
+                return MVOfflineCache(
+                    directory: FileManager.default.temporaryDirectory
+                        .appendingPathComponent("fixture-offline", isDirectory: true))
+            }
         #endif
         return MVOfflineCache(directory: MVOfflineCache.directory(base: offlineCacheBase, serverURL: serverURL))
     }
