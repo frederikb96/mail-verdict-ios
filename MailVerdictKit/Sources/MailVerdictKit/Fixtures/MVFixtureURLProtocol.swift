@@ -102,6 +102,7 @@
         }
 
         private static let lock = NSLock()
+        nonisolated(unsafe) private static var anyAccountRoutes: [FixtureRoute] = []
         nonisolated(unsafe) private static var routes: [FixtureRoute] = [
             FixtureRoute(method: "GET", path: "/api/health", status: 200, keepOpen: false) {
                 Data(#"{"status":"ready","postimap_contract":"ok","database":"ok"}"#.utf8)
@@ -125,6 +126,19 @@
                 FixtureRoute(method: method.uppercased(), path: path, status: status, keepOpen: keepOpen, body: body))
         }
 
+        /// Answers any account's `/api/accounts/<id><suffix>` that no exact route covers. A screen
+        /// that registers `/api/accounts` with its own ids still sits on top of Mailboxes, whose
+        /// always-on pieces then ask about those ids, and a screen must not have to know that.
+        public static func registerForAnyAccount(
+            method: String, suffix: String, body: @escaping @Sendable () -> Data
+        ) {
+            lock.lock()
+            defer { lock.unlock() }
+            anyAccountRoutes.removeAll { $0.method == method.uppercased() && $0.path == suffix }
+            anyAccountRoutes.append(
+                FixtureRoute(method: method.uppercased(), path: suffix, status: 200, keepOpen: false, body: body))
+        }
+
         /// Back to just `/api/health` — for a test that registers its own routes and must not
         /// leak them into the next one. Also clears `isEnabledOverride` and the miss log, for the
         /// same reason.
@@ -136,6 +150,7 @@
                     Data(#"{"status":"ready","postimap_contract":"ok","database":"ok"}"#.utf8)
                 }
             ]
+            anyAccountRoutes = []
             isEnabledOverride = nil
             _misses = []
         }
@@ -148,7 +163,11 @@
         /// instead of only as a blank or error state someone has to notice by eye.
         static func route(method: String, path: String) -> Match {
             lock.lock()
-            let found = routes.first { $0.method == method.uppercased() && $0.path == path }
+            let found =
+                routes.first { $0.method == method.uppercased() && $0.path == path }
+                ?? anyAccountRoutes.first {
+                    $0.method == method.uppercased() && path.hasPrefix("/api/accounts/") && path.hasSuffix($0.path)
+                }
             if found == nil { _misses.append("\(method.uppercased()) \(path)") }
             lock.unlock()
             guard let fixture = found else {
