@@ -1,3 +1,4 @@
+import Foundation
 import MailVerdictKit
 
 #if DEBUG
