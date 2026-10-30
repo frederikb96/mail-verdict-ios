@@ -30,8 +30,8 @@ import MailVerdictKit
             MVScreenshotEntry(
                 id: "orders-tickets-offline", destination: .route(.orders),
                 prepare: { _, connection in
-                    if let cache = connection.offlineCache { await OrdersFixtures.seedOfflineTickets(in: cache) }
                     OrdersFixtures.registerUnreachable()
+                    if let cache = connection.offlineCache { await OrdersFixtures.seedOfflineTickets(in: cache) }
                     await showList(OrderViewState(kind: .tickets))
                     try? await Task.sleep(for: .milliseconds(1200))
                 }),
@@ -58,8 +58,10 @@ import MailVerdictKit
             MVScreenshotEntry(
                 id: "order-ticket-offline", destination: .route(.order(OrdersFixtures.ticketOrderId)),
                 prepare: { _, connection in
-                    if let cache = connection.offlineCache { await OrdersFixtures.seedOfflineTicket(in: cache) }
+                    // Registered before anything is awaited: the screen's own first load must meet
+                    // the unreachable server, not an unregistered route.
                     OrdersFixtures.registerUnreachable(order: OrdersFixtures.ticketOrderId)
+                    if let cache = connection.offlineCache { await OrdersFixtures.seedOfflineTicket(in: cache) }
                     MailboxesFixtures.registerIfNeeded()
                     guard let store = await poll({ OrdersFixtures.activeDetailStore }) else { return }
                     await settle(store)

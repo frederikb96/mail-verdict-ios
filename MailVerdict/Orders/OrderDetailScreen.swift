@@ -28,9 +28,6 @@ struct OrderDetailScreen: View {
         let freshStore = OrderDetailStore(
             orderId: orderId, apiClient: connection.apiClient, offlineCache: connection.offlineCache)
         self._store = State(initialValue: freshStore)
-        #if DEBUG
-            OrdersFixtures.activeDetailStore = freshStore
-        #endif
     }
 
     /// The presentation modifiers are split over three properties: a body chaining this many
@@ -75,6 +72,10 @@ struct OrderDetailScreen: View {
             .toolbar { toolbarContent }
             .safeAreaInset(edge: .top, spacing: 0) { offlineNotice }
             .task {
+                #if DEBUG
+                    // The instance this screen keeps: `init` also runs for instances SwiftUI discards.
+                    OrdersFixtures.activeDetailStore = store
+                #endif
                 ReaderSourceRegistry.shared.register(store, for: .order(orderId))
                 store.subscribeToLive(connection.liveEventHub)
                 await store.load()

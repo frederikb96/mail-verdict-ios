@@ -21,9 +21,6 @@ struct OrdersScreen: View {
             apiClient: connection.apiClient, persistence: OrderViewPersistence(),
             offlineCache: connection.offlineCache)
         self._store = State(initialValue: freshStore)
-        #if DEBUG
-            OrdersFixtures.activeListStore = freshStore
-        #endif
     }
 
     var body: some View {
@@ -69,6 +66,10 @@ struct OrdersScreen: View {
                 }
             #endif
             .task {
+                #if DEBUG
+                    // The instance this screen keeps: `init` also runs for instances SwiftUI discards.
+                    OrdersFixtures.activeListStore = store
+                #endif
                 store.subscribeToLive(connection.liveEventHub)
                 await store.load()
             }
