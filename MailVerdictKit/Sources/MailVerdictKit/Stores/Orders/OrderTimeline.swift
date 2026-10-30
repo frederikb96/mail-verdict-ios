@@ -36,15 +36,14 @@ public enum OrderTimelineEntry: Identifiable, Sendable, Equatable {
 }
 
 /// Tickets by the day they are for, newest day first, with a "today" marker between what is still
-/// ahead and what has passed: future at the top, past below, today's own tickets just under the
-/// marker.
+/// ahead and what has passed: future and today's own tickets above it, past below.
 public struct OrderTimeline: Sendable, Equatable {
     public static let todayID = "timeline-today"
 
     public let entries: [OrderTimelineEntry]
     /// Where the marker sits in `entries`.
     public let todayIndex: Int
-    /// How many entries are still ahead of today.
+    /// How many entries are dated today or later.
     public var upcomingCount: Int { todayIndex }
 
     /// An entry with no day sorts below everything dated. Entries on the same day keep the order
@@ -58,7 +57,7 @@ public struct OrderTimeline: Sendable, Equatable {
             case (nil, _?): return false
             }
         }.map(\.element)
-        let ahead = ordered.prefix { ($0.timelineDay ?? "") > today }
+        let ahead = ordered.prefix { ($0.timelineDay ?? "") >= today }
         var entries = ahead.map(OrderTimelineEntry.order)
         let index = entries.count
         entries.append(.today)

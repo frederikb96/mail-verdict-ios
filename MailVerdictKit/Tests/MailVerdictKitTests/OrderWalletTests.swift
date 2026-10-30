@@ -18,7 +18,7 @@ final class OrderWalletTests: XCTestCase {
 
     // MARK: - Timeline
 
-    func testTimelineHasFutureAboveTheMarkerAndPastBelowWithTodaysTicketsJustUnderIt() {
+    func testTimelineHasFutureAndTodayAboveTheMarkerAndPastBelow() {
         let future2 = item("2026-05-20"), future1 = item("2026-05-12")
         let todays = item("2026-05-10")
         let past1 = item("2026-05-02"), past2 = item("2026-01-15")
@@ -27,9 +27,9 @@ final class OrderWalletTests: XCTestCase {
 
         XCTAssertEqual(
             built.entries,
-            [.order(future2), .order(future1), .today, .order(todays), .order(past1), .order(past2)])
-        XCTAssertEqual(built.todayIndex, 2)
-        XCTAssertEqual(built.upcomingCount, 2)
+            [.order(future2), .order(future1), .order(todays), .today, .order(past1), .order(past2)])
+        XCTAssertEqual(built.todayIndex, 3)
+        XCTAssertEqual(built.upcomingCount, 3)
     }
 
     func testTimelineMarkerIsPresentWhenNothingIsAheadOrNothingHasPassed() {
