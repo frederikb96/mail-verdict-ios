@@ -113,6 +113,16 @@
             return url
         }
 
+        /// A client for the connection the app signed in with, for code running outside the app's
+        /// own connection: the share extension, and the Shortcuts app asking for a list to pick
+        /// from. `nil` when signed out.
+        public func signedInClient() -> MVApiClient? {
+            guard let url = readBackendURL(), let mode = read(),
+                let factory = try? MVRequestFactory(baseURL: url, authProvider: { mode })
+            else { return nil }
+            return MVApiClient(requestFactory: factory)
+        }
+
         /// Publishes the backend address for the share extension; `nil` removes it. The app's own
         /// copy stays in `UserDefaults`, so a failed write here costs the extension its address and
         /// nothing else.

@@ -46,11 +46,7 @@ struct ShareScreen: View {
     /// The connection the app signed in with, read from the Keychain group both targets hold. Only
     /// read here: signing in, and signing out, belong to the app.
     private static func client() -> MVApiClient? {
-        let credentials = MVKeychainCredentialStore()
-        guard let url = credentials.readBackendURL(), let mode = credentials.read(),
-            let factory = try? MVRequestFactory(baseURL: url, authProvider: { mode })
-        else { return nil }
-        return MVApiClient(requestFactory: factory)
+        MVKeychainCredentialStore().signedInClient()
     }
 }
 

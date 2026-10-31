@@ -63,7 +63,8 @@ mail and files.
   survives a relaunch.
 - **Tickets are a timeline:** by the day they are for, what is ahead above a "Today" marker and
   what has passed below. It opens with the marker in the middle of the screen and keeps it there
-  until you first touch the list.
+  until you first touch the list. Coming back from a ticket keeps your place; Today jumps back to
+  the marker.
 - **Key facts:** an order shows its numbers, dates, places, seats and amounts. A tracking number
   opens the carrier's page, a link opens in the browser, anything else copies on tap.
 - **Codes:** the QR, Aztec and barcodes of a ticket show as thumbnails. Tapping one shows it
@@ -95,6 +96,13 @@ The extension reads the backend address and credential from the Keychain group t
 holds, so it needs no setup of its own; the app publishes the address on launch and withdraws it on
 sign-out. If the app is signed out or the server refuses the credential, the sheet says to open
 MailVerdict. A share is sent from inside the sheet, which has to stay open until it finishes.
+
+## Shortcuts
+
+The Shortcuts app lists MailVerdict's actions: New Message, Open Tickets, Tickets, Open Orders,
+Orders & Tickets, Open Unified View (asks which one) and Search Mail. Each brings the app to the
+front on that screen, so Add to Home Screen on a shortcut built from one makes a one-tap icon. The
+same actions answer Siri and Spotlight.
 
 ## How it is arranged
 

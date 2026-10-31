@@ -2,8 +2,8 @@ import MailVerdictKit
 import SwiftUI
 
 /// The orders & tickets list. A one-tap kind control (All, Orders, Tickets) and the Open and
-/// Favorites chips choose the view; Tickets open as a timeline centred on today, everything else
-/// is newest activity first.
+/// Favorites chips choose the view; Tickets open as a timeline centred on today with a Today button
+/// to return to it, everything else is newest activity first.
 struct OrdersScreen: View {
     let environment: AppEnvironment
     let connection: AppEnvironment.Connection
@@ -71,7 +71,13 @@ struct OrdersScreen: View {
                     OrdersFixtures.activeListStore = store
                 #endif
                 store.subscribeToLive(connection.liveEventHub)
-                await store.load()
+                await store.loadOrRefresh()
+            }
+            .onChange(of: environment.requestedOrderView, initial: true) { _, requested in
+                guard let requested else { return }
+                environment.requestedOrderView = nil
+                store.requestTodayJump()
+                Task { await store.setView(requested) }
             }
             .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
     }

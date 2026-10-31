@@ -5,15 +5,16 @@ import SwiftUI
 /// below, opening with the marker in the middle of the screen.
 ///
 /// Every row has one fixed height (scaled with Dynamic Type), so nothing above the reader is ever
-/// measured late and the marker's position is exactly what it was laid out as. The position is
-/// held on the marker while the list settles and let go at the first touch of the reader.
+/// measured late and the marker's position is exactly what it was laid out as. A jump to today is
+/// held on the marker while the list settles and let go at the first touch of the reader; coming
+/// back from an order is no jump, so the reader finds the list where it was.
 struct OrderTimelineList: View {
     let store: OrderListStore
     let perform: (OrderAction, OrderListItem) -> Void
 
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 96
     @ScaledMetric(relativeTo: .body) private var markerHeight: CGFloat = 44
-    /// True from the moment a timeline appears until the reader first touches it.
+    /// True from a jump to today until the reader first touches the list.
     @State private var holdsToday = true
     @State private var centring: Task<Void, Never>?
 
@@ -73,7 +74,15 @@ struct OrderTimelineList: View {
                     OrdersDebugState.shared.viewportFrame = frame
                 }
             #endif
-            .onChange(of: store.view.identity, initial: true) {
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Today") { store.requestTodayJump() }
+                        .accessibilityIdentifier("orders-today")
+                }
+            }
+            .onChange(of: store.owesTodayJump, initial: true) { _, owed in
+                guard owed else { return }
+                store.todayJumpTaken()
                 holdsToday = true
                 centring?.cancel()
                 centring = Task { await keepCentred(proxy) }

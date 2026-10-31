@@ -36,10 +36,13 @@ struct SearchScreen: View {
                 #endif
                 store.subscribeToLive(connection.liveEventHub)
                 ReaderSourceRegistry.shared.register(store, for: .search(store.context))
-                isSearchFieldFocused = true
+                // On the way back from a message the results stay as they were: a new search would
+                // cut them back to their first page, and focusing the field would raise the keyboard.
+                let isReturning = store.hasSearched
+                if !isReturning { isSearchFieldFocused = true }
                 scrollTarget = store.topVisibleRowId
                 accounts = (try? await connection.apiClient.listAccounts()) ?? []
-                if store.context.query.count >= 2 { await store.runSearch() }
+                if store.context.query.count >= 2, !isReturning { await store.runSearch() }
             }
             .onDisappear { store.unsubscribeFromLive(connection.liveEventHub) }
             .onChange(of: scrollTarget) { _, newValue in store.topVisibleRowId = newValue }
