@@ -28,6 +28,11 @@ public final class OrderListStore {
     /// one on screen never lands.
     private var generation = 0
 
+    /// The timeline owes the reader a jump to today: true for a new list and when asked for, false
+    /// once the list has acted on it. Kept here, not in the view, so the list coming back on screen
+    /// from a pushed order finds nothing owed and stays where the reader left it.
+    public private(set) var owesTodayJump = true
+
     /// The screen's own "is the first row visible" signal -- read only when a live invalidation
     /// arrives (`apply(_:)`), never written by this store. Defaults to `true`: an empty or
     /// still-loading list has nothing to preserve a scroll position within.
@@ -59,6 +64,11 @@ public final class OrderListStore {
 
     /// The tickets as a timeline around today; meaningful while `view.isTimeline`.
     public var timeline: OrderTimeline { OrderTimeline.build(items: rows, today: today()) }
+
+    /// The Today button, and a shortcut landing on the view already on screen.
+    public func requestTodayJump() { owesTodayJump = true }
+
+    public func todayJumpTaken() { owesTodayJump = false }
 
     /// Takes what the filter field shows; the list reloads once typing pauses, the same 150 ms the
     /// mail quick filter waits. A reload for a superseded value never lands.
@@ -111,9 +121,13 @@ public final class OrderListStore {
         nextCursor = nil
         savedCopyAt = nil
         errorMessage = nil
+        owesTodayJump = true
     }
 
     private var pageLimit: Int { view.isTimeline ? 500 : 50 }
+
+    /// What the server accepts for one page.
+    private static let maxPageLimit = 500
 
     private func fetch(before: UUID? = nil, limit: Int, view requested: OrderViewState) async throws
         -> OrderListResponse
@@ -121,6 +135,17 @@ public final class OrderListStore {
         try await apiClient.listOrders(
             state: requested.state, favorites: requested.favorites, kind: requested.kind.apiKind,
             sort: requested.sort, query: query, before: before, limit: limit)
+    }
+
+    /// The screen appearing: the first time a plain load, and on the way back from an order a
+    /// re-read of everything already loaded. A plain load there would cut the list back to its
+    /// first page under a reader scrolled past it.
+    public func loadOrRefresh() async {
+        if rows.isEmpty {
+            await load()
+        } else {
+            await refreshInPlace(atTop: isAtTop)
+        }
     }
 
     public func load() async {
@@ -239,8 +264,8 @@ public final class OrderListStore {
     private func refreshInPlace(atTop: Bool) async {
         let mine = generation
         let requested = view
-        guard let response = try? await fetch(limit: max(rows.count, pageLimit), view: requested),
-            mine == generation
+        let limit = min(max(rows.count, pageLimit), Self.maxPageLimit)
+        guard let response = try? await fetch(limit: limit, view: requested), mine == generation
         else { return }
         if requested.isTimeline {
             rows = response.items

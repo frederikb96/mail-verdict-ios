@@ -40,7 +40,9 @@ public final class SpamReviewStore {
         isLoading = items.isEmpty
         errorMessage = nil
         do {
-            let response = try await apiClient.listSpamReview(limit: 50)
+            // Everything already loaded, up to what one page may hold: a reader coming back to a
+            // list scrolled past its first page keeps it.
+            let response = try await apiClient.listSpamReview(limit: min(max(items.count, 50), 200))
             items = response.items
             hasMore = response.hasMore
             nextCursor = response.nextCursor

@@ -47,6 +47,8 @@ final class AppEnvironment {
     /// draft, Undo Send, "New Message to…") sets this rather than pushing a `Route`, since a
     /// composer is a modal, not a navigation destination.
     var presentedCompose: ComposeIntent?
+    /// The view a shortcut asked the orders screen to show; the screen takes it and clears it.
+    var requestedOrderView: OrderViewState?
 
     let toasts = MVToastStore()
 
@@ -174,6 +176,17 @@ final class AppEnvironment {
         connection = nil
         lastAuthFailure = nil
         router = Router(gate: .needsConfiguration)
+    }
+
+    /// Lands on a shortcut's target. A composer already open stays: it is modal and may hold unsent
+    /// text, so a new message never replaces it and everything else arrives underneath it.
+    func open(_ target: MVShortcutTarget) {
+        if case .orders(let view) = target { requestedOrderView = view }
+        if let path = target.path {
+            navigationPath = path
+        } else if presentedCompose == nil {
+            presentedCompose = ComposeIntent(kind: .new(accountId: nil))
+        }
     }
 
     /// Persists `navigationPath` — called from `RootView`'s own `.onChange`, not automatically

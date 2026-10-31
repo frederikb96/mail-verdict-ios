@@ -52,6 +52,11 @@ private struct ConnectedShell: View {
             .onChange(of: environment.navigationPath) { _, _ in
                 environment.persistNavigationPath()
             }
+            .onChange(of: ShortcutInbox.shared.pending, initial: true) { _, target in
+                guard let target else { return }
+                ShortcutInbox.shared.pending = nil
+                environment.open(target)
+            }
 
             ToastOverlay(store: environment.toasts)
 

@@ -44,6 +44,35 @@ final class OrderListStoreTests: XCTestCase {
         XCTAssertTrue(store.held.isEmpty)
     }
 
+    func testComingBackRereadsTheWholeLoadedListAndOwesNoJump() async {
+        let ids = (0..<60).map { _ in UUID() }
+        let page = ids.map { itemJSON(id: $0) }.joined(separator: ",")
+        let body = Data("{\"items\":[\(page)],\"has_more\":false,\"next_cursor\":null}".utf8)
+        MVStubURLProtocol.stub = .init(statusCode: 200, headers: [:], body: body)
+        let store = makeStore(view: OrderViewState(kind: .orders))
+        await store.loadOrRefresh()
+        XCTAssertTrue(store.owesTodayJump)
+        store.todayJumpTaken()
+
+        await store.loadOrRefresh()
+
+        XCTAssertEqual(MVStubURLProtocol.capturedRequest?.url?.query?.contains("limit=60"), true)
+        XCTAssertEqual(store.rows.map(\.id), ids)
+        XCTAssertFalse(store.owesTodayJump)
+    }
+
+    func testANewViewAndTheTodayButtonEachOweAJump() async {
+        MVStubURLProtocol.stub = .init(
+            statusCode: 200, headers: [:], body: Data("{\"items\":[],\"has_more\":false,\"next_cursor\":null}".utf8))
+        let store = makeStore(view: OrderViewState(kind: .tickets))
+        store.todayJumpTaken()
+        store.requestTodayJump()
+        XCTAssertTrue(store.owesTodayJump)
+        store.todayJumpTaken()
+        await store.toggleOpen()
+        XCTAssertTrue(store.owesTodayJump)
+    }
+
     func testLoadFailurePopulatesErrorMessage() async {
         MVStubURLProtocol.stub = .init(statusCode: 500, headers: [:], body: Data(#"{"detail":"boom"}"#.utf8))
         let store = makeStore()

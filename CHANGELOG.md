@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-31
+
+### Added
+
+- Shortcuts: New Message, Open Tickets, Tickets, Open Orders, Orders & Tickets, Open Unified View
+  and Search Mail, for the Shortcuts app, the home screen, Siri and Spotlight.
+- A Today button on the ticket timeline.
+
+### Fixed
+
+- Coming back from a ticket keeps your place on the timeline instead of jumping to today. Orders,
+  Search and Spam Review keep theirs too: returning no longer cuts the list back to its first page.
+
 ## [0.13.0] - 2026-10-31
 
 ### Added
