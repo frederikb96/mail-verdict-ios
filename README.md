@@ -71,7 +71,7 @@ mail and files.
   leaving the foreground, puts the brightness back.
 - **Files:** Add File and Add Photo on an order (and the plus on the list, which lets the server
   pick the order) send a document to be read into the order. HEIC photos are converted to JPEG
-  first, since the server does not take HEIC. Documents of an order, mail attachments and added
+  first, since the server stores HEIC but cannot read it. Documents of an order, mail attachments and added
   files alike, open in the system preview; an added file can be deleted.
 - **Without reception:** the detail of every ticket you open, its codes, and the ticket timeline
   are saved on the device; the tickets for today and later are saved ahead of time whenever the
@@ -85,7 +85,7 @@ on once: scroll the sheet's app row to More and enable it). The sheet offers two
 
 - **Add to Orders:** each file is sent to the orders pipeline, which reads it and places it on an
   order or ticket. Images are fitted to 2,000 px on the long side and HEIC becomes JPEG, since
-  Orders takes only PNG and JPEG among images.
+  Orders reads only PNG and JPEG among images.
 - **New mail in an account:** saves a draft in that account with every shared file attached and
   no recipient. The composer does not open; the draft is in Drafts afterwards. The account used
   last is listed first. A draft from the sheet takes up to 20 files and 32 MB together, because

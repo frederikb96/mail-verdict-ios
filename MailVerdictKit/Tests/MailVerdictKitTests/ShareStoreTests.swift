@@ -95,15 +95,15 @@ final class ShareStoreTests: XCTestCase {
         XCTAssertEqual(backend.orderUploads, ["a.pdf", "b.pdf", "c.pdf"])
     }
 
-    func testAFileTheServerDoesNotTakeDoesNotStopTheOthers() async {
+    func testAFileTheServerRefusesDoesNotStopTheOthers() async {
         let backend = StubShareBackend()
-        backend.failOrder("a.docx", with: .http(statusCode: 415, reason: "Unsupported Media Type"))
-        let store = store([file("a.docx"), file("b.pdf")], backend: backend)
+        backend.failOrder("a.pdf", with: .http(statusCode: 413, reason: "Payload Too Large"))
+        let store = store([file("a.pdf"), file("b.pdf")], backend: backend)
 
         await store.send(to: .orders)
 
         XCTAssertEqual(backend.orderUploads, ["b.pdf"])
-        XCTAssertEqual(store.phase, .failed(.orders, message: "a.docx: The server does not take this type of file."))
+        XCTAssertEqual(store.phase, .failed(.orders, message: "a.pdf: This file is larger than the server takes."))
     }
 
     func testARefusedCredentialStopsTheRunAndSaysToSignIn() async {

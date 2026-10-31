@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-31
+
 ### Added
 
+- Orders & Tickets as a wallet: a kind and Open/Favorites view, the ticket timeline around today,
+  key facts, fullscreen codes at full brightness, files added by hand, and tickets saved for use
+  without reception.
 - A share extension: files, images, text and links shared from any app can be added to Orders, or
   saved as a draft with the files attached in a chosen account. The Keychain credential store
   moved into the package so the extension reads the same item, and the app publishes the backend

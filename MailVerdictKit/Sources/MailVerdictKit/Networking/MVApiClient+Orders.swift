@@ -73,9 +73,9 @@ extension MVApiClient {
     }
 
     /// Adds a file by hand, optionally to a chosen order. The server answers `202` at once; the
-    /// returned status is `pending` until the orders queue has read and placed the file. A `415`
-    /// means the type is not accepted (HEIC included: convert to JPEG first), a `413` that the file
-    /// or the order's files are too large.
+    /// returned status is `pending` until the orders queue has read and placed the file. Any type is
+    /// stored, but only some can be read into the order (HEIC cannot: convert to JPEG first); a
+    /// `413` means the file or the order's files are too large.
     public func uploadOrderFile(
         data: Data, filename: String, contentType: String, orderId: UUID? = nil
     ) async throws -> OrderFileStatus {
