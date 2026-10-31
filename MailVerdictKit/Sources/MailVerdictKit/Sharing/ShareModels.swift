@@ -80,8 +80,8 @@ public enum ShareImagePlan {
 
     /// `nil` means the bytes go out as they are.
     ///
-    /// Orders takes only PNG and JPEG and the Photos library hands out HEIC, which the server
-    /// answers with `415`, so everything else is re-encoded and an image larger than the fit is
+    /// Orders reads only PNG and JPEG among images and the Photos library hands out HEIC, which
+    /// the server stores but cannot read, so everything else is re-encoded and an image larger than the fit is
     /// scaled down. A mail keeps what the person shared except HEIC, which most recipients cannot
     /// open.
     public static func plan(

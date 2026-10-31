@@ -20,8 +20,8 @@ public struct OrderUpload: Identifiable, Sendable, Equatable {
     }
 }
 
-/// What the server cannot take as it comes from the phone. It answers `415` to HEIC, which is what
-/// the Photos library hands out, so images are converted to JPEG before they are sent.
+/// What the server cannot read as it comes from the phone. It stores HEIC, which is what the
+/// Photos library hands out, but cannot read it, so images are converted to JPEG before they are sent.
 public enum OrderUploadFile {
     public static func needsJPEGConversion(contentType: String?, filename: String) -> Bool {
         let type = contentType?.lowercased() ?? ""

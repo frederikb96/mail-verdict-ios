@@ -193,7 +193,6 @@ public final class ShareStore {
         }
         switch mvError.statusCode {
         case 413: return "This file is larger than the server takes."
-        case 415: return "The server does not take this type of file."
         default: return mvError.userMessage
         }
     }
