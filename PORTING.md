@@ -583,3 +583,6 @@ Needs a device because: the list's scroll position across a push and pop only sh
 
 ### Shortcuts land where they say — web anchor: n/a (native App Intents)
 Needs a device because: the Shortcuts app, Add to Home Screen and a launch from a cold start exist nowhere else. Confirm: every action is listed under MailVerdict in the Shortcuts app; Open Tickets from a home-screen icon lands on the timeline at today with Tickets and Open on, from a cold start and from any other screen; Open Unified View offers the views; New Message with a composer already open leaves it alone.
+
+### Controls open the app where they say — web anchor: n/a (native WidgetKit controls)
+Needs a device because: Control Center, its edit mode and a control launching the app exist nowhere else. Confirm: after updating, open MailVerdict once; in Control Center's edit mode, Add a Control lists MailVerdict with New Message and Open Tickets, each at 1x1 with its symbol; New Message opens the composer and Open Tickets the ticket timeline at today with Open on, both from a cold start and with the app in the background; neither control shows an error instead of opening the app.

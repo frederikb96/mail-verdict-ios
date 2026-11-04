@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Controls for Control Center, the Lock Screen and the Action button: New Message and Open
+  Tickets.
+
 ## [0.14.0] - 2026-10-31
 
 ### Added
