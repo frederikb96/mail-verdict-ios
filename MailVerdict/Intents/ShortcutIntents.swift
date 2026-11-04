@@ -2,24 +2,7 @@ import AppIntents
 import Foundation
 import MailVerdictKit
 
-/// Every action here brings the app to the front and parks where it should land, so a shortcut built
-/// from one is one tap to that screen.
-@MainActor
-private func land(on target: MVShortcutTarget) -> some IntentResult {
-    ShortcutInbox.shared.pending = target
-    return .result()
-}
-
-struct NewMessageIntent: AppIntent {
-    static var title: LocalizedStringResource { "New Message" }
-    static var description: IntentDescription { IntentDescription("Start a new message in MailVerdict.") }
-    static var openAppWhenRun: Bool { true }
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        land(on: .newMessage)
-    }
-}
+// New Message and Open Tickets, and `land(on:)` every action here uses, are in `SharedIntents/`.
 
 struct OpenSearchIntent: AppIntent {
     static var title: LocalizedStringResource { "Search Mail" }
@@ -51,19 +34,6 @@ struct OpenTicketsIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         land(on: .orders(OrderViewState(kind: .tickets)))
-    }
-}
-
-struct OpenOpenTicketsIntent: AppIntent {
-    static var title: LocalizedStringResource { "Open Tickets" }
-    static var description: IntentDescription {
-        IntentDescription("Show only the tickets still open, on the timeline at today.")
-    }
-    static var openAppWhenRun: Bool { true }
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        land(on: .orders(OrderViewState(kind: .tickets, open: true)))
     }
 }
 

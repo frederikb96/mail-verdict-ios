@@ -540,6 +540,8 @@ def main() -> int:
         ROOT / "MailVerdictKit/Sources",
         ROOT / "MailVerdictNotify",
         ROOT / "MailVerdictShare",
+        ROOT / "MailVerdictControls",
+        ROOT / "SharedIntents",
     ]
     files = sorted(f for target in targets for f in target.rglob("*.swift"))
     if not files:

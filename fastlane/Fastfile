@@ -17,6 +17,7 @@ PROFILE_NAMES = {
   "com.frederikberg.mailverdict" => "MailVerdict App Store",
   "com.frederikberg.mailverdict.notify" => "MailVerdict Notify App Store",
   "com.frederikberg.mailverdict.share" => "MailVerdict Share App Store",
+  "com.frederikberg.mailverdict.controls" => "MailVerdict Controls App Store",
 }
 
 # The bundle id lives in the Appfile; fastlane reads it from there. Repeating it as a constant
@@ -99,6 +100,9 @@ platform :ios do
     )
     install_provisioning_profile(
       path: decode_secret("IOS_PROVISIONING_PROFILE_SHARE_BASE64", "profile-share.mobileprovision")
+    )
+    install_provisioning_profile(
+      path: decode_secret("IOS_PROVISIONING_PROFILE_CONTROLS_BASE64", "profile-controls.mobileprovision")
     )
 
     build_app(
