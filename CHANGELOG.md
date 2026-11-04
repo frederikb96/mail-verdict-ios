@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Settings labels for the orders image-reading model (`read_*`), added in MailVerdict 7.3.0.
+
 ## [0.15.0] - 2026-11-04
 
 ### Added
