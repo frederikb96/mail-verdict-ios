@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-04
+
 ### Added
 
 - Controls for Control Center, the Lock Screen and the Action button: New Message and Open
