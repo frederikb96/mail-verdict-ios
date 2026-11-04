@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-11-04
+
+### Added
+
+- Settings labels for `read_below_confidence` and `query_instructions`, added in MailVerdict
+  7.4.0.
+
 ## [0.15.1] - 2026-11-04
 
 ### Added
