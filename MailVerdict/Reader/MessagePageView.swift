@@ -163,8 +163,11 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
     /// the position back once it has laid out.
     private func rebuild(imagesAllowed allowed: Bool, _ makeDocument: @escaping @MainActor ([String]) -> String) {
         Task {
-            let open = (try? await call(.openMessageIds)) as? [String] ?? []
-            let anchor = await captureAnchor()
+            // A page that cannot answer — suspended, or its process gone — falls back to the last
+            // saved position rather than the top.
+            let saved = savedPosition
+            let open = (try? await call(.openMessageIds)) as? [String] ?? saved?.openIds ?? []
+            let anchor = await captureAnchor() ?? saved?.anchor
             load(makeDocument(open), revealsOpened: false, imagesAllowed: allowed)
             anchorToRestore = anchor
         }
