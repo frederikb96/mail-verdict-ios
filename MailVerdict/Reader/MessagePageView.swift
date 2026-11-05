@@ -15,6 +15,9 @@ protocol MessagePageViewDelegate: AnyObject {
     func page(_ page: MessagePageView, didRequest navigation: MVReaderNavigation)
     func page(_ page: MessagePageView, menuFor link: MVReaderLink) -> UIMenu?
     func pageDidFinishLoading(_ page: MessagePageView)
+    /// The page's document rebuilt with `expandedElementIds` open, or `nil` when the page shows
+    /// no conversation.
+    func page(_ page: MessagePageView, documentExpanding expandedElementIds: [String]) -> String?
 }
 
 /// One reader page: a `WKWebView` showing one conversation document, zoomed by WebKit's own pinch
@@ -38,6 +41,10 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
 
     private var revealsOpened = false
     private var anchorToRestore: ReaderScrollAnchor?
+    private var documentHTML = ""
+    /// The reading position and expanded messages as last seen, kept for the WebContent process
+    /// dying — iOS kills it while another app is in front, and by then nothing can be read back.
+    private var savedPosition: (anchor: ReaderScrollAnchor?, openIds: [String])?
     private var imagesAllowed = false
     private var loadGeneration = 0
     /// Blocks that arrived while the document was still loading — `reader.js` only exists once it
@@ -73,6 +80,9 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
         addSubview(placeholder)
         addSubview(webView)
         addInteraction(findInteraction)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appWillResignActive), name: UIApplication.willResignActiveNotification,
+            object: nil)
     }
 
     @available(*, unavailable)
@@ -138,6 +148,8 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
         pendingBlocks = []
         self.revealsOpened = revealsOpened
         anchorToRestore = nil
+        savedPosition = nil
+        documentHTML = html
         imagesAllowed = allowed
         dismissFind()
         ReaderWebKit.applyContentRules(to: webView.configuration.userContentController, imagesAllowed: allowed) {
@@ -156,6 +168,19 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
             load(makeDocument(open), revealsOpened: false, imagesAllowed: allowed)
             anchorToRestore = anchor
         }
+    }
+
+    @objc private func appWillResignActive() {
+        Task { await savePosition() }
+    }
+
+    private func savePosition() async {
+        guard isLoaded else { return }
+        let generation = loadGeneration
+        let open = (try? await call(.openMessageIds)) as? [String] ?? []
+        let anchor = await captureAnchor()
+        guard generation == loadGeneration else { return }
+        savedPosition = (anchor, open)
     }
 
     func resetZoom(animated: Bool) {
@@ -282,6 +307,16 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
         }
     }
 
+    /// Implementing this stops WebKit's own reload, which redraws the document from the top.
+    /// The page is rebuilt from the last saved position instead, so returning from a link opened
+    /// in Safari lands where the reader left off.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let saved = savedPosition
+        let html = saved.flatMap { delegate?.page(self, documentExpanding: $0.openIds) } ?? documentHTML
+        load(html, revealsOpened: saved == nil && revealsOpened, imagesAllowed: imagesAllowed)
+        anchorToRestore = saved?.anchor
+    }
+
     // MARK: WKUIDelegate
 
     /// A web link keeps WebKit's own preview, which shows the URL; an attachment offers Quick
@@ -302,6 +337,15 @@ final class MessagePageView: UIView, WKNavigationDelegate, WKUIDelegate, UIScrol
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         delegate?.pageZoomDidChange(self)
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        Task { await savePosition() }
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        guard !decelerate else { return }
+        Task { await savePosition() }
     }
 
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {

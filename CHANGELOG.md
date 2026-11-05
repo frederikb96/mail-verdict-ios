@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.3] - 2026-11-05
+
+### Fixed
+
+- The reader keeps its scroll position and expanded messages when iOS discards the page while
+  another app is in front, such as after opening a link in Safari.
+
 ## [0.15.2] - 2026-11-04
 
 ### Added

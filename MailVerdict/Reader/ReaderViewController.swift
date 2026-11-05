@@ -386,6 +386,11 @@ final class ReaderViewController: UIViewController, UIScrollViewDelegate, Messag
         if page === currentPage { updatePagingEnabled() }
     }
 
+    func page(_ page: MessagePageView, documentExpanding expandedElementIds: [String]) -> String? {
+        guard let rowId = page.rowId else { return nil }
+        return session.rebuiltDocument(for: rowId, expandedElementIds: expandedElementIds)
+    }
+
     // MARK: Presentations
 
     func presentFind() {
