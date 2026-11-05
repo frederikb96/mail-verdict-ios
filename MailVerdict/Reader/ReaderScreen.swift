@@ -11,6 +11,7 @@ struct ReaderScreen: View {
 
     @State private var model: ReaderScreenModel?
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -31,8 +32,16 @@ struct ReaderScreen: View {
                 context: context, environment: environment, connection: connection, theme: canvas(colorScheme),
                 close: { dismiss() })
         }
+        // iOS flips the colour scheme while the app is in the background to snapshot it for the
+        // app switcher; a rebuild then would run against a suspended page and lose the reading
+        // position. The theme follows only while active, and catches up on return.
         .onChange(of: colorScheme) { _, scheme in
+            guard scenePhase == .active else { return }
             model?.session.setTheme(canvas(scheme))
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            model?.session.setTheme(canvas(colorScheme))
         }
         .onDisappear {
             model?.didDisappear()

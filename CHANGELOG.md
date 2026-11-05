@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.4] - 2026-11-05
+
+### Fixed
+
+- The reader keeps its scroll position when returning from another app. iOS switches the colour
+  scheme in the background to snapshot the app, which rebuilt the page from the top.
+
 ## [0.15.3] - 2026-11-05
 
 ### Fixed
